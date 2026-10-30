@@ -15,6 +15,7 @@ seen that day.
 Usage: build_site.py OUT_DIR   (copies site/ into OUT_DIR and writes OUT_DIR/data/)
 """
 import gzip
+import hashlib
 import json
 import re
 import shutil
@@ -287,23 +288,38 @@ def _text(ts):
     return next((t["text"] for t in tr if t.get("language", "en") == "en"), tr[0]["text"] if tr else "")
 
 
-def update_history(stats, last_day):
+def pattern_sig(pat):
+    """Fingerprint of a route pattern's track, so a routing change can be told apart."""
+    return hashlib.sha1(json.dumps(pat["slices"]).encode()).hexdigest()[:10]
+
+
+def update_history(stats, last_day, network):
+    """Record each route's clean-run total for the day, with its pattern fingerprint."""
     path = WORK_DIR / "history.json"
     hist = json.loads(path.read_text()) if path.exists() else {}
-    hist[last_day] = {pid: r["clean_s"] for pid, r in stats["routes"].items() if r["clean_s"]}
+    sigs = {p["id"]: pattern_sig(p) for p in network["patterns"]}
+    hist[last_day] = {pid: {"c": r["clean_s"], "sig": sigs.get(pid)}
+                      for pid, r in stats["routes"].items() if r["clean_s"]}
     path.write_text(json.dumps(hist, separators=(",", ":")))
     return hist
 
 
 def moved(hist, last_day, pid, back=14):
-    """Change in a route's clean run vs `back` days ago (or the oldest record)."""
-    days = sorted(d for d in hist if pid in hist[d])
-    if len(days) < 2:
+    """Change in a route's clean-run total vs `back` days ago (or the oldest comparable record).
+
+    Only days on the same routing count: a diversion changes the total because the route
+    changed, not because service did. Old records without a fingerprint never match.
+    """
+    now = hist.get(last_day, {}).get(pid)
+    if not isinstance(now, dict):
+        return None
+    days = sorted(d for d, rec in hist.items()
+                  if d < last_day and isinstance(rec.get(pid), dict) and rec[pid]["sig"] == now["sig"])
+    if not days:
         return None
     target = (date.fromisoformat(last_day) - timedelta(days=back)).isoformat()
-    older = [d for d in days if d <= target] or days[:1]
-    then = older[-1]
-    return {"since": then, "change_s": hist[last_day][pid] - hist[then][pid]} if then != last_day else None
+    then = ([d for d in days if d <= target] or days[:1])[-1]
+    return {"since": then, "change_s": now["c"] - hist[then][pid]["c"]}
 
 
 def main():
@@ -323,7 +339,7 @@ def main():
 
     windows = {"recent": [d for k, d in days.items() if k >= cutoff], "all": list(days.values())}
     stats = {w: window_stats(network, ds) for w, ds in windows.items()}
-    hist = update_history(stats["recent"], last)
+    hist = update_history(stats["recent"], last, network)
     for pid, r in stats["recent"]["routes"].items():
         r["moved"] = moved(hist, last, pid)
     for w, s in stats.items():

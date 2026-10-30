@@ -7,8 +7,8 @@ by an existing piece in the same direction become new pieces. Pieces are directe
 cut into BIN_M slices, and never change once created, so slice statistics stay
 comparable forever; new or moved track simply adds pieces.
 
-Route "patterns" (main pattern per route and direction in the newest schedule)
-are mapped onto piece slices for the per-route clean-run summaries.
+Route "patterns" (main pattern per route and direction in the schedule in effect
+today) are mapped onto piece slices for the per-route clean-run summaries.
 
 Usage: network.py   Reads STATIC_DIR snapshots; updates WORK_DIR/network.json.
 """
@@ -19,11 +19,12 @@ import math
 import re
 import statistics
 import sys
+import time
 import zipfile
 from collections import Counter, defaultdict
 
 from common import (BIN_M, NIGHT_TWIN, STATIC_DIR, WORK_DIR, PathGeom, angle_diff,
-                    bearing_of, to_lonlat, to_xy)
+                    bearing_of, service_day, to_lonlat, to_xy)
 
 STEP = 5           # metres between samples when walking a shape
 COVER_M = 12       # a shape point this close to a piece (same direction) is already covered
@@ -131,10 +132,29 @@ def snapshot_zips():
     return sorted(STATIC_DIR.glob("surface-routes-and-schedules-for-bustime/*.zip"))
 
 
+def feed_start(zpath):
+    try:
+        return next(reader(zipfile.ZipFile(zpath), "feed_info.txt"), {}).get("feed_start_date", "")
+    except (KeyError, ValueError, zipfile.BadZipFile):
+        return ""
+
+
+def in_effect(zips):
+    """The schedule running today: the newest that has started. The TTC publishes the next
+    one days ahead, so the newest file isn't always the one cars are running. If none has
+    started (no older file saved), use the one starting soonest."""
+    today = service_day(time.time()).replace("-", "")
+    starts = sorted((feed_start(z), z) for z in zips)
+    started = [z for s, z in starts if s and s <= today]
+    return started[-1] if started else starts[0][1]
+
+
 def build():
     net = Network(json.loads(NETWORK.read_text()) if NETWORK.exists() else None)
     zips = snapshot_zips()
-    if all(z.name in net.data["snapshots"] for z in zips) and net.data["patterns"]:
+    current = in_effect(zips)
+    if (all(z.name in net.data["snapshots"] for z in zips) and net.data["patterns"]
+            and net.data.get("patterns_from") == current.name):
         print("network up to date", file=sys.stderr)
         return
     for zpath in zips:
@@ -143,8 +163,10 @@ def build():
         print(f"adding {zpath.name}", file=sys.stderr)
         add_snapshot(net, zpath)
         net.data["snapshots"].append(zpath.name)
-    # Route summaries always come from the newest schedule.
-    net.data["patterns"] = patterns(net, zips[-1])
+    # Route summaries follow the schedule in effect, switching on its start date.
+    print(f"route patterns from {current.name}", file=sys.stderr)
+    net.data["patterns"] = patterns(net, current)
+    net.data["patterns_from"] = current.name
     for p in net.data["pieces"]:
         g = PathGeom(p["line"])
         p["length"] = round(g.length, 1)
