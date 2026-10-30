@@ -30,7 +30,7 @@
     --bg: #121314; --card: rgba(28, 29, 31, 0.96); --surface: #1f2023; --ink: #e8e8e6; --on-ink: #121314;
     --muted: #a3a6aa; --line: #34363a; --accent: #ff7a8c; --shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
     --s-normal: #5f9e86; --s-diverted: #e07b2e; --s-mixed: #d9b24a; --s-bus: #d0506a; --s-none: #3a3c40; --s-nodata: #26282b;
-    --prelim-bg: #3a2f17; --prelim-ink: #f1d9a6; --tip-bg: rgba(44, 46, 50, 0.97); --k-stop: #d0d0d0;
+    --prelim-bg: #3a2f17; --prelim-ink: #f1d9a6; --tip-bg: rgba(44, 46, 50, 0.97); --k-stop: #d0d0d0; --ctrl-icon-filter: invert(0.9);
     --legend-delay: linear-gradient(90deg, #6ebea0 0%, #f3d36b 12%, #f08b3a 30%, #e64646 55%, #ff5aa0 100%);
     --legend-speed: linear-gradient(90deg, #ff5aa0 0%, #e64646 18%, #f08b3a 36%, #f3d36b 55%, #6ebea0 73%, #3c9c86 100%);
     color-scheme: dark;
@@ -40,7 +40,7 @@
   --bg: #121314; --card: rgba(28, 29, 31, 0.96); --surface: #1f2023; --ink: #e8e8e6; --on-ink: #121314;
   --muted: #a3a6aa; --line: #34363a; --accent: #ff7a8c; --shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
   --s-normal: #5f9e86; --s-diverted: #e07b2e; --s-mixed: #d9b24a; --s-bus: #d0506a; --s-none: #3a3c40; --s-nodata: #26282b;
-  --prelim-bg: #3a2f17; --prelim-ink: #f1d9a6; --tip-bg: rgba(44, 46, 50, 0.97); --k-stop: #d0d0d0;
+  --prelim-bg: #3a2f17; --prelim-ink: #f1d9a6; --tip-bg: rgba(44, 46, 50, 0.97); --k-stop: #d0d0d0; --ctrl-icon-filter: invert(0.9);
   --legend-delay: linear-gradient(90deg, #6ebea0 0%, #f3d36b 12%, #f08b3a 30%, #e64646 55%, #ff5aa0 100%);
   --legend-speed: linear-gradient(90deg, #ff5aa0 0%, #e64646 18%, #f08b3a 36%, #f3d36b 55%, #6ebea0 73%, #3c9c86 100%);
   color-scheme: dark;
@@ -192,6 +192,13 @@ input[type=range] { accent-color: var(--accent); }
 .explain .close:hover { background: var(--bg); color: var(--ink); }
 
 .maplibregl-ctrl-bottom-left, .maplibregl-ctrl-bottom-right { z-index: 1; }
+/* Map controls and attribution follow the theme (MapLibre's own CSS is light-only). */
+.maplibregl-ctrl.maplibregl-ctrl-group { background: var(--surface); }
+.maplibregl-ctrl-group button + button { border-top-color: var(--line); }
+.maplibregl-ctrl-group button .maplibregl-ctrl-icon { filter: var(--ctrl-icon-filter, none); }
+.maplibregl-ctrl.maplibregl-ctrl-attrib, .maplibregl-ctrl-attrib.maplibregl-compact { background: var(--card); color: var(--muted); }
+.maplibregl-ctrl-attrib a { color: var(--muted); }
+.maplibregl-ctrl-attrib-button { filter: var(--ctrl-icon-filter, none); }
 
 /* Screenshot mode (?shot=1): a clean, framed image for posts. */
 .callout {
