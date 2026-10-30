@@ -72,7 +72,7 @@
     <details class="method">
       <summary>How this works</summary>
       <p>The TTC publishes where every streetcar is, roughly every 30 seconds, but keeps no history. A Raspberry Pi logs that feed every 20 seconds. Each night the day's pings are snapped to the track and turned into the time each car spent on every 25&nbsp;m slice.</p>
-      <p><b>Clean run:</b> for each stretch of track around a stop, the fastest 10% of real daytime trips (06:00 to midnight), stop included. <button class="linkish" data-explain>More on the clean run</button></p>
+      <p><b>Clean run:</b> for each segment of track around a stop, the fastest 10% of real daytime trips (06:00 to midnight), stop included. <button class="linkish" data-explain>More on the clean run</button></p>
       <p><b>Delay</b> is the typical (average) time minus the clean run, shown per 100&nbsp;m. Layovers over 3 minutes are left out. Buses on streetcar routes are left out, but counted in the route timeline.</p>
       <p>Faint lines have few passes so far. The map gets sharper every night as data builds up.</p>
     </details>
@@ -96,11 +96,11 @@
 <dialog id="explain" class="explain" aria-labelledby="explain-title">
   <button class="close" aria-label="Close" data-close>×</button>
   <h2 id="explain-title">What's a "clean run"?</h2>
-  <p>A clean run is how a streetcar moves along a stretch of track when things go well: the car stops at its passenger stops, but isn't held up by red lights, traffic, turning cars or crowds.</p>
-  <p><b>How it's measured.</b> Each route is split into stretches, each centred on one stop. For every stretch we take the <b>fastest 10% of real daytime trips</b> (06:00 to midnight). So it's not a theoretical top speed; it's what real cars actually do on a good run, stop included.</p>
+  <p>A clean run is how a streetcar moves along a segment of track when things go well: the car stops at its passenger stops, but isn't held up by red lights, traffic, turning cars or crowds.</p>
+  <p><b>How it's measured.</b> Each route is split into segments, each centred on one stop and measured in 25&nbsp;m slices. For every segment we take the <b>fastest 10% of real daytime trips</b> (06:00 to midnight). So it's not a theoretical top speed; it's what real cars actually do on a good run, stop included.</p>
   <p><b>Delay</b> is how much longer the typical (average) trip takes than that clean run, shown as seconds lost per 100&nbsp;m. Tall peaks are where the extra time goes: usually traffic signals, busy stops and turns.</p>
   <p><b>Smoothing.</b> Positions arrive only every ~30 seconds, so a waiting car's time lands in whichever 25&nbsp;m slice it happened to be reported in. The ridge and the tooltip both average over about 125&nbsp;m (five slices) so the picture isn't just noise.</p>
-  <p><b>Whole routes.</b> Adding up every stretch's clean run gives a best-case trip that no single car actually makes, a bit like stitching together the record time on every segment of a ride. So route cards don't show it as a trip time; they show how much a typical trip loses against it.</p>
+  <p><b>Whole routes.</b> Adding up every segment's clean run gives a best-case trip that no single car actually makes, a bit like adding up the best time on every segment of a ride: a run nobody really did. So route cards don't show it as a trip time; they show how much a typical trip loses against it.</p>
   <h3>Stops, signals and everything else</h3>
   <p>The clean run includes a <i>quick</i> stop, so extra boarding time at a busy stop counts as delay. That's a different problem from red lights or traffic, so every spot is labelled using the City of Toronto's traffic signal list:</p>
   <ul>

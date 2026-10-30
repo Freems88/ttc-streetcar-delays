@@ -232,7 +232,7 @@
     const typ = r.typical_s[state.slot] ?? r.typical_s.all;
     if (typ == null) return "";
     return `<div><b>${pat.route} ${pat.name}</b> ${pat.direction.toLowerCase()} to ${pat.to}: ` +
-      `a typical trip loses <b>${mins(typ - r.clean_s)}</b> in total across all its stretches ` +
+      `a typical trip loses <b>${mins(typ - r.clean_s)}</b> in total across all its segments` +
       `(${mins(typ)} vs ${mins(r.clean_s)} best case · scheduled ${mins(pat.sched_s)})</div>`;
   }
 
@@ -289,7 +289,7 @@
       `${fmt(slot.n[b])} passes · streetcars passed here on ${st.days[b]} of ${days} day${days === 1 ? "" : "s"}</div>` +
       (routes.length ? `<div class="t-routes"><div class="t-head">Whole route${routes.length > 1 ? "s" : ""} through here</div>` +
         `${routes.map(routeLine).join("")}</div>` : "") +
-      `<div class="t-routes t-dim">Clean run: each stretch's fastest 10% of real daytime passes, stops included. More under “?” on the legend.</div>`;
+      `<div class="t-routes t-dim">Clean run: each segment's fastest 10% of real daytime passes, stops included. More under “?” on the legend.</div>`;
     placeTip(info);
   }
   map.getCanvas().addEventListener("mouseleave", () => { tip.hidden = true; });
@@ -312,7 +312,7 @@
       html += `<div class="dir"><div class="dir-name">${pat.direction} to ${pat.to}</div>` +
         `<div class="dir-stats">` +
         (r.clean_s && typ != null ? `A typical trip loses <b>${mins(typ - r.clean_s)}</b> to delays` +
-          `<br>${mins(typ)} typical vs ${mins(r.clean_s)} if every stretch went well ` +
+          `<br>${mins(typ)} typical vs ${mins(r.clean_s)} if every segment went well` +
           `(<button class="linkish" data-explain>clean run</button>) · scheduled ${mins(pat.sched_s)}` +
           `<br>${fmt(r.samples)} slice passes · ${Math.round(r.data_coverage * 100)}% of the route measured${movedTxt}`
           : "No streetcar data yet for this direction") +
