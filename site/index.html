@@ -98,10 +98,10 @@
   <button class="close" aria-label="Close" data-close>×</button>
   <h2 id="explain-title">What's a "clean run"?</h2>
   <p>A clean run is how a streetcar moves along a segment of track when things go well: the car stops at its passenger stops, but isn't held up by red lights, traffic, turning cars or crowds.</p>
-  <p><b>How it's measured.</b> Each route is split into segments, each centred on one stop and measured in 25&nbsp;m slices. For every segment we take the <b>fastest 10% of real daytime trips</b> (06:00 to midnight). So it's not a theoretical top speed; it's what real cars actually do on a good run, stop included.</p>
+  <p><b>How it's measured.</b> Each route is split into segments, each centred on one stop and measured in 25&nbsp;m slices. For every segment we take the <b>fastest 10% of real daytime trips</b> (06:00 to midnight). So it's not a theoretical top speed; it's what real cars actually manage there when nothing holds them up, stop included.</p>
   <p><b>Delay</b> is how much longer the typical (average) trip takes than that clean run, shown as seconds lost per 100&nbsp;m. Tall peaks are where the extra time goes: usually traffic signals, busy stops and turns.</p>
   <p><b>Smoothing.</b> Positions arrive only every ~30 seconds, so a waiting car's time lands in whichever 25&nbsp;m slice it happened to be reported in. The ridge and the tooltip both average over about 125&nbsp;m (five slices) so the picture isn't just noise.</p>
-  <p><b>Whole routes.</b> Adding up every segment's clean run gives a best-case trip that no single car actually makes, a bit like adding up the best time on every segment of a ride: a run nobody really did. So route cards don't show it as a trip time; they show how much a typical trip loses against it.</p>
+  <p><b>Whole routes.</b> Adding up every segment's clean run gives a route's <b>clean-run total</b>: a trip no single car actually makes, a bit like adding up the best time on every segment of a ride, a run nobody really did. So route cards don't present it as a trip time; they show how much a typical trip loses against it.</p>
   <h3>Stops, signals and everything else</h3>
   <p>The clean run includes a <i>quick</i> stop, so extra boarding time at a busy stop counts as delay. That's a different problem from red lights or traffic, so every spot is labelled using the City of Toronto's traffic signal list:</p>
   <ul>
@@ -111,12 +111,18 @@
     <li><b>Elsewhere:</b> between stops and signals: traffic, turning cars, slow zones and long queues backing up from a signal.</li>
   </ul>
   <p>"Hide stop-only spots" leaves out the spots that are only a stop, to focus on signals and traffic. The tooltip also says whether a signal has transit priority.</p>
+  <h3>What this doesn't show</h3>
+  <ul>
+    <li><b>Why.</b> It shows where, when and how much time is lost, not the cause. The stop and signal labels and the TTC's alerts are clues, not explanations.</li>
+    <li><b>Slowness every car shares.</b> The clean run comes from real cars at each spot, so anything that slows <i>every</i> car is built into it and doesn't show as delay: slow orders on worn track, switches and special trackwork, tight curves, low speed limits. A spot can be slow for everyone and still look green here.</li>
+    <li><b>Short layovers.</b> Standing still for over 3 minutes is left out, but shorter waits near the ends of a line can still show up as delay at the last few stops.</li>
+  </ul>
   <h3>Worth knowing</h3>
   <ul>
     <li><b>Quiet stops.</b> If more than about 1 in 10 cars skip a stop (nobody waiting, nobody getting off), the clean run doesn't include stopping there, so that stop shows a little more delay than it otherwise would.</li>
     <li><b>Overnight.</b> Overnight cars are measured against the same daytime clean run. They often beat it, so overnight delay is mostly near zero.</li>
     <li><b>Left out:</b> cars off their usual track (diversions), buses on streetcar routes, and standing still for more than 3 minutes (layovers at the end of the line).</li>
-    <li><b>Early days.</b> With only a few days of data the clean run moves around. It settles as data builds up; each route's card shows how much its best case moved in the last two weeks.</li>
+    <li><b>Early days.</b> With only a few days of data the clean run moves around. It settles as data builds up; each route's card shows how much its clean-run total moved in the last two weeks.</li>
   </ul>
 </dialog>
 

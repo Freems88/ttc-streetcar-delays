@@ -236,7 +236,7 @@
     if (typ == null) return "";
     return `<div><b>${pat.route} ${pat.name}</b> ${pat.direction.toLowerCase()} to ${pat.to}: ` +
       `a typical trip loses <b>${mins(typ - r.clean_s)}</b> in total across all its segments` +
-      `(${mins(typ)} vs ${mins(r.clean_s)} best case · scheduled ${mins(pat.sched_s)})</div>`;
+      `(${mins(typ)} vs ${mins(r.clean_s)} clean-run total · scheduled ${mins(pat.sched_s)})</div>`;
   }
 
   function kindText(p, b) {
@@ -288,7 +288,7 @@
       `<div class="t-kind">${kindText(p, b)}</div>` +
       `<div class="t-big">${rate.toFixed(1)} s lost per 100 m</div>` +
       `<div>The ${span} m around here cost a typical car <b>${lostHere < 1 ? "under 1 s" : `${Math.round(lostHere)} s`}</b></div>` +
-      `<div class="t-dim">${cleanHere.toFixed(1)} s on a good run vs ${typical.toFixed(1)} s typical<br>` +
+      `<div class="t-dim">${cleanHere.toFixed(1)} s clean run vs ${typical.toFixed(1)} s typical<br>` +
       `${fmt(slot.n[b])} passes · streetcars passed here on ${st.days[b]} of ${days} day${days === 1 ? "" : "s"}</div>` +
       (routes.length ? `<div class="t-routes"><div class="t-head">Whole route${routes.length > 1 ? "s" : ""} through here</div>` +
         `${routes.map(routeLine).join("")}</div>` : "") +
@@ -310,13 +310,13 @@
       let movedTxt = "";
       if (r.moved) {
         const m = r.moved.change_s / 60;
-        movedTxt = ` · best case ${Math.abs(m) < 0.05 ? "unchanged" : `moved ${m > 0 ? "+" : "−"}${Math.abs(m).toFixed(1)} min`} since ${dayFmt(r.moved.since)}`;
+        movedTxt = ` · clean-run total ${Math.abs(m) < 0.05 ? "unchanged" : `moved ${m > 0 ? "+" : "−"}${Math.abs(m).toFixed(1)} min`} since ${dayFmt(r.moved.since)}`;
       }
       html += `<div class="dir"><div class="dir-name">${pat.direction} to ${pat.to}</div>` +
         `<div class="dir-stats">` +
         (r.clean_s && typ != null ? `A typical trip loses <b>${mins(typ - r.clean_s)}</b> to delays` +
-          `<br>${mins(typ)} typical vs ${mins(r.clean_s)} if every segment went well` +
-          `(<button class="linkish" data-explain>clean run</button>) · scheduled ${mins(pat.sched_s)}` +
+          `<br>${mins(typ)} typical vs ${mins(r.clean_s)} ` +
+          `<button class="linkish" data-explain>clean-run total</button> · scheduled ${mins(pat.sched_s)}` +
           `<br>${fmt(r.samples)} slice passes · ${Math.round(r.data_coverage * 100)}% of the route measured${movedTxt}`
           : "No streetcar data yet for this direction") +
         `</div></div>`;
