@@ -233,6 +233,8 @@
           color: colorFor(kmh, nearStop ? 90 : confidence(st.n[b]), SPEED_STOPS)});
       }
     }
+    drawn = segs.flatMap((s) => [...s.path[0], 0]);
+    screenPts = null;
     overlay.setProps({layers: [
       new PathLayer({id: "base", data: base, getPath: (x) => x.path, getColor: [180, 180, 180, 160], widthUnits: "pixels", getWidth: 2}),
       new PathLayer({id: "speed", data: segs, getPath: (x) => x.path, getColor: (x) => x.color, widthUnits: "pixels",
@@ -283,6 +285,10 @@
         }
       }
     }
+    // Each curtain sampled at its foot, middle and top.
+    drawn = verticals.flatMap((v) => [v.from[0], v.from[1], 0, v.from[0], v.from[1], v.to[2] / 2,
+      v.from[0], v.from[1], v.to[2]]);
+    screenPts = null;
     overlay.setProps({
       layers: [
         new PathLayer({id: "base", data: base, getPath: (x) => x.path, getColor: BASE_COLOR, widthUnits: "pixels", getWidth: 2.5}),
@@ -335,7 +341,7 @@
     const typ = r.typical_s[state.slot] ?? r.typical_s.all;
     if (typ == null) return "";
     return `<div><b>${pat.route} ${pat.name}</b> ${pat.direction.toLowerCase()} to ${pat.to}: ` +
-      `a typical trip loses <b>${mins(typ - r.clean_s)}</b> in total across all its segments` +
+      `a typical trip loses <b>${mins(typ - r.clean_s)}</b> in total across all its segments ` +
       `(${mins(typ)} vs ${mins(r.clean_s)} clean-run total · scheduled ${mins(pat.sched_s)})</div>`;
   }
 
@@ -350,13 +356,44 @@
     }
   }
 
+  // Screen positions of what's drawn (sample points of the curtains or speed lines), so the
+  // tooltip can sit where it covers the least of the plot. Projected once per view.
+  let drawn = [];        // flat [lon, lat, z, ...] set by render()/renderSpeed()
+  let screenPts = null;  // flat [x, y, ...] for the current view
+  map.on("move", () => { screenPts = null; });
+
+  function plotPoints(viewport) {
+    if (screenPts || !viewport) return screenPts || [];
+    screenPts = [];
+    for (let i = 0; i < drawn.length; i += 3) {
+      const [x, y] = viewport.project([drawn[i], drawn[i + 1], drawn[i + 2]]);
+      screenPts.push(x, y);
+    }
+    return screenPts;
+  }
+
   function placeTip(info) {
     tip.hidden = false;
     // Measure at the left edge, so the old position can't squeeze the width.
     tip.style.left = "0px";
     tip.style.top = "0px";
-    tip.style.left = `${Math.min(info.x + 14, innerWidth - tip.offsetWidth - 8)}px`;
-    tip.style.top = `${Math.min(info.y + 14, innerHeight - tip.offsetHeight - 8)}px`;
+    const w = tip.offsetWidth, h = tip.offsetHeight, gap = 14;
+    const fit = ([x, y]) => [Math.max(8, Math.min(x, innerWidth - w - 8)), Math.max(8, Math.min(y, innerHeight - h - 8))];
+    // Above first: the curtain hangs below its ridge line, so above is usually clear.
+    const cands = [[info.x + gap, info.y - gap - h], [info.x - gap - w, info.y - gap - h],
+      [info.x + gap, info.y + gap], [info.x - gap - w, info.y + gap]].map(fit);
+    const pts = plotPoints(info.viewport);
+    let best = cands[0], bestScore = Infinity;
+    for (const [x, y] of cands) {
+      if (info.x >= x && info.x <= x + w && info.y >= y && info.y <= y + h) continue; // never cover the cursor
+      let score = 0;
+      for (let i = 0; i < pts.length; i += 2) {
+        if (pts[i] >= x && pts[i] <= x + w && pts[i + 1] >= y && pts[i + 1] <= y + h) score++;
+      }
+      if (score < bestScore) { best = [x, y]; bestScore = score; }
+    }
+    tip.style.left = `${best[0]}px`;
+    tip.style.top = `${best[1]}px`;
   }
 
   function showSpeedTip(info) {
