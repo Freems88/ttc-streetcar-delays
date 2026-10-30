@@ -1,0 +1,4 @@
+devdata/
+__pycache__/
+*.pyc
+.claude/

@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Toronto Streetcar Delays</title>
+<meta name="description" content="Where Toronto streetcars lose time compared with a clean run that only stops at passenger stops. Built from TTC GTFS-Realtime vehicle positions.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
+<link href="style.css" rel="stylesheet">
+</head>
+<body>
+<div id="map"></div>
+
+<aside id="panel" class="panel">
+  <button id="panel-toggle" class="panel-toggle" aria-expanded="true" aria-controls="panel-body">
+    <span>Where Toronto streetcars lose time</span><span class="chev" aria-hidden="true"></span>
+  </button>
+  <div id="panel-body" class="panel-body">
+    <h1>Where Toronto streetcars lose time</h1>
+    <p class="lede">Extra time a typical streetcar spends on each 25&nbsp;m of track, compared with a clean run that only stops at passenger stops.</p>
+    <div id="prelim" class="prelim" hidden></div>
+
+    <div class="field">
+      <span class="label">Data</span>
+      <div class="seg" role="group" aria-label="Time window">
+        <button data-window="recent" class="on">Last <span id="window-days">90</span> days</button>
+        <button data-window="all">All time</button>
+      </div>
+    </div>
+    <label class="field">
+      <span class="label">Time of day</span>
+      <select id="slot"></select>
+    </label>
+    <label class="field">
+      <span class="label">Route</span>
+      <select id="route"><option value="">All routes</option></select>
+    </label>
+    <div class="field">
+      <span class="label">Direction</span>
+      <div class="seg" role="group" aria-label="Direction">
+        <button data-dir="both" class="on">Both</button>
+        <button data-dir="en">East / North</button>
+        <button data-dir="ws">West / South</button>
+      </div>
+    </div>
+    <label class="field">
+      <span class="label">Peak height</span>
+      <input id="height" type="range" min="3" max="40" value="12">
+    </label>
+
+    <div id="route-card" class="route-card" hidden></div>
+
+    <details class="method">
+      <summary>How this works</summary>
+      <p>The TTC publishes where every streetcar is, roughly every 30 seconds, but keeps no history. A Raspberry Pi logs that feed every 20 seconds. Each night the day's pings are snapped to the track and turned into the time each car spent on every 25&nbsp;m slice.</p>
+      <p><b>Clean run:</b> for each slice, a fast pass (10th percentile), plus the normal stopping time at each passenger stop (dwell, braking and pulling away), taken from the 10th-percentile time between the midpoints either side of the stop.</p>
+      <p><b>Delay</b> is the typical (average) time minus the clean run, shown per 100&nbsp;m. Layovers over 3 minutes are left out. Buses on streetcar routes are left out, but counted in the route timeline.</p>
+      <p>Faint lines have few passes so far. The map gets sharper every night as data builds up.</p>
+    </details>
+    <p id="meta" class="meta"></p>
+  </div>
+</aside>
+
+<div class="legend" aria-hidden="true">
+  <div class="legend-title">Delay vs. clean run, seconds per 100&nbsp;m</div>
+  <div class="legend-bar"></div>
+  <div class="legend-ticks"><span>0</span><span>5</span><span>15</span><span>35</span><span>70+</span></div>
+</div>
+
+<div id="tooltip" class="tooltip" hidden></div>
+
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script src="https://unpkg.com/deck.gl@9.1.14/dist.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

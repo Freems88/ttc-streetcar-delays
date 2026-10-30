@@ -1,0 +1,27 @@
+[Unit]
+Description=TTC streetcar GTFS-RT position logger
+Wants=network-online.target
+After=network-online.target
+# Never stop retrying after repeated failures.
+StartLimitIntervalSec=0
+
+[Service]
+User=alex
+WorkingDirectory=/home/alex/ttc-streetcars
+Environment=PYTHONUNBUFFERED=1
+# Point this at a USB drive/SSD mount if one is added later, then restart.
+Environment=DATA_DIR=/home/alex/ttc-streetcars/data
+ExecStart=/home/alex/ttc-streetcars/venv/bin/python /home/alex/ttc-streetcars/logger.py
+Restart=always
+RestartSec=15
+# Stay out of the way of the bike share bots.
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+MemoryMax=300M
+# Cap this unit's journal output even if something goes badly wrong.
+LogRateLimitIntervalSec=60
+LogRateLimitBurst=30
+
+[Install]
+WantedBy=multi-user.target

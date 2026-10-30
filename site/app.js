@@ -1,0 +1,278 @@
+/* Toronto streetcar delay map: a 3D delay "curtain" over each piece of track. */
+(async function () {
+  const {MapboxOverlay, LineLayer, PathLayer, ScatterplotLayer} = deck;
+
+  const COLOR_STOPS = [[0, [140, 197, 173]], [5, [243, 211, 107]], [15, [240, 139, 58]], [35, [198, 47, 47]], [70, [92, 10, 30]]];
+  const BASE_COLOR = [140, 197, 173, 200];
+  const MAX_SHOWN = 100; // s per 100 m; taller peaks are capped (the tooltip shows the real value)
+  const STATUS_TEXT = {
+    normal: "Streetcars", diverted: "Streetcars, often off the usual track", mixed: "Some buses",
+    bus: "Mostly buses", none: "No vehicles seen", nodata: "Not logged",
+  };
+
+  const state = {window: "recent", slot: "all", route: "", dir: "both", height: 12, stats: {}};
+
+  const get = (f) => fetch(`data/${f}`, {cache: "no-cache"}).then((r) => r.json());
+  const [meta, net, timeline] = await Promise.all([get("meta.json"), get("network.json"), get("timeline.json")]);
+  state.stats.recent = await get("stats-recent.json");
+
+  // --- static lookups -------------------------------------------------------------
+  const pieces = net.pieces.map((p, i) => {
+    const b0 = p.bins[0], b1 = p.bins[p.bins.length - 1];
+    const brg = (Math.atan2((b1[0] - b0[0]) * Math.cos(43.67 * Math.PI / 180), b1[1] - b0[1]) * 180 / Math.PI + 360) % 360;
+    return {...p, index: i, en: brg < 135 || brg >= 315};
+  });
+  const patterns = Object.fromEntries(net.patterns.map((p) => [p.id, p]));
+  const sliceRoutes = new Map(); // "piece:bin" -> [pattern ids]
+  for (const pat of net.patterns) {
+    for (const [pi, b] of pat.slices) {
+      const k = `${pi}:${b}`;
+      if (!sliceRoutes.has(k)) sliceRoutes.set(k, []);
+      sliceRoutes.get(k).push(pat.id);
+    }
+  }
+  const routeNames = {};
+  for (const p of net.patterns) routeNames[p.route] = p.name;
+
+  // --- controls -------------------------------------------------------------------
+  document.getElementById("window-days").textContent = meta.window_days;
+  const slotSel = document.getElementById("slot");
+  for (const [k, v] of Object.entries(meta.slots)) slotSel.add(new Option(v, k));
+  const routeSel = document.getElementById("route");
+  for (const r of Object.keys(routeNames).sort()) routeSel.add(new Option(`${r} ${routeNames[r]}`, r));
+
+  function segGroup(attr, key) {
+    document.querySelectorAll(`[data-${attr}]`).forEach((btn) => btn.addEventListener("click", async () => {
+      document.querySelectorAll(`[data-${attr}]`).forEach((b) => b.classList.toggle("on", b === btn));
+      state[key] = btn.dataset[attr];
+      if (key === "window" && !state.stats.all) state.stats.all = await get("stats-all.json");
+      render();
+    }));
+  }
+  segGroup("window", "window");
+  segGroup("dir", "dir");
+  slotSel.addEventListener("change", () => { state.slot = slotSel.value; render(); });
+  routeSel.addEventListener("change", () => { state.route = routeSel.value; render(); flyToRoute(); });
+  document.getElementById("height").addEventListener("input", (e) => { state.height = +e.target.value; render(); });
+  const panel = document.getElementById("panel");
+  document.getElementById("panel-toggle").addEventListener("click", (e) => {
+    panel.classList.toggle("collapsed");
+    e.currentTarget.setAttribute("aria-expanded", !panel.classList.contains("collapsed"));
+  });
+  if (matchMedia("(max-width: 700px)").matches) panel.classList.add("collapsed");
+
+  // --- meta / preliminary banner --------------------------------------------------
+  const w = meta.windows.recent;
+  const fmt = (n) => n.toLocaleString("en-CA");
+  const dayFmt = (d) => new Date(d + "T12:00").toLocaleDateString("en-CA", {month: "short", day: "numeric", year: "numeric"});
+  document.getElementById("meta").innerHTML =
+    `Based on ${w.days} day${w.days === 1 ? "" : "s"} (${dayFmt(w.from)} – ${dayFmt(meta.last_day)}) · ` +
+    `${fmt(w.pings)} positions · ${fmt(w.samples)} slice passes. ` +
+    `Updated ${new Date(meta.generated * 1000).toLocaleString("en-CA", {dateStyle: "medium", timeStyle: "short"})}.`;
+  if (meta.windows.all.days < 14) {
+    const el = document.getElementById("prelim");
+    el.hidden = false;
+    el.textContent = `Preliminary: ${meta.windows.all.days} day${meta.windows.all.days === 1 ? "" : "s"} of data so far. ` +
+      "Numbers will move as more passes come in, and faint lines have very few.";
+  }
+
+  // --- map ------------------------------------------------------------------------
+  const map = new maplibregl.Map({
+    container: "map",
+    style: "https://tiles.openfreemap.org/styles/positron",
+    ...(innerWidth > 700 ? {center: [-79.395, 43.662], zoom: 12.5} : {center: [-79.405, 43.652], zoom: 11.3}),
+    pitch: 58, bearing: -17, maxPitch: 75,
+    attributionControl: {compact: true, customAttribution: "Data: TTC GTFS-Realtime via City of Toronto Open Data"},
+  });
+  map.addControl(new maplibregl.NavigationControl({visualizePitch: true}), "top-right");
+  if (innerWidth > 700) map.setPadding({left: 360, top: 0, right: 0, bottom: 0});
+  const overlay = new MapboxOverlay({interleaved: false, layers: [], pickingRadius: 10});
+  map.addControl(overlay);
+
+  function colorFor(v, alpha) {
+    if (v >= COLOR_STOPS[COLOR_STOPS.length - 1][0]) return [...COLOR_STOPS[COLOR_STOPS.length - 1][1], alpha];
+    for (let i = 1; i < COLOR_STOPS.length; i++) {
+      const [v1, c1] = COLOR_STOPS[i];
+      if (v <= v1) {
+        const [v0, c0] = COLOR_STOPS[i - 1];
+        const t = (v - v0) / (v1 - v0);
+        return [0, 1, 2].map((k) => Math.round(c0[k] + t * (c1[k] - c0[k]))).concat(alpha);
+      }
+    }
+  }
+  const confidence = (n) => (n >= 30 ? 255 : n >= 10 ? 170 : 90);
+
+  function visiblePieces() {
+    return pieces.filter((p) => (!state.route || p.routes.includes(state.route)) &&
+      (state.dir === "both" || (state.dir === "en") === p.en));
+  }
+
+  // With a route picked, only the slices its own patterns run over (pieces are shared).
+  function binVisible(p, b) {
+    if (!state.route) return true;
+    return (sliceRoutes.get(`${p.index}:${b}`) || []).some((id) => patterns[id].route === state.route);
+  }
+
+  function runsOf(p) {
+    const runs = [];
+    let cur = null;
+    for (let b = 0; b < p.bins.length; b++) {
+      if (binVisible(p, b)) (cur ||= []).push(p.bins[b]);
+      else if (cur) { runs.push(cur); cur = null; }
+    }
+    if (cur) runs.push(cur);
+    return runs.filter((r) => r.length > 1);
+  }
+
+  // Smooth over ~125 m so single noisy slices don't dominate; gaps stay gaps.
+  const KERNEL = [1, 2, 3, 2, 1];
+  function smoothed(d) {
+    return d.map((v, i) => {
+      if (v == null) return null;
+      let s = 0, w = 0;
+      KERNEL.forEach((k, o) => { const x = d[i + o - 2]; if (x != null) { s += k * x; w += k; } });
+      return s / w;
+    });
+  }
+
+  function render() {
+    const stats = state.stats[state.window];
+    const ridge = [], verticals = [], base = [], stops = [];
+    for (const p of visiblePieces()) {
+      const st = stats.pieces[p.id];
+      for (const path of runsOf(p)) base.push({path});
+      for (const s of p.stops) if (binVisible(p, Math.floor(s.along / net.bin_m))) stops.push({pos: s.lonlat, name: s.name});
+      if (!st) continue;
+      const slot = st.slots[state.slot];
+      const d = smoothed(slot.d);
+      for (let b = 0; b < p.bins.length; b++) {
+        if (d[b] == null || !binVisible(p, b)) continue;
+        const h = Math.min(d[b], MAX_SHOWN) * state.height;
+        verticals.push({from: [...p.bins[b], 0], to: [...p.bins[b], h]});
+        if (b + 1 < p.bins.length && d[b + 1] != null && binVisible(p, b + 1)) {
+          const h2 = Math.min(d[b + 1], MAX_SHOWN) * state.height;
+          const n = Math.min(slot.n[b], slot.n[b + 1]);
+          ridge.push({
+            from: [...p.bins[b], h], to: [...p.bins[b + 1], h2],
+            color: colorFor((d[b] + d[b + 1]) / 2, confidence(n)), piece: p, bin: b, value: d[b],
+          });
+        }
+      }
+    }
+    overlay.setProps({
+      layers: [
+        new PathLayer({id: "base", data: base, getPath: (x) => x.path, getColor: BASE_COLOR, widthUnits: "pixels", getWidth: 2.5}),
+        new LineLayer({id: "verticals", data: verticals, getSourcePosition: (x) => x.from, getTargetPosition: (x) => x.to,
+          getColor: [110, 110, 110, 70], getWidth: 1}),
+        new ScatterplotLayer({id: "stops", data: stops, getPosition: (x) => x.pos, getRadius: 2.6, radiusUnits: "pixels",
+          getFillColor: [35, 35, 35, 220]}),
+        new LineLayer({id: "ridge", data: ridge, getSourcePosition: (x) => x.from, getTargetPosition: (x) => x.to,
+          getColor: (x) => x.color, getWidth: 2.5, pickable: true, autoHighlight: true, highlightColor: [0, 0, 0, 255],
+          onHover: showTooltip, onClick: showTooltip,
+          updateTriggers: {getColor: [state.window, state.slot]}}),
+      ],
+    });
+    renderRouteCard();
+  }
+
+  // --- tooltip --------------------------------------------------------------------
+  const tip = document.getElementById("tooltip");
+  const mins = (s) => (s == null ? "–" : `${Math.round(s / 60)} min`);
+
+  function nearestStop(p, b) {
+    const a = (b + 0.5) * net.bin_m;
+    let best = null;
+    for (const s of p.stops) if (!best || Math.abs(s.along - a) < Math.abs(best.along - a)) best = s;
+    return best && Math.abs(best.along - a) < 400 ? best.name : null;
+  }
+
+  function routeLine(pid) {
+    const pat = patterns[pid], r = state.stats[state.window].routes[pid];
+    if (!r || !r.clean_s) return "";
+    const typ = r.typical_s[state.slot] ?? r.typical_s.all;
+    return `<div><b>${pat.route} ${pat.name}</b> ${pat.direction.toLowerCase()} to ${pat.to}: ` +
+      `clean run <b>${mins(r.clean_s)}</b> · typical ${mins(typ)} · scheduled ${mins(pat.sched_s)}</div>`;
+  }
+
+  function showTooltip(info) {
+    if (!info.object) { tip.hidden = true; return; }
+    const {piece: p, bin: b} = info.object;
+    const st = state.stats[state.window].pieces[p.id];
+    const slot = st.slots[state.slot];
+    const stop = nearestStop(p, b);
+    const raw = slot.d[b];
+    const typical = st.clean[b] + raw * net.bin_m / 100;
+    const days = meta.windows[state.window].days;
+    const routes = (sliceRoutes.get(`${p.index}:${b}`) || []).filter((id) => !state.route || patterns[id].route === state.route);
+    tip.innerHTML =
+      `<div class="t-title">${stop ? `Near ${stop}` : "Streetcar track"}</div>` +
+      `<div class="t-dim">${p.routes.join(", ")} · ${meta.slots[state.slot]}</div>` +
+      `<div class="t-big">${raw.toFixed(1)} s lost per 100 m</div>` +
+      `<div class="t-dim">This 25 m: clean ${st.clean[b].toFixed(1)} s, typical ${typical.toFixed(1)} s<br>` +
+      `${fmt(slot.n[b])} passes · streetcars passed here on ${st.days[b]} of ${days} day${days === 1 ? "" : "s"}</div>` +
+      (routes.length ? `<div class="t-routes">${routes.map(routeLine).join("")}</div>` : "");
+    tip.hidden = false;
+    const x = Math.min(info.x + 14, innerWidth - tip.offsetWidth - 8);
+    const y = Math.min(info.y + 14, innerHeight - tip.offsetHeight - 8);
+    tip.style.left = `${x}px`;
+    tip.style.top = `${y}px`;
+  }
+  map.getCanvas().addEventListener("mouseleave", () => { tip.hidden = true; });
+
+  // --- route card -----------------------------------------------------------------
+  function renderRouteCard() {
+    const card = document.getElementById("route-card");
+    if (!state.route) { card.hidden = true; return; }
+    const stats = state.stats[state.window];
+    const dirs = net.patterns.filter((p) => p.route === state.route);
+    let html = `<h2>${state.route} ${routeNames[state.route]}</h2>`;
+    for (const pat of dirs) {
+      const r = stats.routes[pat.id] || {};
+      const typ = r.typical_s ? (r.typical_s[state.slot] ?? r.typical_s.all) : null;
+      let movedTxt = "";
+      if (r.moved) {
+        const m = r.moved.change_s / 60;
+        movedTxt = ` · clean run ${Math.abs(m) < 0.05 ? "unchanged" : `moved ${m > 0 ? "+" : "−"}${Math.abs(m).toFixed(1)} min`} since ${dayFmt(r.moved.since)}`;
+      }
+      html += `<div class="dir"><div class="dir-name">${pat.direction} to ${pat.to}</div>` +
+        `<div class="dir-stats">` +
+        (r.clean_s ? `Clean run <b>${mins(r.clean_s)}</b> · typical <b>${mins(typ)}</b> · scheduled ${mins(pat.sched_s)}` +
+          `<br>${fmt(r.samples)} slice passes · ${Math.round(r.data_coverage * 100)}% of the route measured${movedTxt}`
+          : "No streetcar data yet for this direction") +
+        `</div></div>`;
+    }
+    const rows = timeline.routes[state.route] || [];
+    const seen = new Map();
+    const cells = rows.map((row) => {
+      for (const a of row.alerts || []) if (!seen.has(a)) seen.set(a, row.day);
+      const title = `${dayFmt(row.day)}: ${STATUS_TEXT[row.status]}` +
+        (row.bus_share ? ` (${Math.round(row.bus_share * 100)}% buses)` : "") +
+        ((row.alerts || []).length ? `\n${row.alerts.map((a) => "• " + (timeline.alerts[a]?.text || "")).join("\n")}` : "");
+      return `<i class="${row.status}${(row.alerts || []).length ? " alert" : ""}" title="${title.replace(/"/g, "&quot;")}"></i>`;
+    }).join("");
+    html += `<div class="timeline-label"><span>Last ${rows.length} days</span><span>today</span></div>` +
+      `<div class="timeline">${cells}</div>` +
+      `<div class="timeline-key"><span style="--c:var(--s-normal)">streetcars</span><span style="--c:var(--s-diverted)">off usual track</span>` +
+      `<span style="--c:var(--s-mixed)">some buses</span><span style="--c:var(--s-bus)">mostly buses</span><span style="--c:var(--s-nodata)">not logged</span></div>`;
+    if (seen.size) {
+      const list = [...seen.keys()].slice(-6).reverse().map((a) => {
+        const t = timeline.alerts[a];
+        return t ? `<li>${t.text.replace(/</g, "&lt;")}${t.url ? ` <a href="${t.url}" target="_blank" rel="noopener">details</a>` : ""}</li>` : "";
+      }).join("");
+      html += `<div class="timeline-label"><span>Recent TTC alerts for this route</span></div><ul class="alerts-list">${list}</ul>`;
+    }
+    card.innerHTML = html;
+    card.hidden = false;
+  }
+
+  function flyToRoute() {
+    const ps = visiblePieces();
+    if (!ps.length) return;
+    const b = new maplibregl.LngLatBounds();
+    for (const p of ps) for (const run of runsOf(p)) for (const c of run) b.extend(c);
+    map.fitBounds(b, {padding: {top: 80, bottom: 80, left: innerWidth > 700 ? 400 : 40, right: 80},
+      pitch: 50, bearing: -17, duration: 1200});
+  }
+
+  render();
+})();

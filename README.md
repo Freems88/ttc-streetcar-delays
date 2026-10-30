@@ -1,0 +1,36 @@
+# Toronto streetcar delays
+
+Where Toronto streetcars lose time compared with a clean run that only stops at passenger stops, as a 3D map that sharpens every night as data builds up.
+
+The TTC publishes live streetcar positions (GTFS-Realtime) but keeps no history, so a Raspberry Pi logs them and rebuilds the map nightly.
+
+## Layout
+
+- `collector/`: runs on the Pi as systemd services (deployed copies live in `~/ttc-streetcars/`).
+  - `logger.py`: polls vehicle positions every 20 s (streetcar routes only, deduplicated) and both TTC alert feeds every 2 min. Writes one CSV and one alerts JSONL per service day (04:00 to 04:00) and gzips finished days.
+  - `gtfs_snapshot.py`: saves each new TTC static GTFS published on Toronto Open Data (daily check).
+- `pipeline/`: stdlib-only Python, run nightly on the Pi by `pi/ttc-delays-nightly.timer`.
+  - `network.py`: builds directed track pieces from every streetcar pattern in every saved schedule. Pieces never change once made, so stats stay comparable when routes change; new track adds pieces.
+  - `process_day.py`: snaps a day's pings to the track and records the seconds each pass spent on every 25 m slice and every stop interval.
+  - `build_site.py`: combines days into last-90-days and all-time stats, route summaries and a per-route bus/diversion timeline with alerts.
+  - `nightly.py`: runs the above and force-pushes the built site to `gh-pages`.
+- `site/`: the static map page (MapLibre + deck.gl, OpenFreeMap tiles).
+
+## Method
+
+- **Clean run, per slice:** the 10th-percentile time through the slice, plus the stop's normal stopping time spread around each passenger stop. That stopping time is the 10th-percentile time from the midpoint before the stop to the midpoint after it, minus the fast-pass times of the slices in between.
+- **Delay:** the average time minus the clean run, per 100 m, overall or by time of day.
+- **Excluded:** standing still for over 3 minutes counts as a layover and is cut out. Buses on streetcar routes are left out of delay stats but counted in the route timeline.
+
+## Running locally
+
+```bash
+cd pipeline
+export DATA_DIR=../devdata STATIC_DIR=../devdata/static WORK_DIR=../devdata/work
+python network.py
+python process_day.py 2026-10-29
+python build_site.py ../devdata/build
+python -m http.server 8765 --directory ../devdata/build
+```
+
+Inspired by a map of Turin tram delays shared by Andrea Matranga on Bluesky.

@@ -1,0 +1,17 @@
+[Unit]
+Description=Process streetcar positions and publish the delay map
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=alex
+WorkingDirectory=/home/alex/ttc-delays/pipeline
+Environment=PYTHONUNBUFFERED=1
+# Pick up code changes pushed from the laptop; carry on with what's there if GitHub is unreachable.
+ExecStartPre=-/usr/bin/git -C /home/alex/ttc-delays pull -q --ff-only
+ExecStart=/usr/bin/python3 /home/alex/ttc-delays/pipeline/nightly.py
+Nice=15
+IOSchedulingClass=idle
+MemoryMax=1G
+TimeoutStartSec=2h

@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily check for a new TTC static GTFS
+
+[Timer]
+# Off the bike share bots' 05:30/06:00 jobs; Persistent catches up after downtime.
+OnCalendar=*-*-* 03:40
+RandomizedDelaySec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,14 @@
+[Unit]
+Description=Snapshot TTC static GTFS when Toronto Open Data publishes a new version
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=alex
+WorkingDirectory=/home/alex/ttc-streetcars
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/alex/ttc-streetcars/venv/bin/python /home/alex/ttc-streetcars/gtfs_snapshot.py
+Nice=15
+IOSchedulingClass=idle
+MemoryMax=500M

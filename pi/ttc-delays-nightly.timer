@@ -1,0 +1,10 @@
+[Unit]
+Description=Nightly delay map update
+
+[Timer]
+# After the 04:00 service-day rollover (and the 03:40 schedule check), before the 05:30 bike share jobs.
+OnCalendar=*-*-* 04:20
+Persistent=true
+
+[Install]
+WantedBy=timers.target
