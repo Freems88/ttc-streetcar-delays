@@ -14,6 +14,11 @@ each stop interval (halfway-to-previous-stop to halfway-to-next-stop; cars are
 moving at those points so the interpolated crossing times are good) and keep a
 histogram of those. Plus daily per-route counts for the bus/diversion timeline.
 
+The histograms (which set the clean run) only take daytime passes, 06:00 to
+midnight: overnight cars on empty streets skip most stops, so they'd make the
+clean run a non-stopping run. Overnight passes still count in the sums and counts,
+and are compared against the daytime clean run.
+
 Standing still longer than LAYOVER_S is treated as a layover (terminal loops,
 change-offs) and cut out of the pass.
 
@@ -140,7 +145,7 @@ def split_layovers(seq):
 
 
 def interval_times(seq, bounds):
-    """{interval k: seconds} for stop intervals [bounds[k], bounds[k+1]] the pass fully crossed."""
+    """{interval k: (seconds, start time)} for stop intervals [bounds[k], bounds[k+1]] the pass fully crossed."""
     cross = {}
     j = 0
     for k, b in enumerate(bounds):
@@ -151,7 +156,7 @@ def interval_times(seq, bounds):
         (t1, a1), (t2, a2) = seq[j], seq[j + 1]
         if a1 <= b < a2 and t2 - t1 <= MAX_GAP_S:
             cross[k] = t1 + (t2 - t1) * (b - a1) / (a2 - a1)
-    return {k: cross[k + 1] - cross[k] for k in cross if k + 1 in cross}
+    return {k: (cross[k + 1] - cross[k], cross[k]) for k in cross if k + 1 in cross}
 
 
 def slice_times(seq):
@@ -225,12 +230,14 @@ def process(day, network=None):
                 n_passes += 1
                 for b, (v, t_in) in times.items():
                     n_samples += 1
-                    hist[pid][b][bucket(v)] += 1
                     slot = slot_of(t_in, day)
+                    if slot != "night":
+                        hist[pid][b][bucket(v)] += 1
                     sums[pid][slot][b] += v
                     cnts[pid][slot][b] += 1
-                for k, v in interval_times(seq, m.bounds[pi]).items():
-                    ihist[pid][k][bucket(v)] += 1
+                for k, (v, t_in) in interval_times(seq, m.bounds[pi]).items():
+                    if slot_of(t_in, day) != "night":
+                        ihist[pid][k][bucket(v)] += 1
 
     out = {
         "day": day,

@@ -102,6 +102,35 @@ input[type=range] { accent-color: var(--accent); }
 .tooltip .t-routes { border-top: 1px solid rgba(255, 255, 255, 0.18); margin-top: 8px; padding-top: 6px; }
 .tooltip .t-routes div { margin-top: 3px; }
 
+.linkish {
+  font: inherit; color: var(--accent); background: none; border: 0; padding: 0; cursor: pointer;
+  text-decoration: underline; text-underline-offset: 2px;
+}
+.help {
+  font: 600 11px/1 Inter, system-ui, sans-serif; width: 18px; height: 18px; border-radius: 50%;
+  border: 1px solid var(--line); background: #fff; color: var(--ink); cursor: pointer; margin-left: 4px; vertical-align: 1px;
+}
+.help:hover, .linkish:hover { color: var(--accent); border-color: var(--accent); }
+.help:focus-visible, .linkish:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.explain {
+  max-width: 520px; width: calc(100vw - 32px); max-height: calc(100vh - 48px); overflow-y: auto;
+  border: 0; border-radius: 12px; padding: 22px 24px 16px; box-shadow: var(--shadow); color: var(--ink);
+  font-size: 14px;
+}
+.explain::backdrop { background: rgba(20, 20, 30, 0.35); }
+.explain h2 { font-size: 18px; margin: 0 28px 10px 0; }
+.explain h3 { font-size: 14px; margin: 16px 0 6px; }
+.explain p { margin: 0 0 10px; }
+.explain ul { margin: 0; padding-left: 18px; color: var(--muted); }
+.explain li { margin-bottom: 6px; }
+.explain li b { color: var(--ink); }
+.explain .close {
+  position: absolute; top: 10px; right: 12px; width: 32px; height: 32px; border: 0; border-radius: 6px;
+  background: transparent; font-size: 22px; line-height: 1; cursor: pointer; color: var(--muted);
+}
+.explain .close:hover { background: var(--bg); color: var(--ink); }
+
 .maplibregl-ctrl-bottom-left, .maplibregl-ctrl-bottom-right { z-index: 1; }
 
 @media (max-width: 700px) {

@@ -61,6 +61,13 @@
   });
   if (matchMedia("(max-width: 700px)").matches) panel.classList.add("collapsed");
 
+  // "What's a clean run?" links anywhere on the page, including ones rendered later.
+  const explain = document.getElementById("explain");
+  document.addEventListener("click", (e) => {
+    if (e.target.closest("[data-explain]")) explain.showModal();
+    else if (e.target.closest("[data-close]") || e.target === explain) explain.close();
+  });
+
   // --- meta / preliminary banner --------------------------------------------------
   const w = meta.windows.recent;
   const fmt = (n) => n.toLocaleString("en-CA");
@@ -210,7 +217,8 @@
       `<div class="t-big">${raw.toFixed(1)} s lost per 100 m</div>` +
       `<div class="t-dim">This 25 m: clean ${st.clean[b].toFixed(1)} s, typical ${typical.toFixed(1)} s<br>` +
       `${fmt(slot.n[b])} passes · streetcars passed here on ${st.days[b]} of ${days} day${days === 1 ? "" : "s"}</div>` +
-      (routes.length ? `<div class="t-routes">${routes.map(routeLine).join("")}</div>` : "");
+      (routes.length ? `<div class="t-routes">${routes.map(routeLine).join("")}</div>` : "") +
+      `<div class="t-routes t-dim">Clean run: the fastest 10% of real daytime trips, stops included. More under “?” on the legend.</div>`;
     tip.hidden = false;
     const x = Math.min(info.x + 14, innerWidth - tip.offsetWidth - 8);
     const y = Math.min(info.y + 14, innerHeight - tip.offsetHeight - 8);
@@ -236,7 +244,7 @@
       }
       html += `<div class="dir"><div class="dir-name">${pat.direction} to ${pat.to}</div>` +
         `<div class="dir-stats">` +
-        (r.clean_s ? `Clean run <b>${mins(r.clean_s)}</b> · typical <b>${mins(typ)}</b> · scheduled ${mins(pat.sched_s)}` +
+        (r.clean_s ? `<button class="linkish" data-explain>Clean run</button> <b>${mins(r.clean_s)}</b> · typical <b>${mins(typ)}</b> · scheduled ${mins(pat.sched_s)}` +
           `<br>${fmt(r.samples)} slice passes · ${Math.round(r.data_coverage * 100)}% of the route measured${movedTxt}`
           : "No streetcar data yet for this direction") +
         `</div></div>`;

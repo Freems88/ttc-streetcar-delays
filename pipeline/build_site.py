@@ -2,9 +2,10 @@
 """Combine daily slice statistics into the data files the map page reads.
 
 For each window (last WINDOW_DAYS days, all time) and each 25 m slice:
-  clean  = a clean run's seconds in the slice: the 10th-percentile pass through the
-           slice, plus that stop interval's clean stopping time (10th-percentile
-           interval time minus its slices' fast-pass times) placed around the stop
+  clean  = a clean run's seconds in the slice: the 10th-percentile daytime pass
+           through the slice, plus that stop interval's clean stopping time
+           (10th-percentile interval time minus its slices' fast-pass times) placed
+           around the stop
   mean   = average seconds-in-slice per time-of-day slot
   delay  = (mean - clean) per 100 m
 Route summaries add those up along each route's current main pattern. Also writes a

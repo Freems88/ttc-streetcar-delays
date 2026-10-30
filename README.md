@@ -18,7 +18,7 @@ The TTC publishes live streetcar positions (GTFS-Realtime) but keeps no history,
 
 ## Method
 
-- **Clean run, per slice:** the 10th-percentile time through the slice, plus the stop's normal stopping time spread around each passenger stop. That stopping time is the 10th-percentile time from the midpoint before the stop to the midpoint after it, minus the fast-pass times of the slices in between.
+- **Clean run, per slice:** taken from daytime passes only (06:00 to midnight), so overnight cars skipping quiet stops don't set it. It's the 10th-percentile time through the slice, plus the stop's normal stopping time spread around each passenger stop. That stopping time is the 10th-percentile time from the midpoint before the stop to the midpoint after it, minus the fast-pass times of the slices in between.
 - **Delay:** the average time minus the clean run, per 100 m, overall or by time of day.
 - **Excluded:** standing still for over 3 minutes counts as a layover and is cut out. Buses on streetcar routes are left out of delay stats but counted in the route timeline.
 
