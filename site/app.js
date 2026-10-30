@@ -199,8 +199,8 @@
     const typ = r.typical_s[state.slot] ?? r.typical_s.all;
     if (typ == null) return "";
     return `<div><b>${pat.route} ${pat.name}</b> ${pat.direction.toLowerCase()} to ${pat.to}: ` +
-      `a typical trip loses <b>${mins(typ - r.clean_s)}</b> (${mins(typ)} vs ${mins(r.clean_s)} best case · ` +
-      `scheduled ${mins(pat.sched_s)})</div>`;
+      `a typical trip loses <b>${mins(typ - r.clean_s)}</b> in total across all its stretches ` +
+      `(${mins(typ)} vs ${mins(r.clean_s)} best case · scheduled ${mins(pat.sched_s)})</div>`;
   }
 
   function showTooltip(info) {
@@ -210,16 +210,19 @@
     const slot = st.slots[state.slot];
     const stop = nearestStop(p, b);
     const raw = slot.d[b];
-    const typical = st.clean[b] + raw * net.bin_m / 100;
+    const lostHere = raw * net.bin_m / 100;
+    const typical = st.clean[b] + lostHere;
     const days = meta.windows[state.window].days;
     const routes = (sliceRoutes.get(`${p.index}:${b}`) || []).filter((id) => !state.route || patterns[id].route === state.route);
     tip.innerHTML =
       `<div class="t-title">${stop ? `Near ${stop}` : "Streetcar track"}</div>` +
       `<div class="t-dim">${p.routes.join(", ")} · ${meta.slots[state.slot]}</div>` +
       `<div class="t-big">${raw.toFixed(1)} s lost per 100 m</div>` +
-      `<div class="t-dim">This 25 m: clean ${st.clean[b].toFixed(1)} s, typical ${typical.toFixed(1)} s<br>` +
+      `<div>This 25 m costs a typical car <b>${lostHere < 1 ? "under 1 s" : `${Math.round(lostHere)} s`}</b></div>` +
+      `<div class="t-dim">${st.clean[b].toFixed(1)} s on a good run vs ${typical.toFixed(1)} s typical<br>` +
       `${fmt(slot.n[b])} passes · streetcars passed here on ${st.days[b]} of ${days} day${days === 1 ? "" : "s"}</div>` +
-      (routes.length ? `<div class="t-routes">${routes.map(routeLine).join("")}</div>` : "") +
+      (routes.length ? `<div class="t-routes"><div class="t-head">Whole route${routes.length > 1 ? "s" : ""} through here</div>` +
+        `${routes.map(routeLine).join("")}</div>` : "") +
       `<div class="t-routes t-dim">Clean run: each stretch's fastest 10% of real daytime passes, stops included. More under “?” on the legend.</div>`;
     tip.hidden = false;
     const x = Math.min(info.x + 14, innerWidth - tip.offsetWidth - 8);
