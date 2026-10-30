@@ -53,6 +53,9 @@
         <button data-show="nostop">Hide stop-only spots</button>
       </div>
     </div>
+    <label class="check">
+      <input id="show-signals" type="checkbox" checked> Show traffic signals
+    </label>
     <label class="field">
       <span class="label">Peak height</span>
       <input id="height" type="range" min="3" max="40" value="12">
@@ -81,6 +84,11 @@
   <div class="legend-title">Delay vs. clean run, seconds per 100&nbsp;m <button class="help" data-explain aria-label="What's a clean run?">?</button></div>
   <div class="legend-bar"></div>
   <div class="legend-ticks"><span>0</span><span>5</span><span>15</span><span>35</span><span>70+</span></div>
+  <div class="legend-key">
+    <span><i class="k-stop"></i>Stop</span>
+    <span><i class="k-sig"></i>Signal</span>
+    <span><i class="k-tsp"></i>Signal with transit priority</span>
+  </div>
 </div>
 
 <div id="tooltip" class="tooltip" hidden></div>
@@ -91,11 +99,12 @@
   <p>A clean run is how a streetcar moves along a stretch of track when things go well: the car stops at its passenger stops, but isn't held up by red lights, traffic, turning cars or crowds.</p>
   <p><b>How it's measured.</b> Each route is split into stretches, each centred on one stop. For every stretch we take the <b>fastest 10% of real daytime trips</b> (06:00 to midnight). So it's not a theoretical top speed; it's what real cars actually do on a good run, stop included.</p>
   <p><b>Delay</b> is how much longer the typical (average) trip takes than that clean run, shown as seconds lost per 100&nbsp;m. Tall peaks are where the extra time goes: usually traffic signals, busy stops and turns.</p>
+  <p><b>Smoothing.</b> Positions arrive only every ~30 seconds, so a waiting car's time lands in whichever 25&nbsp;m slice it happened to be reported in. The ridge and the tooltip both average over about 125&nbsp;m (five slices) so the picture isn't just noise.</p>
   <p><b>Whole routes.</b> Adding up every stretch's clean run gives a best-case trip that no single car actually makes, a bit like stitching together the record time on every segment of a ride. So route cards don't show it as a trip time; they show how much a typical trip loses against it.</p>
   <h3>Stops, signals and everything else</h3>
   <p>The clean run includes a <i>quick</i> stop, so extra boarding time at a busy stop counts as delay. That's a different problem from red lights or traffic, so every spot is labelled using the City of Toronto's traffic signal list:</p>
   <ul>
-    <li><b>Signal:</b> within about 60&nbsp;m before a traffic signal: red lights and queues.</li>
+    <li><b>Signal:</b> up to about 100&nbsp;m before a traffic signal (a streetcar is 30&nbsp;m long and often queues behind another): red lights and queues.</li>
     <li><b>Stop:</b> around a passenger stop with no signal: mostly boarding.</li>
     <li><b>Stop and signal:</b> both at once. Most Toronto stops are at intersections, and with positions only every ~30 seconds there's no way to split "doors open" from "waiting for green" there.</li>
     <li><b>Elsewhere:</b> between stops and signals: traffic, turning cars, slow zones and long queues backing up from a signal.</li>

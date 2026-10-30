@@ -294,7 +294,7 @@ def main():
                     "tags": tags, "sig": [remap.get(i, -1) for i in sig]}
                    for p, (tags, sig) in zip(network["pieces"], tagged)],
         "patterns": [{k: v for k, v in p.items()} for p in network["patterns"]],
-        "signals": [{k: sigs[i][k] for k in ("name", "tsp", "midblock")} for i in used],
+        "signals": [{k: sigs[i][k] for k in ("name", "tsp", "midblock", "lonlat")} for i in used],
     }
     (data / "network.json").write_text(json.dumps(lite, separators=(",", ":")))
     (data / "timeline.json").write_text(json.dumps({"routes": tl, "alerts": alert_texts}, separators=(",", ":")))

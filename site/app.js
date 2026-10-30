@@ -10,7 +10,7 @@
     bus: "Mostly buses", none: "No vehicles seen", nodata: "Not logged",
   };
 
-  const state = {window: "recent", slot: "all", route: "", dir: "both", show: "all", height: 12, stats: {}};
+  const state = {window: "recent", slot: "all", route: "", dir: "both", show: "all", signals: true, height: 12, stats: {}};
   // Slice labels from build_site: 0 elsewhere, 1 stop, 2 signal, 3 stop + signal.
   const KINDS = [
     {name: "Elsewhere", color: "#9fb8ad"}, {name: "Stop only", color: "#f3c95b"},
@@ -61,6 +61,7 @@
   slotSel.addEventListener("change", () => { state.slot = slotSel.value; render(); });
   routeSel.addEventListener("change", () => { state.route = routeSel.value; render(); flyToRoute(); });
   document.getElementById("height").addEventListener("input", (e) => { state.height = +e.target.value; render(); });
+  document.getElementById("show-signals").addEventListener("change", (e) => { state.signals = e.target.checked; render(); });
   const panel = document.getElementById("panel");
   document.getElementById("panel-toggle").addEventListener("click", (e) => {
     panel.classList.toggle("collapsed");
@@ -144,23 +145,25 @@
   }
 
   // Smooth over ~125 m so single noisy slices don't dominate; gaps stay gaps.
+  // The tooltip uses the same weights, so its numbers match the drawn height.
   const KERNEL = [1, 2, 3, 2, 1];
-  function smoothed(d) {
-    return d.map((v, i) => {
-      if (v == null) return null;
-      let s = 0, w = 0;
-      KERNEL.forEach((k, o) => { const x = d[i + o - 2]; if (x != null) { s += k * x; w += k; } });
-      return s / w;
-    });
+  function smoothAt(d, i) {
+    if (d[i] == null) return null;
+    let s = 0, w = 0;
+    KERNEL.forEach((k, o) => { const x = d[i + o - 2]; if (x != null) { s += k * x; w += k; } });
+    return s / w;
   }
+  const smoothed = (d) => d.map((_, i) => smoothAt(d, i));
 
   function render() {
     const stats = state.stats[state.window];
     const ridge = [], verticals = [], base = [], stops = [];
     const lostByKind = [0, 0, 0, 0];
+    const sigShown = new Set();
     for (const p of visiblePieces()) {
       const st = stats.pieces[p.id];
       for (const path of runsOf(p)) base.push({path});
+      p.sig.forEach((i, b) => { if (i >= 0 && onRoute(p, b)) sigShown.add(i); });
       for (const s of p.stops) if (onRoute(p, Math.floor(s.along / net.bin_m))) stops.push({pos: s.lonlat, name: s.name});
       if (!st) continue;
       const slot = st.slots[state.slot];
@@ -187,6 +190,11 @@
           getColor: [110, 110, 110, 70], getWidth: 1}),
         new ScatterplotLayer({id: "stops", data: stops, getPosition: (x) => x.pos, getRadius: 2.6, radiusUnits: "pixels",
           getFillColor: [35, 35, 35, 220]}),
+        new ScatterplotLayer({id: "signals", visible: state.signals, data: [...sigShown].map((i) => net.signals[i]),
+          getPosition: (s) => s.lonlat, getRadius: 4.5, radiusUnits: "pixels", stroked: true,
+          lineWidthUnits: "pixels", getLineWidth: 1.5, getLineColor: [138, 28, 43, 255],
+          getFillColor: (s) => (s.tsp ? [138, 28, 43, 255] : [255, 255, 255, 255]),
+          pickable: true, onHover: showSignalTip, onClick: showSignalTip}),
         new LineLayer({id: "ridge", data: ridge, getSourcePosition: (x) => x.from, getTargetPosition: (x) => x.to,
           getColor: (x) => x.color, getWidth: 2.5, pickable: true, autoHighlight: true, highlightColor: [0, 0, 0, 255],
           onHover: showTooltip, onClick: showTooltip,
@@ -239,36 +247,50 @@
     }
   }
 
+  function placeTip(info) {
+    tip.hidden = false;
+    // Measure at the left edge, so the old position can't squeeze the width.
+    tip.style.left = "0px";
+    tip.style.top = "0px";
+    tip.style.left = `${Math.min(info.x + 14, innerWidth - tip.offsetWidth - 8)}px`;
+    tip.style.top = `${Math.min(info.y + 14, innerHeight - tip.offsetHeight - 8)}px`;
+  }
+
+  function showSignalTip(info) {
+    if (!info.object) { tip.hidden = true; return; }
+    const s = info.object;
+    tip.innerHTML = `<div class="t-title">${s.midblock ? "Pedestrian signal" : "Traffic signal"}: ${s.name}</div>` +
+      `<div class="t-dim">${s.tsp ? "Has transit signal priority (can extend a green or shorten a red for a streetcar)."
+        : "No transit signal priority."}</div>`;
+    placeTip(info);
+  }
+
   function showTooltip(info) {
     if (!info.object) { tip.hidden = true; return; }
     const {piece: p, bin: b} = info.object;
     const st = state.stats[state.window].pieces[p.id];
     const slot = st.slots[state.slot];
     const stop = nearestStop(p, b);
-    const raw = slot.d[b];
-    const lostHere = raw * net.bin_m / 100;
-    const typical = st.clean[b] + lostHere;
+    // Same ~125 m weighted average the ridge is drawn with.
+    const rate = smoothAt(slot.d, b);
+    const span = [-2, -1, 0, 1, 2].filter((o) => slot.d[b + o] != null).length * net.bin_m;
+    const lostHere = rate * span / 100;
+    const cleanHere = smoothAt(st.clean.map((c, i) => (slot.d[i] == null ? null : c)), b) * span / net.bin_m;
+    const typical = cleanHere + lostHere;
     const days = meta.windows[state.window].days;
     const routes = (sliceRoutes.get(`${p.index}:${b}`) || []).filter((id) => !state.route || patterns[id].route === state.route);
     tip.innerHTML =
       `<div class="t-title">${stop ? `Near ${stop}` : "Streetcar track"}</div>` +
       `<div class="t-dim">${p.routes.join(", ")} · ${meta.slots[state.slot]}</div>` +
       `<div class="t-kind">${kindText(p, b)}</div>` +
-      `<div class="t-big">${raw.toFixed(1)} s lost per 100 m</div>` +
-      `<div>This 25 m costs a typical car <b>${lostHere < 1 ? "under 1 s" : `${Math.round(lostHere)} s`}</b></div>` +
-      `<div class="t-dim">${st.clean[b].toFixed(1)} s on a good run vs ${typical.toFixed(1)} s typical<br>` +
+      `<div class="t-big">${rate.toFixed(1)} s lost per 100 m</div>` +
+      `<div>The ${span} m around here cost a typical car <b>${lostHere < 1 ? "under 1 s" : `${Math.round(lostHere)} s`}</b></div>` +
+      `<div class="t-dim">${cleanHere.toFixed(1)} s on a good run vs ${typical.toFixed(1)} s typical<br>` +
       `${fmt(slot.n[b])} passes · streetcars passed here on ${st.days[b]} of ${days} day${days === 1 ? "" : "s"}</div>` +
       (routes.length ? `<div class="t-routes"><div class="t-head">Whole route${routes.length > 1 ? "s" : ""} through here</div>` +
         `${routes.map(routeLine).join("")}</div>` : "") +
       `<div class="t-routes t-dim">Clean run: each stretch's fastest 10% of real daytime passes, stops included. More under “?” on the legend.</div>`;
-    tip.hidden = false;
-    // Measure at the left edge, so the old position can't squeeze the width.
-    tip.style.left = "0px";
-    tip.style.top = "0px";
-    const x = Math.min(info.x + 14, innerWidth - tip.offsetWidth - 8);
-    const y = Math.min(info.y + 14, innerHeight - tip.offsetHeight - 8);
-    tip.style.left = `${x}px`;
-    tip.style.top = `${y}px`;
+    placeTip(info);
   }
   map.getCanvas().addEventListener("mouseleave", () => { tip.hidden = true; });
 

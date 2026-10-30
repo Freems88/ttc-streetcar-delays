@@ -21,8 +21,11 @@ SIGNALS_CSV = WORK_DIR / "traffic-signals.csv"
 MAX_AGE_DAYS = 30
 
 SIGNAL_OFF_TRACK_M = 25        # signal point (intersection centre) to track
-SIGNAL_ZONE = (-60, 20)        # metres along the track relative to the signal: queue before, clear after
-STOP_ZONE = (-40, 25)          # relative to the stop: braking before, pulling away after
+# Metres along the track relative to the signal (intersection centre) / stop pole. Generous
+# upstream: a Flexity is 30 m long, its GPS isn't at the front, and a second car often queues
+# behind. On Spadina the waiting spikes sit 50-85 m before the signal.
+SIGNAL_ZONE = (-100, 20)
+STOP_ZONE = (-50, 25)
 
 ELSEWHERE, STOP, SIGNAL, BOTH = 0, 1, 2, 3
 
@@ -62,7 +65,8 @@ def load_signals():
             main, side = _street(r["MAIN_STREET"]), _street(r["SIDE1_STREET"])
             mid = _street(r["MIDBLOCK_ROUTE"])
             name = f"{main} / {side}" if side else (f"{main}, midblock {mid}".strip(", ") if mid else main)
-            out.append({"x": to_xy(lon, lat), "name": name, "tsp": r["TRANSIT_PREEMPT"] == "1",
+            out.append({"x": to_xy(lon, lat), "lonlat": [round(lon, 6), round(lat, 6)],
+                        "name": name, "tsp": r["TRANSIT_PREEMPT"] == "1",
                         "midblock": bool(mid) and not side})
     return out
 

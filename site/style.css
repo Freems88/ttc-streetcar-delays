@@ -98,6 +98,13 @@ input[type=range] { accent-color: var(--accent); }
   background: linear-gradient(90deg, #8cc5ad 0%, #f3d36b 12%, #f08b3a 30%, #c62f2f 55%, #5c0a1e 100%);
 }
 .legend-ticks { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-top: 3px; }
+.legend-key { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 11px; color: var(--muted); margin-top: 6px; }
+.legend-key i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 4px; vertical-align: -1px; }
+.k-stop { background: #232323; width: 6px !important; height: 6px !important; vertical-align: 0 !important; }
+.k-sig { background: #fff; box-shadow: inset 0 0 0 1.5px #8a1c2b; }
+.k-tsp { background: #8a1c2b; box-shadow: inset 0 0 0 1.5px #8a1c2b; }
+.check { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; font-size: 13px; cursor: pointer; }
+.check input { accent-color: var(--accent); width: 15px; height: 15px; }
 
 .tooltip {
   position: fixed; z-index: 3; pointer-events: none; max-width: 320px;
