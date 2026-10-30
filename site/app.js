@@ -2,8 +2,23 @@
 (async function () {
   const {MapboxOverlay, LineLayer, PathLayer, ScatterplotLayer} = deck;
 
-  const COLOR_STOPS = [[0, [140, 197, 173]], [5, [243, 211, 107]], [15, [240, 139, 58]], [35, [198, 47, 47]], [70, [92, 10, 30]]];
-  const BASE_COLOR = [140, 197, 173, 200];
+  // Map colours per theme. On a dark map the top of the delay scale is bright magenta
+  // instead of dark maroon, which would disappear; the clean-run speed scale mirrors it.
+  const PALETTES = {
+    light: {
+      delay: [[0, [140, 197, 173]], [5, [243, 211, 107]], [15, [240, 139, 58]], [35, [198, 47, 47]], [70, [92, 10, 30]]],
+      speed: [[0, [92, 10, 30]], [10, [198, 47, 47]], [20, [240, 139, 58]], [30, [243, 211, 107]],
+        [40, [140, 197, 173]], [55, [60, 140, 120]]],
+      base: [140, 197, 173, 200], faint: [180, 180, 180, 160], stop: [35, 35, 35, 220], vertical: [110, 110, 110, 70],
+    },
+    dark: {
+      delay: [[0, [110, 190, 160]], [5, [243, 211, 107]], [15, [240, 139, 58]], [35, [230, 70, 70]], [70, [255, 90, 160]]],
+      speed: [[0, [255, 90, 160]], [10, [230, 70, 70]], [20, [240, 139, 58]], [30, [243, 211, 107]],
+        [40, [110, 190, 160]], [55, [60, 156, 134]]],
+      base: [95, 160, 135, 220], faint: [110, 110, 110, 170], stop: [215, 215, 215, 220], vertical: [190, 190, 190, 55],
+    },
+  };
+  let pal = PALETTES.light;
   const MAX_SHOWN = 100; // s per 100 m; taller peaks are capped (the tooltip shows the real value)
   const STATUS_TEXT = {
     normal: "Streetcars", diverted: "Streetcars, often off the usual track", mixed: "Some buses",
@@ -12,9 +27,6 @@
 
   const state = {window: "recent", slot: "all", route: "", dir: "both", show: "all", signals: true, height: 12,
     view: "delay", stats: {}};
-  // Clean-run speed view: km/h, slow (dark red) to fast (green).
-  const SPEED_STOPS = [[0, [92, 10, 30]], [10, [198, 47, 47]], [20, [240, 139, 58]], [30, [243, 211, 107]],
-    [40, [140, 197, 173]], [55, [60, 140, 120]]];
   // Slice labels from build_site: 0 elsewhere, 1 stop, 2 signal, 3 stop + signal.
   const KINDS = [
     {name: "Elsewhere", color: "#9fb8ad"}, {name: "Stop only", color: "#f3c95b"},
@@ -118,20 +130,111 @@
       "Numbers will move as more passes come in, and faint lines have very few.";
   }
 
+  // --- theme ----------------------------------------------------------------------
+  // "Auto" follows the system; a picked theme is remembered. Bot images are always light.
+  const THEME_KEY = "ttc-delays-theme";
+  const STYLES = {light: "https://tiles.openfreemap.org/styles/positron", dark: "https://tiles.openfreemap.org/styles/dark"};
+  const darkQuery = matchMedia("(prefers-color-scheme: dark)");
+  let themePref = "auto";
+  try { themePref = localStorage.getItem(THEME_KEY) || "auto"; } catch (e) { /* storage blocked */ }
+  if (SHOT) themePref = "light";
+  // ?theme=dark|light forces a theme for this visit (shared links, bot images) without saving it.
+  if (["light", "dark"].includes(params.get("theme"))) themePref = params.get("theme");
+  const isDark = () => themePref === "dark" || (themePref === "auto" && darkQuery.matches);
+  function applyTheme() {
+    if (themePref === "auto") delete document.documentElement.dataset.theme;
+    else document.documentElement.dataset.theme = themePref;
+    pal = PALETTES[isDark() ? "dark" : "light"];
+    document.querySelectorAll("[data-theme-pick]").forEach((b) => b.classList.toggle("on", b.dataset.themePick === themePref));
+  }
+  applyTheme();
+  let mapDark = isDark();
+  function themeChanged() {
+    applyTheme();
+    if (isDark() !== mapDark) {
+      mapDark = isDark();
+      map.setStyle(STYLES[mapDark ? "dark" : "light"]);
+    }
+    render();
+  }
+  document.querySelectorAll("[data-theme-pick]").forEach((b) => b.addEventListener("click", () => {
+    themePref = b.dataset.themePick;
+    try { localStorage.setItem(THEME_KEY, themePref); } catch (e) { /* storage blocked */ }
+    themeChanged();
+  }));
+  darkQuery.addEventListener("change", () => { if (themePref === "auto") themeChanged(); });
+
+  // --- shareable links --------------------------------------------------------------
+  // Filters and camera live in the URL hash, e.g. #r=504&v=speed&c=-79.39,43.65,14,-17,58
+  const HASH_KEYS = {w: "window", t: "slot", r: "route", d: "dir", s: "show", v: "view"};
+  const DEFAULTS = {window: "recent", slot: "all", route: "", dir: "both", show: "all", view: "delay"};
+  const ALLOWED = {window: ["recent", "all"], slot: Object.keys(meta.slots), route: ["", ...Object.keys(routeNames)],
+    dir: ["both", "en", "ws"], show: ["all", "nostop"], view: ["delay", "speed"]};
+  function readHash() {
+    const h = new URLSearchParams(location.hash.slice(1));
+    for (const [k, key] of Object.entries(HASH_KEYS)) {
+      if (ALLOWED[key].includes(h.get(k))) state[key] = h.get(k);
+    }
+    if (h.get("sig") === "0") state.signals = false;
+    const c = (h.get("c") || "").split(",").map(Number);
+    return c.length === 5 && c.every(Number.isFinite)
+      ? {center: [c[0], c[1]], zoom: c[2], bearing: c[3], pitch: c[4]} : null;
+  }
+  function writeHash() {
+    if (SHOT || !map) return;
+    const h = new URLSearchParams();
+    for (const [k, key] of Object.entries(HASH_KEYS)) if (state[key] !== DEFAULTS[key]) h.set(k, state[key]);
+    if (!state.signals) h.set("sig", "0");
+    const c = map.getCenter();
+    h.set("c", [c.lng.toFixed(4), c.lat.toFixed(4), map.getZoom().toFixed(2), map.getBearing().toFixed(0),
+      map.getPitch().toFixed(0)].join(","));
+    history.replaceState(null, "", `#${h}`);
+  }
+  // Put the controls in line with state (after reading a link).
+  function syncControls() {
+    for (const [attr, key] of [["window", "window"], ["dir", "dir"], ["show", "show"], ["view", "view"]]) {
+      document.querySelectorAll(`[data-${attr}]`).forEach((b) => b.classList.toggle("on", b.dataset[attr] === state[key]));
+    }
+    slotSel.value = state.slot;
+    routeSel.value = state.route;
+    document.getElementById("show-signals").checked = state.signals;
+  }
+  const linkCamera = SHOT ? null : readHash();
+  // A link pasted into an open tab only changes the hash; reload to apply it. (Our own
+  // updates use replaceState, which doesn't fire this.)
+  addEventListener("hashchange", () => location.reload());
+  syncControls();
+  if (state.window === "all") state.stats.all = await get("stats-all.json");
+  const copyBtn = document.getElementById("copy-link");
+  copyBtn.addEventListener("click", async () => {
+    writeHash();
+    try {
+      await navigator.clipboard.writeText(location.href);
+      copyBtn.textContent = "Link copied";
+    } catch (e) {
+      copyBtn.textContent = "Copy the address bar to share this view";
+    }
+    setTimeout(() => { copyBtn.textContent = "Copy link to this view"; }, 2500);
+  });
+
   // --- map ------------------------------------------------------------------------
-  const map = new maplibregl.Map({
+  let map = null;
+  map = new maplibregl.Map({
     container: "map",
-    style: "https://tiles.openfreemap.org/styles/positron",
+    style: STYLES[mapDark ? "dark" : "light"],
     ...(innerWidth > 700 ? {center: [-79.395, 43.662], zoom: 12.5} : {center: [-79.405, 43.652], zoom: 11.3}),
-    pitch: 58, bearing: -17, maxPitch: 75,
+    ...(linkCamera || {}),
+    pitch: linkCamera ? linkCamera.pitch : 58, bearing: linkCamera ? linkCamera.bearing : -17, maxPitch: 75,
     attributionControl: {compact: true, customAttribution: "Data: TTC GTFS-Realtime via City of Toronto Open Data"},
   });
   map.addControl(new maplibregl.NavigationControl({visualizePitch: true}), "top-right");
   if (innerWidth > 700 && !SHOT) map.setPadding({left: 360, top: 0, right: 0, bottom: 0});
   const overlay = new MapboxOverlay({interleaved: false, layers: [], pickingRadius: 10});
   map.addControl(overlay);
+  map.on("moveend", writeHash);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") tip.hidden = true; });
 
-  function colorFor(v, alpha, stops = COLOR_STOPS) {
+  function colorFor(v, alpha, stops = pal.delay) {
     if (v >= stops[stops.length - 1][0]) return [...stops[stops.length - 1][1], alpha];
     for (let i = 1; i < stops.length; i++) {
       const [v1, c1] = stops[i];
@@ -236,19 +339,19 @@
         // Near stops cars are braking and pulling away: fade so real slow zones stand out.
         const nearStop = p.tags[b] === 1 || p.tags[b] === 3;
         segs.push({path: [pos(p, b), pos(p, b + 1)], piece: p, bin: b, kmh,
-          color: colorFor(kmh, nearStop ? 90 : confidence(st.n[b]), SPEED_STOPS)});
+          color: colorFor(kmh, nearStop ? 90 : confidence(st.n[b]), pal.speed)});
       }
     }
     drawn = segs.flatMap((s) => [...s.path[0], 0]);
     screenPts = null;
     overlay.setProps({layers: [
-      new PathLayer({id: "base", data: base, getPath: (x) => x.path, getColor: [180, 180, 180, 160], widthUnits: "pixels", getWidth: 2}),
+      new PathLayer({id: "base", data: base, getPath: (x) => x.path, getColor: pal.faint, widthUnits: "pixels", getWidth: 2}),
       new PathLayer({id: "speed", data: segs, getPath: (x) => x.path, getColor: (x) => x.color, widthUnits: "pixels",
         getWidth: 5, capRounded: true, pickable: true, autoHighlight: true, highlightColor: [0, 0, 0, 255],
         onHover: showSpeedTip, onClick: showSpeedTip, updateTriggers: {getColor: [state.window]}}),
       new ScatterplotLayer({id: "stops", data: stops, getPosition: (x) => x.pos,
           getRadius: 9, radiusUnits: "meters", radiusMinPixels: 1, radiusMaxPixels: 3,
-        getFillColor: [35, 35, 35, 220]}),
+        getFillColor: pal.stop}),
       new ScatterplotLayer({id: "signals", visible: state.signals, data: [...sigShown].map((i) => net.signals[i]),
         getPosition: (s) => s.lonlat, stroked: true,
         // Scale with zoom so markers don't swamp the track when zoomed out.
@@ -263,6 +366,8 @@
   function render() {
     updateViewChrome();
     updateOffset();
+    writeHash();
+    document.getElementById("loading").hidden = true;
     if (state.view === "speed") return renderSpeed();
     const stats = state.stats[state.window];
     const ridge = [], verticals = [], base = [], stops = [];
@@ -307,12 +412,12 @@
     screenPts = null;
     overlay.setProps({
       layers: [
-        new PathLayer({id: "base", data: base, getPath: (x) => x.path, getColor: BASE_COLOR, widthUnits: "pixels", getWidth: 2.5}),
+        new PathLayer({id: "base", data: base, getPath: (x) => x.path, getColor: pal.base, widthUnits: "pixels", getWidth: 2.5}),
         new LineLayer({id: "verticals", data: verticals, getSourcePosition: (x) => x.from, getTargetPosition: (x) => x.to,
-          getColor: [110, 110, 110, 70], getWidth: 1}),
+          getColor: pal.vertical, getWidth: 1}),
         new ScatterplotLayer({id: "stops", data: stops, getPosition: (x) => x.pos,
           getRadius: 9, radiusUnits: "meters", radiusMinPixels: 1, radiusMaxPixels: 3,
-          getFillColor: [35, 35, 35, 220]}),
+          getFillColor: pal.stop}),
         new ScatterplotLayer({id: "signals", visible: state.signals, data: [...sigShown].map((i) => net.signals[i]),
           getPosition: (s) => s.lonlat, stroked: true,
           getRadius: 14, radiusUnits: "meters", radiusMinPixels: 1.5, radiusMaxPixels: 5,
@@ -557,6 +662,7 @@
 
   async function renderShot() {
     document.body.classList.add("shot");
+    document.getElementById("loading").hidden = true;
     const stats = await get(`stats-${params.get("win") || "yesterday"}.json`);
     const p = pieces.find((x) => x.id === params.get("piece"));
     const b0 = +params.get("b0"), b1 = +params.get("b1");
@@ -585,7 +691,7 @@
       new PathLayer({id: "base", data: pieces, getPath: (x) => x.bins, getColor: [160, 160, 160, 110],
         widthUnits: "pixels", getWidth: 2}),
       new PathLayer({id: "seg-base", data: [{path: p.bins.slice(lo, hi + 1)}], getPath: (x) => x.path,
-        getColor: BASE_COLOR, widthUnits: "pixels", getWidth: 3.5}),
+        getColor: pal.base, widthUnits: "pixels", getWidth: 3.5}),
       new LineLayer({id: "verticals", data: verticals, getSourcePosition: (x) => x.from, getTargetPosition: (x) => x.to,
         getColor: (x) => (x.seg ? [110, 110, 110, 110] : [150, 150, 150, 50]), getWidth: 1}),
       new ScatterplotLayer({id: "stops", data: p.stops.filter(nearSlice), getPosition: (s) => s.lonlat,

@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Toronto Streetcar Delays</title>
 <meta name="description" content="Where Toronto streetcars lose time compared with a clean run that only stops at passenger stops. Built from TTC GTFS-Realtime vehicle positions.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%238a1c2b'/%3E%3Cpolyline points='4,24 9,22 12,10 15,21 19,19 22,6 25,20 28,22' fill='none' stroke='%23fff' stroke-width='2.4' stroke-linejoin='round' stroke-linecap='round'/%3E%3Cline x1='4' y1='26.5' x2='28' y2='26.5' stroke='%238cc5ad' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E">
+<meta name="theme-color" content="#f4f4f2" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#121314" media="(prefers-color-scheme: dark)">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -13,6 +16,7 @@
 </head>
 <body>
 <div id="map"></div>
+<div id="loading" class="loading" role="status">Loading streetcar data…</div>
 
 <aside id="panel" class="panel">
   <button id="panel-toggle" class="panel-toggle" aria-expanded="true" aria-controls="panel-body">
@@ -78,6 +82,15 @@
 
     <div id="route-card" class="route-card" hidden></div>
 
+    <div class="field">
+      <span class="label">Theme</span>
+      <div class="seg" role="group" aria-label="Theme">
+        <button data-theme-pick="auto">Auto</button>
+        <button data-theme-pick="light">Light</button>
+        <button data-theme-pick="dark">Dark</button>
+      </div>
+    </div>
+
     <details class="method">
       <summary>How this works</summary>
       <p>The TTC publishes where every streetcar is, roughly every 30 seconds, but keeps no history. A Raspberry Pi logs that feed every 20 seconds. Each night the day's pings are snapped to the track and turned into the time each car spent on every 25&nbsp;m slice.</p>
@@ -86,6 +99,7 @@
       <p>Faint lines have few passes so far. The map gets sharper every night as data builds up.</p>
     </details>
     <p id="meta" class="meta"></p>
+    <p class="meta"><button class="linkish" id="copy-link">Copy link to this view</button></p>
   </div>
 </aside>
 
