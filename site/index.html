@@ -73,6 +73,7 @@
       <div class="label">Where the time is lost <span class="label-note">(this view)</span></div>
       <div id="breakdown"></div>
       <p class="breakdown-note">Many stops are at signals, so time there is a mix of boarding and red lights. <button class="linkish" data-explain>More</button></p>
+      <div id="tsp" class="tsp"></div>
     </div>
 
     <div id="route-card" class="route-card" hidden></div>
@@ -119,6 +120,13 @@
     <li><b>Elsewhere:</b> between stops and signals: traffic, turning cars, slow zones and long queues backing up from a signal.</li>
   </ul>
   <p>"Hide stop-only spots" leaves out the spots that are only a stop, to focus on signals and traffic. The tooltip also says whether a signal has transit priority.</p>
+  <h3 id="explain-tsp">Transit signal priority</h3>
+  <p>The panel compares the time a typical streetcar loses approaching signals <b>with</b> and <b>without</b> transit signal priority: the median across signal approaches (the ~100&nbsp;m before each signal, each direction separately, with at least 20 passes). It follows the route, direction and time-of-day filters. Read it with care:</p>
+  <ul>
+    <li><b>Not a fair experiment.</b> Priority was installed on purpose, likely where streetcars had the most trouble. Similar delay could mean priority is pulling bad spots back to average, or that it does little. This data can't tell those apart.</li>
+    <li><b>"Priority" isn't one thing.</b> The City's open data only says <i>whether</i> a signal has transit priority, not what kind: extending a green, cutting a red short, changing the phase order, a queue jump, or only helping cars running late. Very different strategies are lumped together here, and there's no public data to separate them.</li>
+    <li><b>Early days.</b> With little data, a few bad days at a handful of signals can swing either number.</li>
+  </ul>
   <h3>Clean-run speed view</h3>
   <p>The delay view compares each spot with its own clean run, so slowness that every car shares is invisible there. The <b>clean-run speed</b> view shows that instead: how fast a clean run moves through each part of the track (the fastest 10% of daytime passes), leaving out time stopped at stops. Slow spots away from stops point to curves, switches and special trackwork, or slow orders on worn track. Near stops cars are braking and pulling away, so those parts are faded.</p>
   <h3>What this doesn't show</h3>

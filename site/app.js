@@ -93,7 +93,13 @@
   // "What's a clean run?" links anywhere on the page, including ones rendered later.
   const explain = document.getElementById("explain");
   document.addEventListener("click", (e) => {
-    if (e.target.closest("[data-explain]")) explain.showModal();
+    const link = e.target.closest("[data-explain]");
+    if (link) {
+      explain.showModal();
+      // data-explain="tsp" jumps to that section of the explainer.
+      const section = link.dataset.explain && document.getElementById(`explain-${link.dataset.explain}`);
+      explain.scrollTop = section ? section.offsetTop - 16 : 0;
+    }
     else if (e.target.closest("[data-close]") || e.target === explain) explain.close();
   });
 
@@ -261,6 +267,7 @@
     const stats = state.stats[state.window];
     const ridge = [], verticals = [], base = [], stops = [];
     const lostByKind = [0, 0, 0, 0];
+    const approaches = new Map();
     const sigShown = new Set();
     for (const p of visiblePieces()) {
       const st = stats.pieces[p.id];
@@ -273,6 +280,15 @@
       for (let b = 0; b < p.bins.length; b++) {
         if (d[b] == null || !binVisible(p, b)) continue;
         if (slot.d[b] != null) lostByKind[p.tags[b]] += slot.d[b] * net.bin_m / 100;
+        // Signal approaches (one per piece and signal) for the priority comparison.
+        if (slot.d[b] != null && p.sig[b] >= 0 && p.tags[b] >= 2) {
+          const k = `${p.index}:${p.sig[b]}`;
+          const a = approaches.get(k) || {lost: 0, slices: 0, passes: Infinity, tsp: net.signals[p.sig[b]].tsp};
+          a.lost += slot.d[b] * net.bin_m / 100;
+          a.slices += 1;
+          a.passes = Math.min(a.passes, slot.n[b]);
+          approaches.set(k, a);
+        }
         const h = Math.min(d[b], MAX_SHOWN) * state.height;
         verticals.push({from: [...pos(p, b), 0], to: [...pos(p, b), h]});
         if (b + 1 < p.bins.length && d[b + 1] != null && binVisible(p, b + 1)) {
@@ -312,6 +328,32 @@
     });
     renderRouteCard();
     renderBreakdown(lostByKind);
+    renderTsp(approaches);
+  }
+
+  // Median time lost per signal approach, with vs without transit priority. A rate, not a
+  // share: two-thirds of signals on the network have priority, so shares would mislead.
+  const MIN_APPROACH_PASSES = 20;
+  function renderTsp(approaches) {
+    const groups = {true: [], false: []};
+    for (const a of approaches.values()) {
+      if (a.slices >= 3 && a.passes >= MIN_APPROACH_PASSES) groups[a.tsp].push(a.lost);
+    }
+    const median = (v) => {
+      v.sort((x, y) => x - y);
+      const m = v.length >> 1;
+      return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2;
+    };
+    const el = document.getElementById("tsp");
+    if (groups.true.length < 5 || groups.false.length < 5) {
+      el.innerHTML = `Not enough signal approaches in this view to compare transit priority. ` +
+        `<button class="linkish" data-explain="tsp">Why?</button>`;
+      return;
+    }
+    el.innerHTML = `<div><b>At signals, a typical streetcar loses</b> ${Math.round(median(groups.true))} s ` +
+      `with transit priority · ${Math.round(median(groups.false))} s without</div>` +
+      `<div class="tsp-sub">Median per signal approach · ${groups.true.length} / ${groups.false.length} approaches · ` +
+      `<button class="linkish" data-explain="tsp">read with care</button></div>`;
   }
 
   function renderBreakdown(lost) {
