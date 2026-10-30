@@ -10,7 +10,11 @@
     bus: "Mostly buses", none: "No vehicles seen", nodata: "Not logged",
   };
 
-  const state = {window: "recent", slot: "all", route: "", dir: "both", show: "all", signals: true, height: 12, stats: {}};
+  const state = {window: "recent", slot: "all", route: "", dir: "both", show: "all", signals: true, height: 12,
+    view: "delay", stats: {}};
+  // Clean-run speed view: km/h, slow (dark red) to fast (green).
+  const SPEED_STOPS = [[0, [92, 10, 30]], [10, [198, 47, 47]], [20, [240, 139, 58]], [30, [243, 211, 107]],
+    [40, [140, 197, 173]], [55, [60, 140, 120]]];
   // Slice labels from build_site: 0 elsewhere, 1 stop, 2 signal, 3 stop + signal.
   const KINDS = [
     {name: "Elsewhere", color: "#9fb8ad"}, {name: "Stop only", color: "#f3c95b"},
@@ -61,6 +65,20 @@
   segGroup("window", "window");
   segGroup("dir", "dir");
   segGroup("show", "show");
+  segGroup("view", "view");
+
+  function updateViewChrome() {
+    const speed = state.view === "speed";
+    document.getElementById("speed-note").hidden = !speed;
+    document.getElementById("slot-field").classList.toggle("disabled", speed);
+    slotSel.disabled = speed;
+    document.getElementById("breakdown-box").hidden = speed;
+    document.getElementById("legend-title").textContent = speed
+      ? "Clean-run speed, km/h (stops not counted)" : "Delay vs. clean run, seconds per 100 m";
+    document.getElementById("legend-bar").classList.toggle("speed", speed);
+    document.getElementById("legend-ticks").innerHTML = (speed ? ["0", "10", "20", "30", "40", "55+"]
+      : ["0", "5", "15", "35", "70+"]).map((t) => `<span>${t}</span>`).join("");
+  }
   slotSel.addEventListener("change", () => { state.slot = slotSel.value; render(); });
   routeSel.addEventListener("change", () => { state.route = routeSel.value; render(); flyToRoute(); });
   document.getElementById("height").addEventListener("input", (e) => { state.height = +e.target.value; render(); });
@@ -107,12 +125,12 @@
   const overlay = new MapboxOverlay({interleaved: false, layers: [], pickingRadius: 10});
   map.addControl(overlay);
 
-  function colorFor(v, alpha) {
-    if (v >= COLOR_STOPS[COLOR_STOPS.length - 1][0]) return [...COLOR_STOPS[COLOR_STOPS.length - 1][1], alpha];
-    for (let i = 1; i < COLOR_STOPS.length; i++) {
-      const [v1, c1] = COLOR_STOPS[i];
+  function colorFor(v, alpha, stops = COLOR_STOPS) {
+    if (v >= stops[stops.length - 1][0]) return [...stops[stops.length - 1][1], alpha];
+    for (let i = 1; i < stops.length; i++) {
+      const [v1, c1] = stops[i];
       if (v <= v1) {
-        const [v0, c0] = COLOR_STOPS[i - 1];
+        const [v0, c0] = stops[i - 1];
         const t = (v - v0) / (v1 - v0);
         return [0, 1, 2].map((k) => Math.round(c0[k] + t * (c1[k] - c0[k]))).concat(alpha);
       }
@@ -158,7 +176,54 @@
   }
   const smoothed = (d) => d.map((_, i) => smoothAt(d, i));
 
+  // Clean-run speed at slice b, km/h: average the free-running times over ~125 m (so the
+  // speed is distance over total time), the same smoothing the delay ridge uses.
+  function speedAt(free, b) {
+    const t = smoothAt(free, b);
+    return t == null || t <= 0 ? null : net.bin_m / t * 3.6;
+  }
+
+  function renderSpeed() {
+    const stats = state.stats[state.window];
+    const segs = [], base = [], stops = [], sigShown = new Set();
+    for (const p of visiblePieces()) {
+      const st = stats.pieces[p.id];
+      for (const path of runsOf(p)) base.push({path});
+      p.sig.forEach((i, b) => { if (i >= 0 && onRoute(p, b)) sigShown.add(i); });
+      for (const s of p.stops) if (onRoute(p, Math.floor(s.along / net.bin_m))) stops.push({pos: s.lonlat, name: s.name});
+      if (!st || !st.free) continue;
+      for (let b = 0; b + 1 < p.bins.length; b++) {
+        if (!onRoute(p, b) || st.free[b] == null) continue;
+        const kmh = speedAt(st.free, b);
+        if (kmh == null) continue;
+        // Near stops cars are braking and pulling away: fade so real slow zones stand out.
+        const nearStop = p.tags[b] === 1 || p.tags[b] === 3;
+        segs.push({path: [p.bins[b], p.bins[b + 1]], piece: p, bin: b, kmh,
+          color: colorFor(kmh, nearStop ? 90 : confidence(st.n[b]), SPEED_STOPS)});
+      }
+    }
+    overlay.setProps({layers: [
+      new PathLayer({id: "base", data: base, getPath: (x) => x.path, getColor: [180, 180, 180, 160], widthUnits: "pixels", getWidth: 2}),
+      new PathLayer({id: "speed", data: segs, getPath: (x) => x.path, getColor: (x) => x.color, widthUnits: "pixels",
+        getWidth: 6, capRounded: true, pickable: true, autoHighlight: true, highlightColor: [0, 0, 0, 255],
+        onHover: showSpeedTip, onClick: showSpeedTip, updateTriggers: {getColor: [state.window]}}),
+      new ScatterplotLayer({id: "stops", data: stops, getPosition: (x) => x.pos,
+          getRadius: 9, radiusUnits: "meters", radiusMinPixels: 1, radiusMaxPixels: 3,
+        getFillColor: [35, 35, 35, 220]}),
+      new ScatterplotLayer({id: "signals", visible: state.signals, data: [...sigShown].map((i) => net.signals[i]),
+        getPosition: (s) => s.lonlat, stroked: true,
+        // Scale with zoom so markers don't swamp the track when zoomed out.
+        getRadius: 14, radiusUnits: "meters", radiusMinPixels: 1.5, radiusMaxPixels: 5,
+        lineWidthUnits: "meters", getLineWidth: 4, lineWidthMinPixels: 0.5, lineWidthMaxPixels: 1.5, getLineColor: [138, 28, 43, 255],
+        getFillColor: (s) => (s.tsp ? [138, 28, 43, 255] : [255, 255, 255, 255]),
+        pickable: true, onHover: showSignalTip, onClick: showSignalTip}),
+    ]});
+    renderRouteCard();
+  }
+
   function render() {
+    updateViewChrome();
+    if (state.view === "speed") return renderSpeed();
     const stats = state.stats[state.window];
     const ridge = [], verticals = [], base = [], stops = [];
     const lostByKind = [0, 0, 0, 0];
@@ -191,11 +256,14 @@
         new PathLayer({id: "base", data: base, getPath: (x) => x.path, getColor: BASE_COLOR, widthUnits: "pixels", getWidth: 2.5}),
         new LineLayer({id: "verticals", data: verticals, getSourcePosition: (x) => x.from, getTargetPosition: (x) => x.to,
           getColor: [110, 110, 110, 70], getWidth: 1}),
-        new ScatterplotLayer({id: "stops", data: stops, getPosition: (x) => x.pos, getRadius: 2.6, radiusUnits: "pixels",
+        new ScatterplotLayer({id: "stops", data: stops, getPosition: (x) => x.pos,
+          getRadius: 9, radiusUnits: "meters", radiusMinPixels: 1, radiusMaxPixels: 3,
           getFillColor: [35, 35, 35, 220]}),
         new ScatterplotLayer({id: "signals", visible: state.signals, data: [...sigShown].map((i) => net.signals[i]),
-          getPosition: (s) => s.lonlat, getRadius: 4.5, radiusUnits: "pixels", stroked: true,
-          lineWidthUnits: "pixels", getLineWidth: 1.5, getLineColor: [138, 28, 43, 255],
+          getPosition: (s) => s.lonlat, stroked: true,
+          getRadius: 14, radiusUnits: "meters", radiusMinPixels: 1.5, radiusMaxPixels: 5,
+          lineWidthUnits: "meters", getLineWidth: 4, lineWidthMinPixels: 0.5, lineWidthMaxPixels: 1.5,
+          getLineColor: [138, 28, 43, 255],
           getFillColor: (s) => (s.tsp ? [138, 28, 43, 255] : [255, 255, 255, 255]),
           pickable: true, onHover: showSignalTip, onClick: showSignalTip}),
         new LineLayer({id: "ridge", data: ridge, getSourcePosition: (x) => x.from, getTargetPosition: (x) => x.to,
@@ -257,6 +325,22 @@
     tip.style.top = "0px";
     tip.style.left = `${Math.min(info.x + 14, innerWidth - tip.offsetWidth - 8)}px`;
     tip.style.top = `${Math.min(info.y + 14, innerHeight - tip.offsetHeight - 8)}px`;
+  }
+
+  function showSpeedTip(info) {
+    if (!info.object) { tip.hidden = true; return; }
+    const {piece: p, bin: b, kmh} = info.object;
+    const st = state.stats[state.window].pieces[p.id];
+    const stop = nearestStop(p, b);
+    const nearStop = p.tags[b] === 1 || p.tags[b] === 3;
+    tip.innerHTML =
+      `<div class="t-title">${stop ? `Near ${stop}` : "Streetcar track"}</div>` +
+      `<div class="t-dim">${p.routes.join(", ")}</div>` +
+      `<div class="t-big">${Math.round(kmh)} km/h clean-run speed</div>` +
+      `<div class="t-dim">How fast the quickest 10% of daytime passes move here, not counting time stopped at stops.` +
+      `<br>${fmt(st.n[b])} passes</div>` +
+      (nearStop ? `<div class="t-kind">Near a stop: cars are braking or pulling away, so slow is expected.</div>` : "");
+    placeTip(info);
   }
 
   function showSignalTip(info) {

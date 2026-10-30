@@ -54,6 +54,10 @@ input[type=range] { accent-color: var(--accent); }
 .seg button.on { background: var(--ink); color: #fff; }
 .seg button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
+.field-note { font-size: 12px; color: var(--muted); margin: 6px 0 0; }
+.field.disabled { opacity: 0.45; }
+.legend-bar.speed { background: linear-gradient(90deg, #5c0a1e 0%, #c62f2f 18%, #f08b3a 36%, #f3d36b 55%, #8cc5ad 73%, #3c8c78 100%); }
+
 .breakdown { border-top: 1px solid var(--line); padding-top: 12px; margin-bottom: 4px; }
 .label-note { text-transform: none; letter-spacing: 0; font-weight: 400; }
 .bd-row { display: grid; grid-template-columns: 116px 1fr 36px; align-items: center; gap: 8px; font-size: 13px; margin: 4px 0; }

@@ -30,7 +30,15 @@
         <button data-window="all">All time</button>
       </div>
     </div>
-    <label class="field">
+    <div class="field">
+      <span class="label">Map shows</span>
+      <div class="seg" role="group" aria-label="What the map shows">
+        <button data-view="delay" class="on">Delay</button>
+        <button data-view="speed">Clean-run speed</button>
+      </div>
+      <p id="speed-note" class="field-note" hidden>How fast a clean run moves, not counting time stopped at stops. Shows slowness every car shares (curves, switches, slow orders) that the delay view can't. <button class="linkish" data-explain>More</button></p>
+    </div>
+    <label class="field" id="slot-field">
       <span class="label">Time of day</span>
       <select id="slot"></select>
     </label>
@@ -61,7 +69,7 @@
       <input id="height" type="range" min="3" max="40" value="12">
     </label>
 
-    <div class="breakdown">
+    <div class="breakdown" id="breakdown-box">
       <div class="label">Where the time is lost <span class="label-note">(this view)</span></div>
       <div id="breakdown"></div>
       <p class="breakdown-note">Many stops are at signals, so time there is a mix of boarding and red lights. <button class="linkish" data-explain>More</button></p>
@@ -81,9 +89,9 @@
 </aside>
 
 <div class="legend">
-  <div class="legend-title">Delay vs. clean run, seconds per 100&nbsp;m <button class="help" data-explain aria-label="What's a clean run?">?</button></div>
-  <div class="legend-bar"></div>
-  <div class="legend-ticks"><span>0</span><span>5</span><span>15</span><span>35</span><span>70+</span></div>
+  <div class="legend-title"><span id="legend-title">Delay vs. clean run, seconds per 100&nbsp;m</span> <button class="help" data-explain aria-label="What's a clean run?">?</button></div>
+  <div class="legend-bar" id="legend-bar"></div>
+  <div class="legend-ticks" id="legend-ticks"><span>0</span><span>5</span><span>15</span><span>35</span><span>70+</span></div>
   <div class="legend-key">
     <span><i class="k-stop"></i>Stop</span>
     <span><i class="k-sig"></i>Signal</span>
@@ -111,6 +119,8 @@
     <li><b>Elsewhere:</b> between stops and signals: traffic, turning cars, slow zones and long queues backing up from a signal.</li>
   </ul>
   <p>"Hide stop-only spots" leaves out the spots that are only a stop, to focus on signals and traffic. The tooltip also says whether a signal has transit priority.</p>
+  <h3>Clean-run speed view</h3>
+  <p>The delay view compares each spot with its own clean run, so slowness that every car shares is invisible there. The <b>clean-run speed</b> view shows that instead: how fast a clean run moves through each part of the track (the fastest 10% of daytime passes), leaving out time stopped at stops. Slow spots away from stops point to curves, switches and special trackwork, or slow orders on worn track. Near stops cars are braking and pulling away, so those parts are faded.</p>
   <h3>What this doesn't show</h3>
   <ul>
     <li><b>Why.</b> It shows where, when and how much time is lost, not the cause. The stop and signal labels and the TTC's alerts are clues, not explanations.</li>

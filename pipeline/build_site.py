@@ -149,7 +149,9 @@ def window_stats(network, days, clean_from=None):
             mean_of[(pid, b, "all")] = mean
             slot_out["all"]["d"][b] = round(max(0.0, mean - c) * 100 / BIN_M, 2)
             slot_out["all"]["n"][b] = tot_n
-        pieces[pid] = {"clean": clean, "n": n, "days": ndays, "slots": slot_out}
+        # Free-running time: the fast pass alone, without stop allowance (for the speed view).
+        free = [round(fast[b], 2) if b in fast else None for b in range(nb)]
+        pieces[pid] = {"clean": clean, "free": free, "n": n, "days": ndays, "slots": slot_out}
 
     routes = {}
     for pat in network["patterns"]:
