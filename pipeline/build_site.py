@@ -199,10 +199,48 @@ def timeline(days, network):
     return out, alerts_by_day.get("_texts", {})
 
 
+MAX_ROUTES_UNNAMED = 4  # an alert tagged with more routes than this must name the route to count
+SUBWAY = re.compile(r"^\W*Line \d", re.I)
+
+
+def about_route(route, informed, text):
+    """Whether an alert is really about `route`, not just tagged with it.
+
+    The TTC tags subway alerts with every surface route serving the affected stations
+    (Line 2 delays list 20+ routes, 504 included), so an alert counts if it names the
+    route (or its overnight twin), or if it's a short list and not a subway alert.
+    """
+    numbers = {route} | {n for n, day in NIGHT_TWIN.items() if day == route}
+    if any(re.search(rf"\b{n}\b", text) for n in numbers):
+        return True
+    return len(informed) <= MAX_ROUTES_UNNAMED and not SUBWAY.search(text)
+
+
+def _norm(text):
+    return re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()
+
+
 def load_alerts(span):
-    """{day: {route: {alert key}}} plus "_texts": {alert key: {header, url}}."""
+    """{day: {route: {alert group}}} plus "_texts": {alert group: {text, url}}.
+
+    The same event often appears more than once: in both feeds, or re-issued under a
+    new id when its text is updated ("...Shuttle buses are on the way."). Alerts whose
+    text matches, or where one is the start of the other, are merged into one group
+    showing the longest text.
+    """
     out = defaultdict(lambda: defaultdict(set))
-    texts = {}
+    groups = []  # [normalised text, {text, url}]
+
+    def group_of(shown, url):
+        n = _norm(shown)
+        for i, (gn, g) in enumerate(groups):
+            if len(min(n, gn, key=len)) >= 30 and (n.startswith(gn) or gn.startswith(n)):
+                if len(n) > len(gn):
+                    groups[i] = [n, {"text": shown, "url": url or g["url"]}]
+                return f"a{i}"
+        groups.append([n, {"text": shown, "url": url}])
+        return f"a{len(groups) - 1}"
+
     for d in span:
         for p in [DATA_DIR / "alerts" / f"{d}.jsonl", DATA_DIR / "alerts" / f"{d}.jsonl.gz"]:
             if not p.exists():
@@ -221,15 +259,15 @@ def load_alerts(span):
                     desc = _text(a.get("descriptionText"))
                     if ALERT_NOISE.search(header + " " + desc):
                         continue
-                    routes = {NIGHT_TWIN.get(e.get("routeId", ""), e.get("routeId", ""))
-                              for e in a.get("informedEntity", [])}
+                    informed = {e.get("routeId", "") for e in a.get("informedEntity", [])} - {""}
                     key = f"{ev['source']}:{ev['id']}"
                     # bustime headers are cut off at ~30 characters; prefer the description.
-                    shown = desc if ev["source"] == "bustime" and desc else (header.strip(" –-") or desc)
-                    texts[key] = {"text": shown[:300], "url": _text(a.get("url"))}
-                    for r in routes:
-                        out[d][r].add(key)
-    out["_texts"] = texts
+                    shown = (desc if ev["source"] == "bustime" and desc else (re.sub(r"^\W+", "", header) or desc))[:300]
+                    group = group_of(shown, _text(a.get("url")))
+                    for r in {NIGHT_TWIN.get(x, x) for x in informed}:
+                        if about_route(r, informed, header + " " + desc):
+                            out[d][r].add(group)
+    out["_texts"] = {f"a{i}": g for i, (_, g) in enumerate(groups)}
     return out
 
 
