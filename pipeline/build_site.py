@@ -334,6 +334,14 @@ def main():
     if out.exists():
         shutil.rmtree(out)
     shutil.copytree(SITE_SRC, out)
+    # GitHub Pages lets browsers cache files for 10 minutes; tag the script and stylesheet
+    # with a hash of their contents so a changed file is fetched fresh.
+    index = out / "index.html"
+    html = index.read_text(encoding="utf-8")
+    for name, attr in (("app.js", "src"), ("style.css", "href")):
+        tag = hashlib.sha1((out / name).read_bytes()).hexdigest()[:10]
+        html = html.replace(f'{attr}="{name}"', f'{attr}="{name}?v={tag}"')
+    index.write_text(html, encoding="utf-8")
     data = out / "data"
     data.mkdir(exist_ok=True)
 
