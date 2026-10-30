@@ -150,6 +150,17 @@ input[type=range] { accent-color: var(--accent); }
 
 .maplibregl-ctrl-bottom-left, .maplibregl-ctrl-bottom-right { z-index: 1; }
 
+/* Screenshot mode (?shot=1): a clean, framed image for posts. */
+.callout {
+  position: fixed; top: 20px; left: 20px; z-index: 2; max-width: 62%;
+  background: var(--card); border-radius: 10px; box-shadow: var(--shadow); padding: 14px 18px;
+}
+.callout .c-title { font-size: 22px; font-weight: 700; line-height: 1.2; letter-spacing: -0.01em; }
+.callout .c-sub { font-size: 15px; color: var(--muted); margin-top: 6px; }
+.callout .c-site { font-size: 12px; color: var(--muted); margin-top: 8px; }
+body.shot .panel, body.shot .tooltip, body.shot .maplibregl-ctrl-top-right { display: none !important; }
+body.shot .legend { bottom: 20px; right: 20px; }
+
 @media (max-width: 700px) {
   .panel { top: auto; bottom: 0; left: 0; right: 0; width: auto; border-radius: 12px 12px 0 0; max-height: 70vh; }
   .panel-toggle {

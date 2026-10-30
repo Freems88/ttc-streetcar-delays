@@ -19,6 +19,9 @@
   const BREAKDOWN_ORDER = [2, 3, 1, 0];
 
   const get = (f) => fetch(`data/${f}`, {cache: "no-cache"}).then((r) => r.json());
+  // ?shot=1: screenshot mode for bot images (see renderShot).
+  const params = new URLSearchParams(location.search);
+  const SHOT = params.get("shot") === "1";
   const [meta, net, timeline] = await Promise.all([get("meta.json"), get("network.json"), get("timeline.json")]);
   state.stats.recent = await get("stats-recent.json");
 
@@ -100,7 +103,7 @@
     attributionControl: {compact: true, customAttribution: "Data: TTC GTFS-Realtime via City of Toronto Open Data"},
   });
   map.addControl(new maplibregl.NavigationControl({visualizePitch: true}), "top-right");
-  if (innerWidth > 700) map.setPadding({left: 360, top: 0, right: 0, bottom: 0});
+  if (innerWidth > 700 && !SHOT) map.setPadding({left: 360, top: 0, right: 0, bottom: 0});
   const overlay = new MapboxOverlay({interleaved: false, layers: [], pickingRadius: 10});
   map.addControl(overlay);
 
@@ -351,5 +354,79 @@
       pitch: 50, bearing: -17, duration: 1200});
   }
 
-  render();
+  // --- screenshot mode ------------------------------------------------------------
+  // ?shot=1&win=yesterday&piece=p8&b0=100&b1=112[&slot=all&ctx=500&title=..&sub=..]
+  // Frames one segment (slices b0..b1 of a piece) along the Toronto street grid, with
+  // the track either side faded for context, and sets window.__shotReady once drawn.
+  const GRID = -17; // Toronto's street grid, degrees from north
+
+  async function renderShot() {
+    document.body.classList.add("shot");
+    const stats = await get(`stats-${params.get("win") || "yesterday"}.json`);
+    const p = pieces.find((x) => x.id === params.get("piece"));
+    const b0 = +params.get("b0"), b1 = +params.get("b1");
+    const slot = params.get("slot") || "all";
+    const ctx = Math.round((+params.get("ctx") || 500) / net.bin_m);
+    const lo = Math.max(0, b0 - ctx), hi = Math.min(p.bins.length - 1, b1 + ctx);
+    const st = stats.pieces[p.id];
+    const d = st ? smoothed(st.slots[slot].d) : [];
+    // Scale so the segment's tallest peak stands about 320 m high, whatever its value.
+    const peak = Math.max(10, ...d.slice(b0, b1 + 1).filter((v) => v != null));
+    const k = 320 / Math.min(peak, MAX_SHOWN);
+    const inSeg = (b) => b >= b0 && b <= b1;
+    const ridge = [], verticals = [];
+    for (let b = lo; b <= hi; b++) {
+      if (d[b] == null) continue;
+      const h = Math.min(d[b], MAX_SHOWN) * k;
+      verticals.push({from: [...p.bins[b], 0], to: [...p.bins[b], h], seg: inSeg(b)});
+      if (b < hi && d[b + 1] != null) {
+        ridge.push({from: [...p.bins[b], h], to: [...p.bins[b + 1], Math.min(d[b + 1], MAX_SHOWN) * k],
+          color: inSeg(b) ? colorFor((d[b] + d[b + 1]) / 2, 255) : [150, 150, 150, 150], seg: inSeg(b)});
+      }
+    }
+    const nearSlice = (s) => { const b = Math.floor(s.along / net.bin_m); return b >= lo && b <= hi; };
+    const sigIdx = new Set(p.sig.slice(lo, hi + 1).filter((i) => i >= 0));
+    overlay.setProps({layers: [
+      new PathLayer({id: "base", data: pieces, getPath: (x) => x.bins, getColor: [160, 160, 160, 110],
+        widthUnits: "pixels", getWidth: 2}),
+      new PathLayer({id: "seg-base", data: [{path: p.bins.slice(lo, hi + 1)}], getPath: (x) => x.path,
+        getColor: BASE_COLOR, widthUnits: "pixels", getWidth: 3.5}),
+      new LineLayer({id: "verticals", data: verticals, getSourcePosition: (x) => x.from, getTargetPosition: (x) => x.to,
+        getColor: (x) => (x.seg ? [110, 110, 110, 110] : [150, 150, 150, 50]), getWidth: 1}),
+      new ScatterplotLayer({id: "stops", data: p.stops.filter(nearSlice), getPosition: (s) => s.lonlat,
+        getRadius: 4, radiusUnits: "pixels", getFillColor: [35, 35, 35, 230]}),
+      new ScatterplotLayer({id: "signals", data: [...sigIdx].map((i) => net.signals[i]), getPosition: (s) => s.lonlat,
+        getRadius: 6, radiusUnits: "pixels", stroked: true, lineWidthUnits: "pixels", getLineWidth: 2,
+        getLineColor: [138, 28, 43, 255], getFillColor: (s) => (s.tsp ? [138, 28, 43, 255] : [255, 255, 255, 255])}),
+      new LineLayer({id: "ridge", data: ridge, getSourcePosition: (x) => x.from, getTargetPosition: (x) => x.to,
+        getColor: (x) => x.color, getWidth: (x) => (x.seg ? 4 : 2.5)}),
+    ]});
+
+    const callout = document.getElementById("callout");
+    for (const [cls, text] of [["c-title", params.get("title")], ["c-sub", params.get("sub")],
+      ["c-site", "freems88.github.io/ttc-streetcar-delays"]]) {
+      if (!text) continue;
+      const div = document.createElement("div");
+      div.className = cls;
+      div.textContent = text;
+      callout.append(div);
+    }
+    callout.hidden = false;
+
+    // Turn the camera so the segment runs across the image, snapped to the street grid,
+    // preferring the view closest to the site's usual one.
+    const [a, z] = [p.bins[b0], p.bins[b1]];
+    const theta = (Math.atan2((z[0] - a[0]) * Math.cos(43.67 * Math.PI / 180), z[1] - a[1]) * 180 / Math.PI + 360) % 360;
+    const snap = (x) => GRID + Math.round((x - GRID) / 90) * 90;
+    const off = (x) => Math.abs((((x - GRID) % 360) + 540) % 360 - 180);
+    const bearing = [snap(theta - 90), snap(theta + 90)].sort((u, v) => off(u) - off(v))[0];
+    const bounds = new maplibregl.LngLatBounds();
+    for (const c of p.bins.slice(lo, hi + 1)) bounds.extend(c);
+    map.once("idle", () => requestAnimationFrame(() => requestAnimationFrame(() => { window.__shotReady = true; })));
+    setTimeout(() => { window.__shotReady ||= "timeout"; }, 60000);
+    map.fitBounds(bounds, {bearing, pitch: 50, duration: 0,
+      padding: {top: Math.round(innerHeight * 0.38), bottom: 60, left: 60, right: 60}});
+  }
+
+  if (SHOT) renderShot(); else render();
 })();

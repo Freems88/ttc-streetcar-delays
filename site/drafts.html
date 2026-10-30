@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Bot Drafts</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f4f4f2; --card: #fff; --ink: #1d1f22; --muted: #5f6368; --line: #e2e2de; --accent: #8a1c2b;
+    --ok: #2f7a55; --warn: #b4232f;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 Inter, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 640px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .lede { color: var(--muted); margin: 0 0 20px; font-size: 14px; }
+  .lede a { color: var(--accent); }
+  .day { margin: 28px 0 8px; display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+  .day h2 { font-size: 17px; margin: 0; }
+  .day span { color: var(--muted); font-size: 12px; }
+  .note { font-size: 13px; color: var(--muted); background: #fbf1df; border-radius: 6px; padding: 6px 10px; margin: 0 0 10px; }
+  .post { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; margin: 10px 0; }
+  .meta { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+  .kind { text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
+  .count.ok { color: var(--ok); }
+  .count.over { color: var(--warn); font-weight: 700; }
+  .text { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }
+  .post img { display: block; width: 100%; height: auto; border-radius: 8px; border: 1px solid var(--line); margin-top: 12px; }
+  details { margin-top: 8px; font-size: 13px; color: var(--muted); }
+  summary { cursor: pointer; }
+  .empty { color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Bot drafts</h1>
+  <p class="lede">Dry run: what the Bluesky bot would have posted each morning. Nothing here has been posted.
+    Built nightly on the Pi. <a href="./">Back to the map</a></p>
+  <div id="days"><p class="empty">Loading…</p></div>
+</main>
+<script>
+(async function () {
+  const root = document.getElementById("days");
+  const get = (p) => fetch(p, {cache: "no-cache"}).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); });
+  let index;
+  try { index = await get("data/drafts/index.json"); } catch (e) {
+    root.innerHTML = '<p class="empty">No drafts yet. The first appears after the next nightly run.</p>';
+    return;
+  }
+  root.textContent = "";
+  for (const day of index.days) {
+    let draft;
+    try { draft = await get(`data/drafts/${day}/draft.json`); } catch (e) { continue; }
+    const head = document.createElement("div");
+    head.className = "day";
+    const h = document.createElement("h2");
+    h.textContent = new Date(day + "T12:00").toLocaleDateString("en-CA", {weekday: "long", month: "long", day: "numeric"});
+    const info = document.createElement("span");
+    info.textContent = `${draft.positions.toLocaleString("en-CA")} positions · drafted ${new Date(draft.generated * 1000).toLocaleString("en-CA", {dateStyle: "medium", timeStyle: "short"})}`;
+    head.append(h, info);
+    root.append(head);
+    if (!draft.have_normal) {
+      const n = document.createElement("p");
+      n.className = "note";
+      n.textContent = `Only ${draft.normal_days} day${draft.normal_days === 1 ? "" : "s"} of history, so no "usual" comparisons yet (they start at 7).`;
+      root.append(n);
+    }
+    for (const post of draft.posts) {
+      const card = document.createElement("article");
+      card.className = "post";
+      const meta = document.createElement("div");
+      meta.className = "meta";
+      const kind = document.createElement("span");
+      kind.className = "kind";
+      kind.textContent = post.kind;
+      const count = document.createElement("span");
+      count.className = `count ${post.chars > 300 ? "over" : "ok"}`;
+      count.textContent = `${post.chars} / 300`;
+      meta.append(kind, count);
+      const text = document.createElement("p");
+      text.className = "text";
+      text.textContent = post.text;
+      card.append(meta, text);
+      if (post.image) {
+        const img = document.createElement("img");
+        img.src = `data/drafts/${day}/${post.image}`;
+        img.alt = post.alt || "";
+        img.loading = "lazy";
+        card.append(img);
+      }
+      if (post.alt) {
+        const d = document.createElement("details");
+        const s = document.createElement("summary");
+        s.textContent = "Alt text";
+        const p = document.createElement("p");
+        p.textContent = post.alt;
+        d.append(s, p);
+        card.append(d);
+      }
+      root.append(card);
+    }
+  }
+  if (!root.children.length) root.innerHTML = '<p class="empty">No drafts yet.</p>';
+})();
+</script>
+</body>
+</html>

@@ -8,12 +8,14 @@ Usage: nightly.py [--rebuild] [--no-publish] [--include-today]
   --rebuild        reprocess every day (after a method change)
   --include-today  also process the service day still being logged (for a first publish)
 """
+import shutil
 import subprocess
 import sys
 import time
 from pathlib import Path
 
 import build_site
+import drafts
 import network
 import process_day
 import signals
@@ -57,6 +59,13 @@ def main():
         process_day.process(day, net)
     sys.argv = ["build_site.py", str(SITE_OUT)]
     build_site.main()
+    # Bot dry run: draft yesterday's posts (once per day) and ship them with the site.
+    try:
+        drafts.make(SITE_OUT)
+    except Exception as e:
+        print(f"drafts failed: {type(e).__name__}: {e}", file=sys.stderr)
+    if drafts.DRAFTS.exists():
+        shutil.copytree(drafts.DRAFTS, SITE_OUT / "data" / "drafts", dirs_exist_ok=True)
     if "--no-publish" not in args:
         last = max(p.name[:10] for p in (WORK_DIR / "agg").glob("*.json.gz"))
         publish(last)

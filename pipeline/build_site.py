@@ -25,7 +25,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 import signals
-from common import BIN_M, DATA_DIR, NIGHT_TWIN, SLOT_LABELS, SLOTS, WORK_DIR
+from common import BIN_M, DATA_DIR, NIGHT_TWIN, SLOT_LABELS, SLOTS, WORK_DIR, service_day
 from process_day import NB, bucket_mid
 
 WINDOW_DAYS = 90
@@ -86,7 +86,9 @@ def stop_allowance(piece, fast, ihist):
     return out
 
 
-def window_stats(network, days):
+def window_stats(network, days, clean_from=None):
+    """Slice and route stats over `days`. With `clean_from` ({piece: clean list}), measure
+    against that clean run instead of one computed from these days (for single days)."""
     hist = defaultdict(lambda: defaultdict(lambda: [0] * NB))
     sums = defaultdict(lambda: defaultdict(lambda: defaultdict(float)))
     cnts = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
@@ -122,11 +124,16 @@ def window_stats(network, days):
                 fast[b] = percentile(h, CLEAN_PCT)
         extra = stop_allowance(p, fast, ihist[pid])
         for b in range(nb):
-            h = hist[pid].get(b)
-            if b not in fast:
+            if clean_from is not None:
+                c = (clean_from.get(pid) or [None] * nb)[b]
+                if c is None or not any(cnts[pid][s].get(b) for s in SLOTS):
+                    continue
+            elif b in fast:
+                c = fast[b] + extra.get(b, 0.0)
+            else:
                 continue
-            c = fast[b] + extra.get(b, 0.0)
-            clean[b], n[b], ndays[b] = round(c, 2), sum(h), seen_days[pid][b]
+            h = hist[pid].get(b)
+            clean[b], n[b], ndays[b] = round(c, 2), sum(h) if h else 0, seen_days[pid][b]
             clean_of[(pid, b)] = c
             tot_s = tot_n = 0
             for s in SLOTS:
@@ -246,7 +253,7 @@ def load_alerts(span):
             if not p.exists():
                 continue
             opener = gzip.open if p.suffix == ".gz" else open
-            with opener(p, "rt") as f:
+            with opener(p, "rt", encoding="utf-8") as f:
                 for line in f:
                     try:
                         ev = json.loads(line)
@@ -320,6 +327,17 @@ def main():
     for w, s in stats.items():
         (data / f"stats-{w}.json").write_text(json.dumps(s, separators=(",", ":")))
 
+    # The last finished service day, measured against the recent window's clean run
+    # (one day is too little to set its own). Used by the bot drafts and screenshot mode.
+    finished = [k for k in days if k < service_day(time.time())]
+    yesterday = max(finished) if finished else None
+    if yesterday:
+        clean_recent = {pid: p["clean"] for pid, p in stats["recent"]["pieces"].items()}
+        ys = window_stats(network, [days[yesterday]], clean_from=clean_recent)
+        ys["day"] = yesterday
+        ys["stats"] = days[yesterday]["stats"]
+        (data / "stats-yesterday.json").write_text(json.dumps(ys, separators=(",", ":")))
+
     tl, alert_texts = timeline(days, network)
     # Label each slice stop / signal / both / elsewhere, keeping only signals that touch track.
     sigs = signals.load_signals()
@@ -346,6 +364,7 @@ def main():
         "windows": {w: {"days": len(ds), "from": min(d["day"] for d in ds), **totals(ds)} for w, ds in windows.items()},
         "window_days": WINDOW_DAYS, "clean_pct": CLEAN_PCT, "min_samples": MIN_SAMPLES,
         "slots": SLOT_LABELS,
+        "yesterday": yesterday,
     }
     (data / "meta.json").write_text(json.dumps(meta, separators=(",", ":")))
     size = sum(f.stat().st_size for f in data.iterdir())
