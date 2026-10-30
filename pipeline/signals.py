@@ -29,6 +29,14 @@ STOP_ZONE = (-50, 25)
 
 ELSEWHERE, STOP, SIGNAL, BOTH = 0, 1, 2, 3
 
+# Signals above streetcar tunnels: on the map they sit on the track, but cars pass
+# underneath. Reported by @ontariotrafficman.bsky.social, 2026-10-30. City PX numbers.
+TUNNEL_PX = {
+    "0059", "0212", "0213", "2416",  # Bay St at Front, Lake Shore, Harbour, Queens Quay: Union loop and Bay St tunnel
+    "0281", "2639",                  # Bloor St W / Spadina Ave (two signals): Spadina Station loop
+    "1336",                          # St Clair Ave W / Wells Hill Ave: St Clair West Station loop
+}
+
 
 def ensure_signals():
     """Download the signal list if missing or over a month old; keep the old copy if that fails."""
@@ -61,6 +69,8 @@ def load_signals():
             try:
                 lon, lat = json.loads(r["geometry"])["coordinates"][0]
             except (ValueError, KeyError, IndexError, TypeError):
+                continue
+            if r["PX"] in TUNNEL_PX:
                 continue
             main, side = _street(r["MAIN_STREET"]), _street(r["SIDE1_STREET"])
             mid = _street(r["MIDBLOCK_ROUTE"])

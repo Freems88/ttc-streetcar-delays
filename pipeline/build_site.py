@@ -32,6 +32,7 @@ from process_day import NB, bucket_mid
 WINDOW_DAYS = 90
 CLEAN_PCT = 0.10
 MIN_SAMPLES = 3        # slices with fewer passes than this are left out
+MIN_SIGNAL_PASSES = 20  # a signal counts once this many streetcar passes went through it (all time)
 TIMELINE_DAYS = 90
 SITE_SRC = Path(__file__).resolve().parent.parent / "site"
 ALERT_NOISE = re.compile(r"elevator|escalator|washroom|accessible entrance", re.I)
@@ -368,6 +369,20 @@ def main():
     # Label each slice stop / signal / both / elsewhere, keeping only signals that touch track.
     sigs = signals.load_signals()
     tagged = signals.tag_pieces(network["pieces"], sigs)
+    # Only signals streetcars actually pass count. That drops signals on "track" that only
+    # bus detours used (schedule patterns can follow a detour) and lines currently run by
+    # buses; they come back once streetcars do.
+    busiest = defaultdict(int)
+    for p, (_, sig) in zip(network["pieces"], tagged):
+        n = stats["all"]["pieces"].get(p["id"], {}).get("slots", {}).get("all", {}).get("n", [])
+        for b, i in enumerate(sig):
+            if i >= 0:
+                busiest[i] = max(busiest[i], n[b] if b < len(n) else 0)
+    for tags, sig in tagged:
+        for b, i in enumerate(sig):
+            if i >= 0 and busiest[i] < MIN_SIGNAL_PASSES:
+                tags[b] &= ~signals.SIGNAL
+                sig[b] = -1
     used = sorted({i for _, s in tagged for i in s if i >= 0})
     remap = {i: k for k, i in enumerate(used)}
     lite = {
