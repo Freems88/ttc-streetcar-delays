@@ -198,9 +198,11 @@ def service_post(day, day_label, net, timeline):
 
 def capture_image(site, shot, out):
     """Serve the built site locally and screenshot the framed segment."""
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(site))
-    handler.log_message = lambda *a: None
-    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    class Quiet(http.server.SimpleHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(Quiet, directory=str(site)))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     try:
         url = f"http://127.0.0.1:{srv.server_address[1]}/?" + urllib.parse.urlencode(shot)
