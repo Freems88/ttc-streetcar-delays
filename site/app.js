@@ -138,6 +138,37 @@
   }
   const confidence = (n) => (n >= 30 ? 255 : n >= 10 ? 170 : 90);
 
+  // Both directions share a street, so with both shown each is drawn a few pixels to the
+  // right of its direction of travel (Toronto drives on the right). A single direction
+  // sits back on the track. The gap is in pixels, so it's recomputed on zoom.
+  const OFFSET_PX = 4;
+  const KX = Math.cos(43.67 * Math.PI / 180);
+  for (const p of pieces) {
+    p.normals = p.bins.map((_, b) => {
+      const a = p.bins[Math.max(0, b - 1)], z = p.bins[Math.min(p.bins.length - 1, b + 1)];
+      const dx = (z[0] - a[0]) * 111320 * KX, dy = (z[1] - a[1]) * 110540;
+      const len = Math.hypot(dx, dy) || 1;
+      // Right-hand normal of (dx, dy) is (dy, -dx), in degrees per metre.
+      return [dy / len / (111320 * KX), -dx / len / 110540];
+    });
+  }
+  let offsetM = 0;
+  const pos = (p, b) => (offsetM ? [p.bins[b][0] + p.normals[b][0] * offsetM, p.bins[b][1] + p.normals[b][1] * offsetM]
+    : p.bins[b]);
+  // A piece's stops on its route, moved onto the piece's offset line when both directions show.
+  function stopsOf(p) {
+    return p.stops.flatMap((s) => {
+      const b = Math.min(p.bins.length - 1, Math.floor(s.along / net.bin_m));
+      if (!onRoute(p, b)) return [];
+      const o = offsetM ? [p.normals[b][0] * offsetM, p.normals[b][1] * offsetM] : [0, 0];
+      return [{pos: [s.lonlat[0] + o[0], s.lonlat[1] + o[1]], name: s.name}];
+    });
+  }
+  function updateOffset() {
+    offsetM = state.dir === "both" ? OFFSET_PX * 40075016 * KX / (512 * 2 ** map.getZoom()) : 0;
+  }
+  map.on("zoomend", () => { if (!SHOT && state.dir === "both") render(); });
+
   function visiblePieces() {
     return pieces.filter((p) => (!state.route || p.routes.includes(state.route)) &&
       (state.dir === "both" || (state.dir === "en") === p.en));
@@ -158,7 +189,7 @@
     const runs = [];
     let cur = null;
     for (let b = 0; b < p.bins.length; b++) {
-      if (onRoute(p, b)) (cur ||= []).push(p.bins[b]);
+      if (onRoute(p, b)) (cur ||= []).push(pos(p, b));
       else if (cur) { runs.push(cur); cur = null; }
     }
     if (cur) runs.push(cur);
@@ -190,7 +221,7 @@
       const st = stats.pieces[p.id];
       for (const path of runsOf(p)) base.push({path});
       p.sig.forEach((i, b) => { if (i >= 0 && onRoute(p, b)) sigShown.add(i); });
-      for (const s of p.stops) if (onRoute(p, Math.floor(s.along / net.bin_m))) stops.push({pos: s.lonlat, name: s.name});
+      stops.push(...stopsOf(p));
       if (!st || !st.free) continue;
       for (let b = 0; b + 1 < p.bins.length; b++) {
         if (!onRoute(p, b) || st.free[b] == null) continue;
@@ -198,14 +229,14 @@
         if (kmh == null) continue;
         // Near stops cars are braking and pulling away: fade so real slow zones stand out.
         const nearStop = p.tags[b] === 1 || p.tags[b] === 3;
-        segs.push({path: [p.bins[b], p.bins[b + 1]], piece: p, bin: b, kmh,
+        segs.push({path: [pos(p, b), pos(p, b + 1)], piece: p, bin: b, kmh,
           color: colorFor(kmh, nearStop ? 90 : confidence(st.n[b]), SPEED_STOPS)});
       }
     }
     overlay.setProps({layers: [
       new PathLayer({id: "base", data: base, getPath: (x) => x.path, getColor: [180, 180, 180, 160], widthUnits: "pixels", getWidth: 2}),
       new PathLayer({id: "speed", data: segs, getPath: (x) => x.path, getColor: (x) => x.color, widthUnits: "pixels",
-        getWidth: 6, capRounded: true, pickable: true, autoHighlight: true, highlightColor: [0, 0, 0, 255],
+        getWidth: 5, capRounded: true, pickable: true, autoHighlight: true, highlightColor: [0, 0, 0, 255],
         onHover: showSpeedTip, onClick: showSpeedTip, updateTriggers: {getColor: [state.window]}}),
       new ScatterplotLayer({id: "stops", data: stops, getPosition: (x) => x.pos,
           getRadius: 9, radiusUnits: "meters", radiusMinPixels: 1, radiusMaxPixels: 3,
@@ -223,6 +254,7 @@
 
   function render() {
     updateViewChrome();
+    updateOffset();
     if (state.view === "speed") return renderSpeed();
     const stats = state.stats[state.window];
     const ridge = [], verticals = [], base = [], stops = [];
@@ -232,7 +264,7 @@
       const st = stats.pieces[p.id];
       for (const path of runsOf(p)) base.push({path});
       p.sig.forEach((i, b) => { if (i >= 0 && onRoute(p, b)) sigShown.add(i); });
-      for (const s of p.stops) if (onRoute(p, Math.floor(s.along / net.bin_m))) stops.push({pos: s.lonlat, name: s.name});
+      stops.push(...stopsOf(p));
       if (!st) continue;
       const slot = st.slots[state.slot];
       const d = smoothed(slot.d);
@@ -240,12 +272,12 @@
         if (d[b] == null || !binVisible(p, b)) continue;
         if (slot.d[b] != null) lostByKind[p.tags[b]] += slot.d[b] * net.bin_m / 100;
         const h = Math.min(d[b], MAX_SHOWN) * state.height;
-        verticals.push({from: [...p.bins[b], 0], to: [...p.bins[b], h]});
+        verticals.push({from: [...pos(p, b), 0], to: [...pos(p, b), h]});
         if (b + 1 < p.bins.length && d[b + 1] != null && binVisible(p, b + 1)) {
           const h2 = Math.min(d[b + 1], MAX_SHOWN) * state.height;
           const n = Math.min(slot.n[b], slot.n[b + 1]);
           ridge.push({
-            from: [...p.bins[b], h], to: [...p.bins[b + 1], h2],
+            from: [...pos(p, b), h], to: [...pos(p, b + 1), h2],
             color: colorFor((d[b] + d[b + 1]) / 2, confidence(n)), piece: p, bin: b, value: d[b],
           });
         }
