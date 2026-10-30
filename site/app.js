@@ -10,7 +10,13 @@
     bus: "Mostly buses", none: "No vehicles seen", nodata: "Not logged",
   };
 
-  const state = {window: "recent", slot: "all", route: "", dir: "both", height: 12, stats: {}};
+  const state = {window: "recent", slot: "all", route: "", dir: "both", show: "all", height: 12, stats: {}};
+  // Slice labels from build_site: 0 elsewhere, 1 stop, 2 signal, 3 stop + signal.
+  const KINDS = [
+    {name: "Elsewhere", color: "#9fb8ad"}, {name: "Stop only", color: "#f3c95b"},
+    {name: "Signal only", color: "#c62f2f"}, {name: "Stop + signal", color: "#f08b3a"},
+  ];
+  const BREAKDOWN_ORDER = [2, 3, 1, 0];
 
   const get = (f) => fetch(`data/${f}`, {cache: "no-cache"}).then((r) => r.json());
   const [meta, net, timeline] = await Promise.all([get("meta.json"), get("network.json"), get("timeline.json")]);
@@ -51,6 +57,7 @@
   }
   segGroup("window", "window");
   segGroup("dir", "dir");
+  segGroup("show", "show");
   slotSel.addEventListener("change", () => { state.slot = slotSel.value; render(); });
   routeSel.addEventListener("change", () => { state.route = routeSel.value; render(); flyToRoute(); });
   document.getElementById("height").addEventListener("input", (e) => { state.height = +e.target.value; render(); });
@@ -115,16 +122,21 @@
   }
 
   // With a route picked, only the slices its own patterns run over (pieces are shared).
-  function binVisible(p, b) {
+  function onRoute(p, b) {
     if (!state.route) return true;
     return (sliceRoutes.get(`${p.index}:${b}`) || []).some((id) => patterns[id].route === state.route);
+  }
+
+  // Also drops stop-only spots when "Hide stop-only spots" is on.
+  function binVisible(p, b) {
+    return !(state.show === "nostop" && p.tags[b] === 1) && onRoute(p, b);
   }
 
   function runsOf(p) {
     const runs = [];
     let cur = null;
     for (let b = 0; b < p.bins.length; b++) {
-      if (binVisible(p, b)) (cur ||= []).push(p.bins[b]);
+      if (onRoute(p, b)) (cur ||= []).push(p.bins[b]);
       else if (cur) { runs.push(cur); cur = null; }
     }
     if (cur) runs.push(cur);
@@ -145,15 +157,17 @@
   function render() {
     const stats = state.stats[state.window];
     const ridge = [], verticals = [], base = [], stops = [];
+    const lostByKind = [0, 0, 0, 0];
     for (const p of visiblePieces()) {
       const st = stats.pieces[p.id];
       for (const path of runsOf(p)) base.push({path});
-      for (const s of p.stops) if (binVisible(p, Math.floor(s.along / net.bin_m))) stops.push({pos: s.lonlat, name: s.name});
+      for (const s of p.stops) if (onRoute(p, Math.floor(s.along / net.bin_m))) stops.push({pos: s.lonlat, name: s.name});
       if (!st) continue;
       const slot = st.slots[state.slot];
       const d = smoothed(slot.d);
       for (let b = 0; b < p.bins.length; b++) {
         if (d[b] == null || !binVisible(p, b)) continue;
+        if (slot.d[b] != null) lostByKind[p.tags[b]] += slot.d[b] * net.bin_m / 100;
         const h = Math.min(d[b], MAX_SHOWN) * state.height;
         verticals.push({from: [...p.bins[b], 0], to: [...p.bins[b], h]});
         if (b + 1 < p.bins.length && d[b + 1] != null && binVisible(p, b + 1)) {
@@ -180,6 +194,17 @@
       ],
     });
     renderRouteCard();
+    renderBreakdown(lostByKind);
+  }
+
+  function renderBreakdown(lost) {
+    const total = lost.reduce((a, b) => a + b, 0);
+    document.getElementById("breakdown").innerHTML = total ? BREAKDOWN_ORDER.map((k) => {
+      const pct = 100 * lost[k] / total;
+      return `<div class="bd-row"><span>${KINDS[k].name}</span>` +
+        `<span class="bd-bar"><i style="--c:${KINDS[k].color};width:${pct.toFixed(1)}%"></i></span>` +
+        `<span class="bd-pct">${Math.round(pct)}%</span></div>`;
+    }).join("") : `<div class="bd-row"><span>No data in this view</span></div>`;
   }
 
   // --- tooltip --------------------------------------------------------------------
@@ -203,6 +228,17 @@
       `(${mins(typ)} vs ${mins(r.clean_s)} best case · scheduled ${mins(pat.sched_s)})</div>`;
   }
 
+  function kindText(p, b) {
+    const s = p.sig[b] >= 0 ? net.signals[p.sig[b]] : null;
+    const sig = s ? `${s.midblock ? "pedestrian signal" : "signal"} at ${s.name}${s.tsp ? " (has transit priority)" : ""}` : "";
+    switch (p.tags[b]) {
+      case 1: return "At a stop with no signal: mostly boarding time";
+      case 2: return `Approaching a ${sig}: red lights and queues`;
+      case 3: return `At a stop and a ${sig}: boarding and red lights mixed`;
+      default: return "Between stops and signals: traffic, turns or slow zones";
+    }
+  }
+
   function showTooltip(info) {
     if (!info.object) { tip.hidden = true; return; }
     const {piece: p, bin: b} = info.object;
@@ -217,6 +253,7 @@
     tip.innerHTML =
       `<div class="t-title">${stop ? `Near ${stop}` : "Streetcar track"}</div>` +
       `<div class="t-dim">${p.routes.join(", ")} · ${meta.slots[state.slot]}</div>` +
+      `<div class="t-kind">${kindText(p, b)}</div>` +
       `<div class="t-big">${raw.toFixed(1)} s lost per 100 m</div>` +
       `<div>This 25 m costs a typical car <b>${lostHere < 1 ? "under 1 s" : `${Math.round(lostHere)} s`}</b></div>` +
       `<div class="t-dim">${st.clean[b].toFixed(1)} s on a good run vs ${typical.toFixed(1)} s typical<br>` +
@@ -225,6 +262,9 @@
         `${routes.map(routeLine).join("")}</div>` : "") +
       `<div class="t-routes t-dim">Clean run: each stretch's fastest 10% of real daytime passes, stops included. More under “?” on the legend.</div>`;
     tip.hidden = false;
+    // Measure at the left edge, so the old position can't squeeze the width.
+    tip.style.left = "0px";
+    tip.style.top = "0px";
     const x = Math.min(info.x + 14, innerWidth - tip.offsetWidth - 8);
     const y = Math.min(info.y + 14, innerHeight - tip.offsetHeight - 8);
     tip.style.left = `${x}px`;

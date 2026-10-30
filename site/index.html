@@ -46,10 +46,23 @@
         <button data-dir="ws">West / South</button>
       </div>
     </div>
+    <div class="field">
+      <span class="label">Show delay at</span>
+      <div class="seg" role="group" aria-label="Which spots to show">
+        <button data-show="all" class="on">Everywhere</button>
+        <button data-show="nostop">Hide stop-only spots</button>
+      </div>
+    </div>
     <label class="field">
       <span class="label">Peak height</span>
       <input id="height" type="range" min="3" max="40" value="12">
     </label>
+
+    <div class="breakdown">
+      <div class="label">Where the time is lost <span class="label-note">(this view)</span></div>
+      <div id="breakdown"></div>
+      <p class="breakdown-note">Many stops are at signals, so time there is a mix of boarding and red lights. <button class="linkish" data-explain>More</button></p>
+    </div>
 
     <div id="route-card" class="route-card" hidden></div>
 
@@ -79,6 +92,15 @@
   <p><b>How it's measured.</b> Each route is split into stretches, each centred on one stop. For every stretch we take the <b>fastest 10% of real daytime trips</b> (06:00 to midnight). So it's not a theoretical top speed; it's what real cars actually do on a good run, stop included.</p>
   <p><b>Delay</b> is how much longer the typical (average) trip takes than that clean run, shown as seconds lost per 100&nbsp;m. Tall peaks are where the extra time goes: usually traffic signals, busy stops and turns.</p>
   <p><b>Whole routes.</b> Adding up every stretch's clean run gives a best-case trip that no single car actually makes, a bit like stitching together the record time on every segment of a ride. So route cards don't show it as a trip time; they show how much a typical trip loses against it.</p>
+  <h3>Stops, signals and everything else</h3>
+  <p>The clean run includes a <i>quick</i> stop, so extra boarding time at a busy stop counts as delay. That's a different problem from red lights or traffic, so every spot is labelled using the City of Toronto's traffic signal list:</p>
+  <ul>
+    <li><b>Signal:</b> within about 60&nbsp;m before a traffic signal: red lights and queues.</li>
+    <li><b>Stop:</b> around a passenger stop with no signal: mostly boarding.</li>
+    <li><b>Stop and signal:</b> both at once. Most Toronto stops are at intersections, and with positions only every ~30 seconds there's no way to split "doors open" from "waiting for green" there.</li>
+    <li><b>Elsewhere:</b> between stops and signals: traffic, turning cars, slow zones and long queues backing up from a signal.</li>
+  </ul>
+  <p>"Hide stop-only spots" leaves out the spots that are only a stop, to focus on signals and traffic. The tooltip also says whether a signal has transit priority.</p>
   <h3>Worth knowing</h3>
   <ul>
     <li><b>Quiet stops.</b> If more than about 1 in 10 cars skip a stop (nobody waiting, nobody getting off), the clean run doesn't include stopping there, so that stop shows a little more delay than it otherwise would.</li>

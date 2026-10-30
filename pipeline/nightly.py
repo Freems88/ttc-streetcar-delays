@@ -16,6 +16,7 @@ from pathlib import Path
 import build_site
 import network
 import process_day
+import signals
 from common import DATA_DIR, WORK_DIR, service_day
 
 REMOTE = "git@github-ttc-delays:Freems88/ttc-streetcar-delays.git"
@@ -49,6 +50,7 @@ def publish(last_day):
 def main():
     args = set(sys.argv[1:])
     network.build()
+    signals.ensure_signals()
     import json
     net = json.loads((WORK_DIR / "network.json").read_text())
     for day in days_to_process("--rebuild" in args, "--include-today" in args):

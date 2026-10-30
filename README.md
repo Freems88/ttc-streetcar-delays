@@ -13,6 +13,7 @@ The TTC publishes live streetcar positions (GTFS-Realtime) but keeps no history,
   - `network.py`: builds directed track pieces from every streetcar pattern in every saved schedule. Pieces never change once made, so stats stay comparable when routes change; new track adds pieces.
   - `process_day.py`: snaps a day's pings to the track and records the seconds each pass spent on every 25 m slice and every stop interval.
   - `build_site.py`: combines days into last-90-days and all-time stats, route summaries and a per-route bus/diversion timeline with alerts.
+  - `signals.py`: fetches the City of Toronto traffic signal list (monthly) and labels each slice stop / signal / both / elsewhere, since stop delay is mostly boarding and signal delay mostly red lights.
   - `nightly.py`: runs the above and force-pushes the built site to `gh-pages`.
 - `site/`: the static map page (MapLibre + deck.gl, OpenFreeMap tiles).
 

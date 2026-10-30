@@ -24,6 +24,7 @@ from collections import defaultdict
 from datetime import date, timedelta
 from pathlib import Path
 
+import signals
 from common import BIN_M, DATA_DIR, NIGHT_TWIN, SLOT_LABELS, SLOTS, WORK_DIR
 from process_day import NB, bucket_mid
 
@@ -282,10 +283,18 @@ def main():
         (data / f"stats-{w}.json").write_text(json.dumps(s, separators=(",", ":")))
 
     tl, alert_texts = timeline(days, network)
+    # Label each slice stop / signal / both / elsewhere, keeping only signals that touch track.
+    sigs = signals.load_signals()
+    tagged = signals.tag_pieces(network["pieces"], sigs)
+    used = sorted({i for _, s in tagged for i in s if i >= 0})
+    remap = {i: k for k, i in enumerate(used)}
     lite = {
         "bin_m": BIN_M,
-        "pieces": [{k: p[k] for k in ("id", "routes", "bins", "stops", "length")} for p in network["pieces"]],
+        "pieces": [{**{k: p[k] for k in ("id", "routes", "bins", "stops", "length")},
+                    "tags": tags, "sig": [remap.get(i, -1) for i in sig]}
+                   for p, (tags, sig) in zip(network["pieces"], tagged)],
         "patterns": [{k: v for k, v in p.items()} for p in network["patterns"]],
+        "signals": [{k: sigs[i][k] for k in ("name", "tsp", "midblock")} for i in used],
     }
     (data / "network.json").write_text(json.dumps(lite, separators=(",", ":")))
     (data / "timeline.json").write_text(json.dumps({"routes": tl, "alerts": alert_texts}, separators=(",", ":")))
