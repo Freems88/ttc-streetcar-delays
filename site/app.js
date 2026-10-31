@@ -513,21 +513,27 @@
   // approach, lying flat on the map and turned to that direction of travel, placed just
   // before the intersection on the right-hand side of the approaching traffic.
   const TURN_ZOOM = 15;
-  const TURN_ARROWS = { // drawn pointing "up" = the direction of travel
-    l: "M16 27 V17 Q16 12 11 12 H9.5|M12.5 8.5 L9 12 L12.5 15.5",
-    r: "M16 27 V17 Q16 12 21 12 H22.5|M19.5 8.5 L23 12 L19.5 15.5",
-    u: "M19 27 V15 Q19 9 14 9 Q10 9 10 14 V18|M6.5 15 L10 18.5 L13.5 15",
-    lr: "M16 27 V13|M8.5 13 H23.5|M11 10 L8 13 L11 16|M21 10 L24 13 L21 16",
-    t: "M16 27 V7|M12.5 10.5 L16 7 L19.5 10.5",
+  // Ontario-style regulatory sign: white square, black border, black arrow for the banned
+  // move, red circle and slash. Drawn pointing "up" = the direction of travel.
+  // Each arrow: [shaft path, arrowhead triangle(s)].
+  const TURN_ARROWS = {
+    l: ["M18.5 25 V17.5 Q18.5 12.5 13.5 12.5 H11", "11.5,8 6.5,12.5 11.5,17"],
+    r: ["M13.5 25 V17.5 Q13.5 12.5 18.5 12.5 H21", "20.5,8 25.5,12.5 20.5,17"],
+    u: ["M20 25 V14 Q20 8.5 15 8.5 Q11 8.5 11 13 V17", "7,16 11,21.5 15,16"],
+    lr: ["M16 25 V13.5 M10 13.5 H22", "10.5,9.5 6,13.5 10.5,17.5|21.5,9.5 26,13.5 21.5,17.5"],
+    t: ["M16 25 V11", "11.5,12 16,6 20.5,12"],
   };
   const turnIcon = (kind) => ({
-    id: `turn-${kind}`, width: 64, height: 64,
+    id: `turn-${kind}`, width: 96, height: 96,
     url: "data:image/svg+xml;charset=utf-8," + encodeURIComponent(
-      "<svg xmlns='http://www.w3.org/2000/svg' width='64' height='64' viewBox='0 0 32 32'>" +
-      "<circle cx='16' cy='16' r='14' fill='white' stroke='#c62f2f' stroke-width='2.6'/>" +
-      TURN_ARROWS[kind].split("|").map((d) => `<path d='${d}' fill='none' stroke='#222' stroke-width='2.4' ` +
-        "stroke-linecap='round' stroke-linejoin='round'/>").join("") +
-      "<line x1='6.5' y1='6.5' x2='25.5' y2='25.5' stroke='#c62f2f' stroke-width='2.6'/></svg>"),
+      "<svg xmlns='http://www.w3.org/2000/svg' width='96' height='96' viewBox='0 0 32 32'>" +
+      "<rect x='1.5' y='1.5' width='29' height='29' rx='2.5' fill='white' stroke='#111' stroke-width='1.6'/>" +
+      `<path d='${TURN_ARROWS[kind][0]}' fill='none' stroke='#111' stroke-width='3.2' stroke-linejoin='round'/>` +
+      TURN_ARROWS[kind][1].split("|").map((pts) => `<polygon points='${pts}' fill='#111'/>`).join("") +
+      "<circle cx='16' cy='16' r='11.5' fill='none' stroke='#d0282e' stroke-width='2.6'/>" +
+      // Ontario's "no right" is the mirror image of "no left", slash included.
+      (kind === "r" ? "<line x1='24.1' y1='7.9' x2='7.9' y2='24.1' stroke='#d0282e' stroke-width='2.6'/>"
+        : "<line x1='7.9' y1='7.9' x2='24.1' y2='24.1' stroke='#d0282e' stroke-width='2.6'/>") + "</svg>"),
   });
   const TURN_ICONS = Object.fromEntries(Object.keys(TURN_ARROWS).map((k) => [k, turnIcon(k)]));
   const APPROACH = {Northbound: 0, Eastbound: 90, Southbound: 180, Westbound: 270}; // on the street grid
@@ -539,7 +545,7 @@
     if (t.includes("right")) return "r";
     return "t";
   };
-  const UPSTREAM_M = 26, RIGHT_M = 9, STACK_M = 9;
+  const UPSTREAM_M = 26, RIGHT_M = 10, STACK_M = 11;
   function turnSigns(signals) {
     const out = [];
     for (const s of signals) {
@@ -566,7 +572,8 @@
     return new IconLayer({id: "turn-bans", visible: show,
       data: show ? turnSigns([...sigShown].map((i) => net.signals[i]).filter((s) => s.turns)) : [],
       getPosition: (x) => x.pos, getIcon: (x) => TURN_ICONS[x.kind], getAngle: (x) => x.angle,
-      billboard: false, getSize: 17, sizeUnits: "pixels",
+      // Sized in metres so signs grow as you zoom in, within readable limits.
+      billboard: false, getSize: 9, sizeUnits: "meters", sizeMinPixels: 16, sizeMaxPixels: 64,
       pickable: true, onHover: showSignalTip, onClick: showSignalTip});
   }
 
