@@ -59,8 +59,12 @@
         <button data-time="eve">Evening</button>
         <button data-time="night">Overnight</button>
       </div>
-      <input id="hour" type="range" min="0" max="22" step="1" value="0" aria-label="Any two-hour window: start hour">
-      <div class="hour-ticks" aria-hidden="true"><span style="left:0%">12am</span><span style="left:27.3%">6am</span><span style="left:54.5%">noon</span><span style="left:81.8%">6pm</span><span style="left:100%">10pm</span></div>
+      <div class="range" id="hour-range">
+        <div class="range-track"><div class="range-fill" title="Drag to move the hours"></div></div>
+        <button class="range-thumb" data-thumb="a" role="slider" aria-label="From hour" aria-valuemin="0" aria-valuemax="23"></button>
+        <button class="range-thumb" data-thumb="b" role="slider" aria-label="To hour" aria-valuemin="1" aria-valuemax="24"></button>
+      </div>
+      <div class="hour-ticks" aria-hidden="true"><span style="left:0%">12am</span><span style="left:25%">6am</span><span style="left:50%">noon</span><span style="left:75%">6pm</span><span style="left:100%">12am</span></div>
     </div>
     <label class="field">
       <span class="label">Route</span>

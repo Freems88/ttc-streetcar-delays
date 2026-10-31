@@ -25,7 +25,7 @@
     bus: "Mostly buses", none: "No vehicles seen", nodata: "Not logged",
   };
 
-  const state = {window: "recent", days: "all", time: "all", hour: 7, route: "", dir: "both", show: "all",
+  const state = {window: "recent", days: "all", time: "all", range: [7, 10], route: "", dir: "both", show: "all",
     signals: true, height: 12, view: "delay", stats: {}};
   // Slice labels from build_site: 0 elsewhere, 1 stop, 2 signal, 3 stop + signal.
   const KINDS = [
@@ -66,16 +66,16 @@
     if (!state.stats[w]) state.stats[w] = await get(`stats-${w}.json`);
   }
   // --- time of day ----------------------------------------------------------------
-  // Days (all / weekdays / weekends) x hours: a preset chip or any 2-hour window on the
-  // slider. "All day, all days" uses the window's stats as-is; anything else is built
-  // from per-hour data (hours-<window>.json), fetched the first time it's needed.
+  // Days (all / weekdays / weekends) x an hour range [from, to): a preset chip or any range
+  // on the two-handle slider (narrow it to one hour for a single hour). "All day, all
+  // days" uses the window's stats as-is; anything else is built from per-hour data
+  // (hours-<window>.json), fetched the first time it's needed.
   const PRESETS = {all: [0, 24, "All day"], am: [6, 10, "AM peak"], mid: [10, 15, "Midday"], pm: [15, 19, "PM peak"],
     eve: [19, 24, "Evening"], night: [0, 6, "Overnight"]};
   const DAYS_LABELS = {all: "All days", wd: "Weekdays", we: "Weekends"};
   state.hourData = {};
-  const hourSlider = document.getElementById("hour");
   const usesHours = () => !(state.time === "all" && state.days === "all");
-  const hourRange = () => (state.time === "custom" ? [state.hour, state.hour + 2] : PRESETS[state.time].slice(0, 2));
+  const hourRange = () => (state.time === "custom" ? state.range : PRESETS[state.time].slice(0, 2));
   const clock = (h) => (h % 24 === 0 ? "midnight" : h === 12 ? "noon" : h < 12 ? `${h}am` : `${h - 12}pm`);
   function timeLabel() {
     const [a, b] = hourRange();
@@ -85,10 +85,28 @@
   async function loadHours(w) {
     if (usesHours() && !state.hourData[w]) state.hourData[w] = await get(`hours-${w}.json`);
   }
+  // A range that matches a preset is that preset, so its chip lights up.
+  function setRange(a, b) {
+    const match = Object.entries(PRESETS).find(([, [pa, pb]]) => pa === a && pb === b);
+    state.time = match ? match[0] : "custom";
+    state.range = [a, b];
+  }
+
+  const rangeEl = document.getElementById("hour-range");
+  const fill = rangeEl.querySelector(".range-fill");
+  const thumbs = {a: rangeEl.querySelector('[data-thumb="a"]'), b: rangeEl.querySelector('[data-thumb="b"]')};
   function syncTimeControls() {
     document.querySelectorAll("[data-days]").forEach((b) => b.classList.toggle("on", b.dataset.days === state.days));
     document.querySelectorAll("[data-time]").forEach((b) => b.classList.toggle("on", b.dataset.time === state.time));
-    hourSlider.value = state.time === "custom" ? state.hour : Math.min(22, hourRange()[0]);
+    const [a, b] = hourRange();
+    thumbs.a.style.left = `${a / 24 * 100}%`;
+    thumbs.b.style.left = `${b / 24 * 100}%`;
+    fill.style.left = `${a / 24 * 100}%`;
+    fill.style.width = `${(b - a) / 24 * 100}%`;
+    thumbs.a.setAttribute("aria-valuenow", a);
+    thumbs.a.setAttribute("aria-valuetext", clock(a));
+    thumbs.b.setAttribute("aria-valuenow", b);
+    thumbs.b.setAttribute("aria-valuetext", clock(b));
     document.getElementById("time-label").textContent = `(${timeLabel()})`;
   }
   async function timeChanged() {
@@ -97,8 +115,49 @@
     render();
   }
   document.querySelectorAll("[data-days]").forEach((b) => b.addEventListener("click", () => { state.days = b.dataset.days; timeChanged(); }));
-  document.querySelectorAll("[data-time]").forEach((b) => b.addEventListener("click", () => { state.time = b.dataset.time; timeChanged(); }));
-  hourSlider.addEventListener("input", () => { state.time = "custom"; state.hour = +hourSlider.value; timeChanged(); });
+  document.querySelectorAll("[data-time]").forEach((b) => b.addEventListener("click", () => {
+    setRange(...PRESETS[b.dataset.time].slice(0, 2));
+    timeChanged();
+  }));
+
+  // Dragging: a handle moves one end; the fill moves both, keeping the width.
+  const hourAt = (clientX) => {
+    const r = rangeEl.getBoundingClientRect();
+    return Math.round(Math.max(0, Math.min(1, (clientX - r.left) / r.width)) * 24);
+  };
+  function moveTo(what, h, grab) {
+    let [a, b] = hourRange();
+    if (what === "a") a = Math.min(h, b - 1);
+    else if (what === "b") b = Math.max(h, a + 1);
+    else {
+      const w = b - a;
+      a = Math.max(0, Math.min(24 - w, h - grab));
+      b = a + w;
+    }
+    if ([a, b].join() !== hourRange().join()) {
+      setRange(a, b);
+      timeChanged();
+    }
+  }
+  for (const [what, el] of [["a", thumbs.a], ["b", thumbs.b], ["fill", fill]]) {
+    el.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      el.setPointerCapture(e.pointerId);
+      const grab = hourAt(e.clientX) - hourRange()[0];
+      const onMove = (ev) => moveTo(what, hourAt(ev.clientX), grab);
+      const onUp = () => { el.removeEventListener("pointermove", onMove); el.removeEventListener("pointerup", onUp); };
+      el.addEventListener("pointermove", onMove);
+      el.addEventListener("pointerup", onUp);
+    });
+  }
+  for (const [what, el] of Object.entries(thumbs)) {
+    el.addEventListener("keydown", (e) => {
+      const step = {ArrowLeft: -1, ArrowDown: -1, ArrowRight: 1, ArrowUp: 1}[e.key];
+      if (!step) return;
+      e.preventDefault();
+      moveTo(what, hourRange()[what === "a" ? 0 : 1] + step);
+    });
+  }
 
   // The delay and pass arrays for a piece under the current time selection.
   let viewKey = "", viewCache = new Map();
@@ -173,7 +232,7 @@
     document.getElementById("speed-note").hidden = !speed;
     // Clean-run speed is all daytime pooled, so time of day doesn't apply.
     document.getElementById("time-field").classList.toggle("disabled", speed);
-    document.querySelectorAll("#time-field button, #hour").forEach((el) => { el.disabled = speed; });
+    document.querySelectorAll("#time-field button").forEach((el) => { el.disabled = speed; });
     document.getElementById("breakdown-box").hidden = speed;
     document.getElementById("legend-title").textContent = speed
       ? "Clean-run speed, km/h (stops not counted)" : "Delay vs. clean run, seconds per 100 m";
@@ -342,7 +401,8 @@
     }
     const t = h.get("t") || "";
     if (t in PRESETS) state.time = t;
-    else if (/^h\d{1,2}$/.test(t) && +t.slice(1) <= 22) { state.time = "custom"; state.hour = +t.slice(1); }
+    const m = t.match(/^h(\d{1,2})-(\d{1,2})$/);
+    if (m && +m[1] < +m[2] && +m[2] <= 24) setRange(+m[1], +m[2]);
     if (h.get("sig") === "0") state.signals = false;
     const c = (h.get("c") || "").split(",").map(Number);
     return c.length === 5 && c.every(Number.isFinite)
@@ -352,7 +412,7 @@
     if (SHOT || !map) return;
     const h = new URLSearchParams();
     for (const [k, key] of Object.entries(HASH_KEYS)) if (state[key] !== DEFAULTS[key]) h.set(k, state[key]);
-    if (state.time !== "all") h.set("t", state.time === "custom" ? `h${state.hour}` : state.time);
+    if (state.time !== "all") h.set("t", state.time === "custom" ? `h${state.range[0]}-${state.range[1]}` : state.time);
     if (!state.signals) h.set("sig", "0");
     const c = map.getCenter();
     h.set("c", [c.lng.toFixed(4), c.lat.toFixed(4), map.getZoom().toFixed(2), map.getBearing().toFixed(0),
@@ -449,22 +509,65 @@
   // Re-render on zoom: the direction offset is in pixels and turn-ban icons appear close in.
   map.on("zoomend", () => { if (!SHOT) render(); });
 
-  // Turn bans (City by-law) as a small icon beside the signal, only when zoomed in close.
+  // Turn bans (City by-law), only when zoomed in close: one "no turn" sign per banned
+  // approach, lying flat on the map and turned to that direction of travel, placed just
+  // before the intersection on the right-hand side of the approaching traffic.
   const TURN_ZOOM = 15;
-  const TURN_ICON = {
+  const TURN_ARROWS = { // drawn pointing "up" = the direction of travel
+    l: "M16 27 V17 Q16 12 11 12 H9.5|M12.5 8.5 L9 12 L12.5 15.5",
+    r: "M16 27 V17 Q16 12 21 12 H22.5|M19.5 8.5 L23 12 L19.5 15.5",
+    u: "M19 27 V15 Q19 9 14 9 Q10 9 10 14 V18|M6.5 15 L10 18.5 L13.5 15",
+    lr: "M16 27 V13|M8.5 13 H23.5|M11 10 L8 13 L11 16|M21 10 L24 13 L21 16",
+    t: "M16 27 V7|M12.5 10.5 L16 7 L19.5 10.5",
+  };
+  const turnIcon = (kind) => ({
+    id: `turn-${kind}`, width: 64, height: 64,
     url: "data:image/svg+xml;charset=utf-8," + encodeURIComponent(
       "<svg xmlns='http://www.w3.org/2000/svg' width='64' height='64' viewBox='0 0 32 32'>" +
-      "<circle cx='16' cy='16' r='13' fill='white' stroke='#c62f2f' stroke-width='3'/>" +
-      "<path d='M12 24 V16 Q12 12 16 12 H21' fill='none' stroke='#222' stroke-width='2.6' stroke-linecap='round'/>" +
-      "<path d='M18 8.5 L22 12 L18 15.5' fill='none' stroke='#222' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/>" +
-      "<line x1='7.5' y1='7.5' x2='24.5' y2='24.5' stroke='#c62f2f' stroke-width='3'/></svg>"),
-    width: 64, height: 64,
+      "<circle cx='16' cy='16' r='14' fill='white' stroke='#c62f2f' stroke-width='2.6'/>" +
+      TURN_ARROWS[kind].split("|").map((d) => `<path d='${d}' fill='none' stroke='#222' stroke-width='2.4' ` +
+        "stroke-linecap='round' stroke-linejoin='round'/>").join("") +
+      "<line x1='6.5' y1='6.5' x2='25.5' y2='25.5' stroke='#c62f2f' stroke-width='2.6'/></svg>"),
+  });
+  const TURN_ICONS = Object.fromEntries(Object.keys(TURN_ARROWS).map((k) => [k, turnIcon(k)]));
+  const APPROACH = {Northbound: 0, Eastbound: 90, Southbound: 180, Westbound: 270}; // on the street grid
+  const turnKind = (t) => {
+    t = t.toLowerCase();
+    if (t.includes("u-turn")) return "u";
+    if (t.includes("left") && t.includes("right")) return "lr";
+    if (t.includes("left")) return "l";
+    if (t.includes("right")) return "r";
+    return "t";
   };
+  const UPSTREAM_M = 26, RIGHT_M = 9, STACK_M = 9;
+  function turnSigns(signals) {
+    const out = [];
+    for (const s of signals) {
+      const per = {}; // approach -> kinds
+      for (const t of s.turns || []) {
+        const dirs = /all directions/i.test(t.dir) ? Object.keys(APPROACH) : Object.keys(APPROACH).filter((d) => t.dir.includes(d));
+        for (const d of dirs) (per[d] ||= new Set()).add(turnKind(t.turn));
+      }
+      for (const [d, kinds] of Object.entries(per)) {
+        const heading = (APPROACH[d] + GRID + 360) % 360; // compass bearing of travel
+        const fx = Math.sin(heading * Math.PI / 180), fy = Math.cos(heading * Math.PI / 180);
+        [...kinds].forEach((kind, j) => {
+          const back = UPSTREAM_M + j * STACK_M; // a second ban on the same approach sits further back
+          const ex = -fx * back + fy * RIGHT_M, ny = -fy * back - fx * RIGHT_M; // right-hand normal is (fy, -fx)
+          out.push({signal: s, kind, angle: -heading,
+            pos: [s.lonlat[0] + ex / (111320 * KX), s.lonlat[1] + ny / 110540]});
+        });
+      }
+    }
+    return out;
+  }
   function turnLayer(sigShown) {
-    return new IconLayer({id: "turn-bans", visible: state.signals && map.getZoom() >= TURN_ZOOM,
-      data: [...sigShown].map((i) => net.signals[i]).filter((s) => s.turns),
-      getPosition: (s) => s.lonlat, getIcon: () => TURN_ICON, getSize: 18, sizeUnits: "pixels",
-      getPixelOffset: [13, -13], pickable: true, onHover: showSignalTip, onClick: showSignalTip});
+    const show = state.signals && map.getZoom() >= TURN_ZOOM;
+    return new IconLayer({id: "turn-bans", visible: show,
+      data: show ? turnSigns([...sigShown].map((i) => net.signals[i]).filter((s) => s.turns)) : [],
+      getPosition: (x) => x.pos, getIcon: (x) => TURN_ICONS[x.kind], getAngle: (x) => x.angle,
+      billboard: false, getSize: 17, sizeUnits: "pixels",
+      pickable: true, onHover: showSignalTip, onClick: showSignalTip});
   }
 
   function visiblePieces() {
@@ -752,7 +855,7 @@
 
   function showSignalTip(info) {
     if (!info.object) { tip.hidden = true; return; }
-    const s = info.object;
+    const s = info.object.signal || info.object; // a turn sign carries its signal
     const esc = (t) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;");
     const bans = (s.turns || []).map((t) => `<div>${esc(t.dir)} ${esc(t.turn.toLowerCase())}` +
       `${/turn/i.test(t.turn) ? "" : " turn"}: <span class="t-dim">${esc(t.when)}</span></div>`).join("");
