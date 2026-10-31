@@ -531,8 +531,8 @@
       `<path d='${TURN_ARROWS[kind][0]}' fill='none' stroke='#111' stroke-width='3.2' stroke-linejoin='round'/>` +
       TURN_ARROWS[kind][1].split("|").map((pts) => `<polygon points='${pts}' fill='#111'/>`).join("") +
       "<circle cx='16' cy='16' r='11.5' fill='none' stroke='#d0282e' stroke-width='2.6'/>" +
-      // Ontario's "no right" is the mirror image of "no left", slash included.
-      (kind === "r" ? "<line x1='24.1' y1='7.9' x2='7.9' y2='24.1' stroke='#d0282e' stroke-width='2.6'/>"
+      // As on Ontario signs: "no left" slashes bottom-left to top-right, "no right" mirrors it.
+      (kind === "l" ? "<line x1='7.9' y1='24.1' x2='24.1' y2='7.9' stroke='#d0282e' stroke-width='2.6'/>"
         : "<line x1='7.9' y1='7.9' x2='24.1' y2='24.1' stroke='#d0282e' stroke-width='2.6'/>") + "</svg>"),
   });
   const TURN_ICONS = Object.fromEntries(Object.keys(TURN_ARROWS).map((k) => [k, turnIcon(k)]));
@@ -546,15 +546,80 @@
     return "t";
   };
   const UPSTREAM_M = 26, RIGHT_M = 10, STACK_M = 11;
-  function turnSigns(signals) {
+
+  // Direction of travel (on the street grid) of a piece of track at a slice.
+  function approachAt(p, b) {
+    const a = p.bins[Math.max(0, b - 1)], z = p.bins[Math.min(p.bins.length - 1, b + 1)];
+    const heading = (Math.atan2((z[0] - a[0]) * KX, z[1] - a[1]) * 180 / Math.PI + 360) % 360;
+    const rel = ((heading - GRID) % 360 + 360) % 360;
+    return ["Northbound", "Eastbound", "Southbound", "Westbound"][Math.round(rel / 90) % 4];
+  }
+
+  // When a ban applies, read from the by-law wording ("7:00 a.m. to 9:00 a.m. and 4:00 p.m.
+  // to 6:00 p.m., Mon. to Fri."): days (weekdays / Sat / Sun) and hour ranges. Anything
+  // unreadable counts as always, so a ban is never hidden by a parsing miss.
+  const CLOCK = String.raw`(\d{1,2})(?::(\d{2}))?\s*(a\.?\s?m\.?|p\.?\s?m\.?|noon|midnight)`;
+  function hourOf(h, m, ap) {
+    ap = ap.toLowerCase();
+    if (ap.startsWith("noon")) return 12;
+    if (ap.startsWith("midnight")) return 24;
+    let x = +h % 12 + (+m || 0) / 60;
+    if (ap.startsWith("p")) x += 12;
+    return x;
+  }
+  function parseWhen(text) {
+    // Exemptions live in parentheses ("Taxicabs excepted from 10:00 p.m. to 5:00 a.m."),
+    // and their times aren't when the ban applies.
+    const main = text.replace(/\([^)]*\)/g, " ");
+    const lower = main.toLowerCase().replace(/monday/g, "mon").replace(/friday/g, "fri")
+      .replace(/saturday/g, "sat").replace(/sunday/g, "sun");
+    // Temporary bans whose dates are all in past years have ended.
+    const years = [...main.matchAll(/\b(19|20)\d{2}\b/g)].map((m) => +m[0]);
+    if (years.length && Math.max(...years) < new Date().getFullYear()) return {expired: true};
+    const hours = [];
+    if (!/^\s*anytime/.test(lower)) {
+      // "and" between two times is a by-law typo for "to" in at least one entry.
+      for (const m of main.matchAll(new RegExp(`${CLOCK}\\s*(?:to|and)\\s*${CLOCK}`, "gi"))) {
+        const s = hourOf(m[1], m[2], m[3]), e = hourOf(m[4], m[5], m[6]);
+        if (e > s) hours.push([s, e]);
+        else hours.push([s, 24], [0, e]); // runs past midnight
+      }
+    }
+    // Days: the union of those mentioned ("Mon. to Fri. and ... Sat." covers both).
+    const days = new Set();
+    if (/mon\.? to (fri|sat|sun)/.test(lower)) days.add("wd"); // day names were shortened above
+    if (/mon\.? to (sat|sun)/.test(lower) || /\bsat(urday)?s?\.?\b/.test(lower.replace(/mon\.? to sat\w*\.?/, ""))) days.add("sat");
+    if (/mon\.? to sun/.test(lower) || (/\bsun(day)?s?\.?\b/.test(lower) && !/except[^,]*sun/.test(lower))) days.add("sun");
+    if (/except[^,]*sun/.test(lower) && !days.size) { days.add("wd"); days.add("sat"); }
+    return {hours: hours.length ? hours : null, days: days.size && days.size < 3 ? days : null};
+  }
+  const banExpired = (t) => !!(t.parsed ||= parseWhen(t.when)).expired;
+  function banActive(t) {
+    if (banExpired(t)) return false;
+    if (!usesHours()) return true; // all day, all days: every ban applies at some point
+    const w = t.parsed;
+    if (w.days && state.days === "wd" && !w.days.has("wd")) return false;
+    if (w.days && state.days === "we" && !w.days.has("sat") && !w.days.has("sun")) return false;
+    if (!w.hours) return true;
+    const [a, b] = hourRange();
+    return w.hours.some(([s, e]) => s < b && e > a);
+  }
+
+  // Signs for the approaches the displayed streetcars travel (sigDirs: signal -> directions),
+  // for bans in effect at the selected time.
+  function turnSigns(sigDirs) {
     const out = [];
-    for (const s of signals) {
+    for (const [i, dirsShown] of sigDirs) {
+      const s = net.signals[i];
       const per = {}; // approach -> kinds
       for (const t of s.turns || []) {
+        if (!banActive(t)) continue;
         const dirs = /all directions/i.test(t.dir) ? Object.keys(APPROACH) : Object.keys(APPROACH).filter((d) => t.dir.includes(d));
-        for (const d of dirs) (per[d] ||= new Set()).add(turnKind(t.turn));
+        for (const d of dirs) if (dirsShown.has(d)) (per[d] ||= new Set()).add(turnKind(t.turn));
       }
       for (const [d, kinds] of Object.entries(per)) {
+        // No left and no right on one approach: a single "no turns" sign.
+        if (kinds.has("l") && kinds.has("r")) { kinds.delete("l"); kinds.delete("r"); kinds.add("lr"); }
         const heading = (APPROACH[d] + GRID + 360) % 360; // compass bearing of travel
         const fx = Math.sin(heading * Math.PI / 180), fy = Math.cos(heading * Math.PI / 180);
         [...kinds].forEach((kind, j) => {
@@ -567,10 +632,10 @@
     }
     return out;
   }
-  function turnLayer(sigShown) {
+  function turnLayer(sigDirs) {
     const show = state.signals && map.getZoom() >= TURN_ZOOM;
     return new IconLayer({id: "turn-bans", visible: show,
-      data: show ? turnSigns([...sigShown].map((i) => net.signals[i]).filter((s) => s.turns)) : [],
+      data: show ? turnSigns(sigDirs) : [],
       getPosition: (x) => x.pos, getIcon: (x) => TURN_ICONS[x.kind], getAngle: (x) => x.angle,
       // Sized in metres so signs grow as you zoom in, within readable limits.
       billboard: false, getSize: 9, sizeUnits: "meters", sizeMinPixels: 16, sizeMaxPixels: 64,
@@ -624,11 +689,15 @@
 
   function renderSpeed() {
     const stats = state.stats[state.window];
-    const segs = [], base = [], stops = [], sigShown = new Set();
+    const segs = [], base = [], stops = [], sigShown = new Set(), sigDirs = new Map();
     for (const p of visiblePieces()) {
       const st = stats.pieces[p.id];
       for (const path of runsOf(p)) base.push({path});
-      p.sig.forEach((i, b) => { if (i >= 0 && onRoute(p, b)) sigShown.add(i); });
+      p.sig.forEach((i, b) => {
+        if (i < 0 || !onRoute(p, b)) return;
+        sigShown.add(i);
+        if (net.signals[i].turns) (sigDirs.get(i) || sigDirs.set(i, new Set()).get(i)).add(approachAt(p, b));
+      });
       stops.push(...stopsOf(p));
       if (!st || !st.free) continue;
       for (let b = 0; b + 1 < p.bins.length; b++) {
@@ -658,7 +727,7 @@
         lineWidthUnits: "meters", getLineWidth: 4, lineWidthMinPixels: 0.5, lineWidthMaxPixels: 1.5, getLineColor: [138, 28, 43, 255],
         getFillColor: (s) => (s.tsp ? [138, 28, 43, 255] : [255, 255, 255, 255]),
         pickable: true, onHover: showSignalTip, onClick: showSignalTip}),
-      turnLayer(sigShown),
+      turnLayer(sigDirs),
     ]});
     renderRouteCard();
   }
@@ -673,11 +742,15 @@
     const ridge = [], verticals = [], base = [], stops = [];
     const lostByKind = [0, 0, 0, 0];
     const approaches = new Map();
-    const sigShown = new Set();
+    const sigShown = new Set(), sigDirs = new Map(); // signal -> directions streetcars approach it from
     for (const p of visiblePieces()) {
       const st = stats.pieces[p.id];
       for (const path of runsOf(p)) base.push({path});
-      p.sig.forEach((i, b) => { if (i >= 0 && onRoute(p, b)) sigShown.add(i); });
+      p.sig.forEach((i, b) => {
+        if (i < 0 || !onRoute(p, b)) return;
+        sigShown.add(i);
+        if (net.signals[i].turns) (sigDirs.get(i) || sigDirs.set(i, new Set()).get(i)).add(approachAt(p, b));
+      });
       stops.push(...stopsOf(p));
       if (!st) continue;
       const slot = viewOf(p, st);
@@ -725,7 +798,7 @@
           getLineColor: [138, 28, 43, 255],
           getFillColor: (s) => (s.tsp ? [138, 28, 43, 255] : [255, 255, 255, 255]),
           pickable: true, onHover: showSignalTip, onClick: showSignalTip}),
-        turnLayer(sigShown),
+        turnLayer(sigDirs),
         new LineLayer({id: "ridge", data: ridge, getSourcePosition: (x) => x.from, getTargetPosition: (x) => x.to,
           getColor: (x) => x.color, getWidth: 3.5, pickable: true, autoHighlight: true, highlightColor: [0, 0, 0, 255],
           onHover: showTooltip, onClick: showTooltip,
@@ -864,7 +937,7 @@
     if (!info.object) { tip.hidden = true; return; }
     const s = info.object.signal || info.object; // a turn sign carries its signal
     const esc = (t) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;");
-    const bans = (s.turns || []).map((t) => `<div>${esc(t.dir)} ${esc(t.turn.toLowerCase())}` +
+    const bans = (s.turns || []).filter((t) => !banExpired(t)).map((t) => `<div>${esc(t.dir)} ${esc(t.turn.toLowerCase())}` +
       `${/turn/i.test(t.turn) ? "" : " turn"}: <span class="t-dim">${esc(t.when)}</span></div>`).join("");
     tip.innerHTML = `<div class="t-title">${s.midblock ? "Pedestrian signal" : "Traffic signal"}: ${esc(s.name)}</div>` +
       `<div class="t-dim">${s.tsp ? "Has transit signal priority (can extend a green or shorten a red for a streetcar)."
