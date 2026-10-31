@@ -6,13 +6,13 @@
   // instead of dark maroon, which would disappear; the clean-run speed scale mirrors it.
   const PALETTES = {
     light: {
-      delay: [[0, [140, 197, 173]], [5, [243, 211, 107]], [15, [240, 139, 58]], [35, [198, 47, 47]], [70, [92, 10, 30]]],
+      delay: [[0, [140, 197, 173]], [8, [243, 211, 107]], [15, [240, 139, 58]], [30, [198, 47, 47]], [60, [92, 10, 30]]],
       speed: [[0, [92, 10, 30]], [10, [198, 47, 47]], [20, [240, 139, 58]], [30, [243, 211, 107]],
         [40, [140, 197, 173]], [55, [60, 140, 120]]],
       base: [140, 197, 173, 200], faint: [180, 180, 180, 160], stop: [35, 35, 35, 220], vertical: [110, 110, 110, 70],
     },
     dark: {
-      delay: [[0, [110, 190, 160]], [5, [243, 211, 107]], [15, [240, 139, 58]], [35, [230, 70, 70]], [70, [255, 90, 160]]],
+      delay: [[0, [110, 190, 160]], [8, [243, 211, 107]], [15, [240, 139, 58]], [30, [230, 70, 70]], [60, [255, 90, 160]]],
       speed: [[0, [255, 90, 160]], [10, [230, 70, 70]], [20, [240, 139, 58]], [30, [243, 211, 107]],
         [40, [110, 190, 160]], [55, [60, 156, 134]]],
       base: [95, 160, 135, 220], faint: [110, 110, 110, 170], stop: [215, 215, 215, 220], vertical: [190, 190, 190, 55],
@@ -20,6 +20,9 @@
   };
   let pal = PALETTES.light;
   const MAX_SHOWN = 100; // s per 100 m; taller peaks are capped (the tooltip shows the real value)
+  // Peaks rise with the square root of the delay, so the few worst spots don't swamp the
+  // map and small delays still lift off the street; colour and the tooltip give the value.
+  const peakHeight = (v) => Math.sqrt(Math.min(v, MAX_SHOWN)) * state.height * 4;
   const STATUS_TEXT = {
     normal: "Streetcars", diverted: "Streetcars, often off the usual track", mixed: "Some buses",
     bus: "Mostly buses", none: "No vehicles seen", nodata: "Not logged",
@@ -238,7 +241,7 @@
       ? "Clean-run speed, km/h (stops not counted)" : "Delay vs. clean run, seconds per 100 m";
     document.getElementById("legend-bar").classList.toggle("speed", speed);
     document.getElementById("legend-ticks").innerHTML = (speed ? ["0", "10", "20", "30", "40", "55+"]
-      : ["0", "5", "15", "35", "70+"]).map((t) => `<span>${t}</span>`).join("");
+      : ["0", "8", "15", "30", "60+"]).map((t) => `<span>${t}</span>`).join("");
   }
   routeSel.addEventListener("change", () => { state.route = routeSel.value; render(); flyToRoute(); });
   document.getElementById("height").addEventListener("input", (e) => { state.height = +e.target.value; render(); });
@@ -767,10 +770,10 @@
           a.passes = Math.min(a.passes, slot.n[b]);
           approaches.set(k, a);
         }
-        const h = Math.min(d[b], MAX_SHOWN) * state.height;
+        const h = peakHeight(d[b]);
         verticals.push({from: [...pos(p, b), 0], to: [...pos(p, b), h]});
         if (b + 1 < p.bins.length && d[b + 1] != null && binVisible(p, b + 1)) {
-          const h2 = Math.min(d[b + 1], MAX_SHOWN) * state.height;
+          const h2 = peakHeight(d[b + 1]);
           const n = Math.min(slot.n[b], slot.n[b + 1]);
           ridge.push({
             from: [...pos(p, b), h], to: [...pos(p, b + 1), h2],

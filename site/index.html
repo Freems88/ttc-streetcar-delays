@@ -128,7 +128,7 @@
 <div class="legend">
   <div class="legend-title"><span id="legend-title">Delay vs. clean run, seconds per 100&nbsp;m</span> <button class="help" data-explain aria-label="What's a clean run?">?</button></div>
   <div class="legend-bar" id="legend-bar"></div>
-  <div class="legend-ticks" id="legend-ticks"><span>0</span><span>5</span><span>15</span><span>35</span><span>70+</span></div>
+  <div class="legend-ticks" id="legend-ticks"><span>0</span><span>8</span><span>15</span><span>30</span><span>60+</span></div>
   <div class="legend-key">
     <span><i class="k-stop"></i>Stop</span>
     <span><i class="k-sig"></i>Signal</span>
@@ -160,6 +160,7 @@
   <p><b>How it's measured.</b> Each route is split into segments, each centred on one stop and measured in 25&nbsp;m slices. For every segment we take the <b>fastest 10% of real daytime trips</b> (06:00 to midnight). So it's not a theoretical top speed; it's what real cars actually manage there when nothing holds them up, stop included.</p>
   <p><b>Delay</b> is how much longer the typical (average) trip takes than that clean run, shown as seconds lost per 100&nbsp;m. Tall peaks are where the extra time goes: usually traffic signals, busy stops and turns.</p>
   <p><b>Smoothing.</b> Positions arrive only every ~30 seconds, so a waiting car's time lands in whichever 25&nbsp;m slice it happened to be reported in. The ridge and the tooltip both average over about 125&nbsp;m (five slices) so the picture isn't just noise.</p>
+  <p><b>Peak height</b> grows with the square root of the delay, so a handful of very bad spots don't drown out everything else and small delays still show. A spot with four times the delay stands twice as tall; the colour and the tooltip give the actual value.</p>
   <p><b>Whole routes.</b> Adding up every segment's clean run gives a route's <b>clean-run total</b>: a trip no single car actually makes, a bit like adding up the best time on every segment of a ride, a run nobody really did. So route cards don't present it as a trip time; they show how much a typical trip loses against it.</p>
   <h3>Stops, signals and everything else</h3>
   <p>The clean run includes a <i>quick</i> stop, so extra boarding time at a busy stop counts as delay. That's a different problem from red lights or traffic, so every spot is labelled using the City of Toronto's traffic signal list:</p>
