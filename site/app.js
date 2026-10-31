@@ -107,13 +107,64 @@
   document.addEventListener("click", (e) => {
     const link = e.target.closest("[data-explain]");
     if (link) {
+      document.querySelectorAll("dialog[open]").forEach((d) => d.close());
       explain.showModal();
       // data-explain="tsp" jumps to that section of the explainer.
       const section = link.dataset.explain && document.getElementById(`explain-${link.dataset.explain}`);
       explain.scrollTop = section ? section.offsetTop - 16 : 0;
     }
-    else if (e.target.closest("[data-close]") || e.target === explain) explain.close();
+    else if (e.target.closest("[data-close]")) e.target.closest("dialog").close();
+    else if (e.target.tagName === "DIALOG") e.target.close(); // click on the backdrop
   });
+
+  // --- routes compared ------------------------------------------------------------
+  // Hours a day of streetcar service spent beyond clean runs, per route and direction,
+  // as sorted bars. Tapping a row shows that route and direction on the map.
+  const compareDlg = document.getElementById("compare");
+  document.getElementById("compare-open").addEventListener("click", () => {
+    renderCompare();
+    compareDlg.showModal();
+  });
+
+  function renderCompare() {
+    const stats = state.stats[state.window];
+    const rows = net.patterns.map((p) => ({p, r: stats.routes[p.id] || {}}))
+      .filter(({r}) => r.hours_lost_per_day != null)
+      .sort((a, b) => b.r.hours_lost_per_day - a.r.hours_lost_per_day);
+    const max = Math.max(1, ...rows.map(({r}) => r.hours_lost_per_day));
+    const box = document.getElementById("compare-rows");
+    box.textContent = "";
+    for (const {p, r} of rows) {
+      const row = document.createElement("button");
+      row.className = "compare-row";
+      row.setAttribute("role", "listitem");
+      row.title = `${p.route} ${p.name} ${p.direction.toLowerCase()}: ${r.hours_lost_per_day} streetcar hours a day beyond ` +
+        `clean runs (${r.trips_per_day} trips a day, each taking ${r.ratio}× its clean-run total). Tap to show on the map.`;
+      row.innerHTML =
+        `<span class="compare-name">${p.route} ${p.name}<span>${p.direction}</span></span>` +
+        `<span class="compare-bar"><i style="width:${(r.hours_lost_per_day / max * 78).toFixed(1)}%"></i>` +
+        `<b>${Math.round(r.hours_lost_per_day)} h</b></span>` +
+        `<span class="compare-sub">${Math.round(r.trips_per_day)} trips a day · a typical trip takes ` +
+        `${r.ratio.toFixed(2)}× its clean-run total</span>`;
+      row.addEventListener("click", () => {
+        state.route = p.route;
+        state.dir = /^(East|North)/.test(p.direction) ? "en" : "ws";
+        syncControls();
+        compareDlg.close();
+        render();
+        flyToRoute();
+      });
+      box.append(row);
+    }
+    const missing = [...new Set(net.patterns.filter((p) => !(stats.routes[p.id] || {}).hours_lost_per_day)
+      .map((p) => `${p.route} ${p.name}`))];
+    const days = meta.windows[state.window].days;
+    document.getElementById("compare-note").textContent =
+      (rows.length ? "" : "Not enough finished days logged yet. ") +
+      `${state.window === "all" ? "All time" : `Last ${meta.window_days} days`}, finished days only` +
+      (days < 14 ? ", preliminary: partly logged days count in proportion to the hours logged" : "") + "." +
+      (missing.length ? ` No streetcar service measured on ${missing.join(", ")}.` : "");
+  }
 
   // --- meta / preliminary banner --------------------------------------------------
   const w = meta.windows.recent;

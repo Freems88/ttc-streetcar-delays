@@ -12,7 +12,9 @@ with ~30 s between pings a stop's dwell gets smeared over neighbouring slices, s
 the best pass in every slice adds up to a run that never stops. So we also time
 each stop interval (halfway-to-previous-stop to halfway-to-next-stop; cars are
 moving at those points so the interpolated crossing times are good) and keep a
-histogram of those. Plus daily per-route counts for the bus/diversion timeline.
+histogram of those. Plus daily per-route counts for the bus/diversion timeline, and per route pattern
+the number of its slices streetcar runs covered (divided by the pattern's length,
+that's how many full trips' worth of service ran).
 
 The histograms (which set the clean run) only take daytime passes, 06:00 to
 midnight: overnight cars on empty streets skip most stops, so they'd make the
@@ -195,8 +197,12 @@ def process(day, network=None):
     runs = defaultdict(dict)  # (vehicle, trip) -> {vehicle_ts: (t, x, y, bearing)}
     run_route = {}
     route_days = defaultdict(lambda: {"flex_on": 0, "flex_off": 0, "bus": 0})
+    first_ts = last_ts = None  # how much of the day was logged
     with opener(src, "rt", newline="") as f:
         for r in csv.DictReader(f):
+            ts = int(r["fetch_ts"])
+            first_ts = ts if first_ts is None else min(first_ts, ts)
+            last_ts = ts if last_ts is None else max(last_ts, ts)
             route = NIGHT_TWIN.get(r["route_id"], r["route_id"])
             vid = r["vehicle_id"]
             if not (vid.isdigit() and int(vid) in FLEXITY_IDS):
@@ -207,6 +213,14 @@ def process(day, network=None):
             brg = float(r["bearing"]) if r["bearing"] else None
             runs[(vid, r["trip_id"])][vts] = (vts, x, y, brg)
             run_route[(vid, r["trip_id"])] = route
+
+    # Route pattern slices, to count how much of its route each run covered ("trip
+    # equivalents": a short-turned or partly logged trip counts as a fraction).
+    slice_pats = defaultdict(list)  # (piece index, bin) -> [pattern ids]
+    for pat in network.get("patterns", []):
+        for pi, b in pat["slices"]:
+            slice_pats[(pi, b)].append(pat["id"])
+    cover = defaultdict(lambda: defaultdict(int))  # route -> pattern -> slices covered
 
     hist = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))   # piece -> bin -> bucket -> n
     sums = defaultdict(lambda: defaultdict(lambda: defaultdict(float)))  # piece -> slot -> bin -> s
@@ -221,12 +235,17 @@ def process(day, network=None):
         passes, off = split_passes(pings, opts_list)
         route_days[route]["flex_off"] += off
         route_days[route]["flex_on"] += len(pings) - off
+        run_cover = defaultdict(int)  # pattern -> slices this run covered
         for pi, whole in passes:
             pid = m.pieces[pi]["id"]
             for seq in split_layovers(whole):
                 times = slice_times(seq)
                 if not times:
                     continue
+                for b in times:
+                    for pat_id in slice_pats.get((pi, b), ()):
+                        if pat_id.split("-")[0] == route:
+                            run_cover[pat_id] += 1
                 n_passes += 1
                 for b, (v, t_in) in times.items():
                     n_samples += 1
@@ -238,10 +257,17 @@ def process(day, network=None):
                 for k, (v, t_in) in interval_times(seq, m.bounds[pi]).items():
                     if slot_of(t_in, day) != "night":
                         ihist[pid][k][bucket(v)] += 1
+        # A run belongs to the direction it covered most (loops are shared by both).
+        if run_cover:
+            best = max(run_cover, key=run_cover.get)
+            cover[route][best] += run_cover[best]
+    for route, pats in cover.items():
+        route_days[route]["cover"] = dict(pats)
 
     out = {
         "day": day,
-        "stats": {"pings": n_pings, "passes": n_passes, "samples": n_samples},
+        "stats": {"pings": n_pings, "passes": n_passes, "samples": n_samples,
+                  "logged_h": round((last_ts - first_ts) / 3600, 2) if first_ts else 0},
         "routes": route_days,
         "hist": hist,
         "ihist": ihist,

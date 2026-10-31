@@ -172,7 +172,25 @@ def window_stats(network, days, clean_from=None):
             "data_coverage": round(len(with_data) / max(1, len(have)), 3),
             "samples": sum(pieces[k[0]]["n"][k[1]] for k in with_data),
         }
+        r = routes[pat["id"]]
+        r.update(service_per_day(pat, days, len(have)))
+        if r["clean_s"] and "all" in typical and r["trips_per_day"] is not None:
+            # Observed, not costed: hours a day of streetcar service spent beyond clean runs.
+            r["hours_lost_per_day"] = round(r["trips_per_day"] * (typical["all"] - r["clean_s"]) / 3600, 1)
+            r["ratio"] = round(typical["all"] / r["clean_s"], 2)
     return {"pieces": pieces, "routes": routes}
+
+
+def service_per_day(pat, days, n_slices):
+    """Full trips' worth of service a day on a pattern: slices runs covered ÷ pattern length,
+    over finished days, counting partly logged days by the hours actually logged."""
+    today = service_day(time.time())
+    finished = [d for d in days if d["day"] < today]
+    logged_days = sum(min(1.0, d["stats"].get("logged_h", 0) / 24) for d in finished)
+    covered = sum(d["routes"].get(pat["route"], {}).get("cover", {}).get(pat["id"], 0) for d in finished)
+    if logged_days < 0.25 or not n_slices or not any("cover" in r for d in finished for r in d["routes"].values()):
+        return {"trips_per_day": None}
+    return {"trips_per_day": round(covered / n_slices / logged_days, 1)}
 
 
 def timeline(days, network):
