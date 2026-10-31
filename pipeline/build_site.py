@@ -26,6 +26,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 import signals
+import turns
 from common import BIN_M, DATA_DIR, NIGHT_TWIN, SLOT_LABELS, SLOTS, WORK_DIR, service_day
 from process_day import NB, bucket_mid
 
@@ -193,6 +194,59 @@ def service_per_day(pat, days, n_slices):
     return {"trips_per_day": round(covered / n_slices / logged_days, 1)}
 
 
+def match_turns(sigs, used):
+    """{signal index: [turn ban, ...]} by matching the by-law's street pair to the signal's
+    streets. 'No turn on red' entries are left out: they're everywhere and say little
+    about what holds streetcars up."""
+    index = turns.by_intersection(turns.load())
+    out = {}
+    for i in used:
+        names = [turns.norm(s) for s in sigs[i]["streets"]]
+        seen, found = set(), []
+        for a in range(len(names)):
+            for b in range(a + 1, len(names)):
+                for ban in index.get(frozenset((names[a], names[b])), []):
+                    if re.search(r"shows red", ban["when"], re.I):
+                        continue
+                    key = (ban["direction"], ban["turn"], ban["when"])
+                    if key not in seen:
+                        seen.add(key)
+                        found.append({"dir": ban["direction"], "turn": ban["turn"], "when": ban["when"],
+                                      "ttc_exempt": ban["ttc_exempt"]})
+        if found:
+            out[i] = found
+    return out
+
+
+def hour_stats(network, days):
+    """Per piece and hour key (0-23 weekday, 24-47 weekend): [passes per slice, mean seconds
+    per slice]. The page sums whichever hours the time-of-day controls select."""
+    sums = defaultdict(lambda: defaultdict(lambda: defaultdict(float)))
+    cnts = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
+    for d in days:
+        for pid, hours in d.get("hsums", {}).items():
+            for h, bins in hours.items():
+                for b, v in bins.items():
+                    sums[pid][h][b] += v
+                    cnts[pid][h][b] += d["hcnts"][pid][h][b]
+    out = {}
+    for p in network["pieces"]:
+        pid, nb = p["id"], len(p["bins"])
+        if pid not in cnts:
+            continue
+        out[pid] = {}
+        for h, bins in cnts[pid].items():
+            n = [0] * nb
+            mean = [0] * nb
+            for b, c in bins.items():
+                bi = int(b)
+                if bi < nb and c:
+                    n[bi] = c
+                    mean[bi] = round(sums[pid][h][b] / c, 1)
+            out[pid][h] = [n, mean]
+    return {"pieces": out}
+
+
 def timeline(days, network):
     route_ids = sorted({p["route"] for p in network["patterns"]})
     last = max(days) if days else date.today().isoformat()
@@ -348,7 +402,6 @@ def main():
     if not days:
         sys.exit("no processed days")
     last = max(days)
-    cutoff = (date.fromisoformat(last) - timedelta(days=WINDOW_DAYS - 1)).isoformat()
 
     if out.exists():
         shutil.rmtree(out)
@@ -364,13 +417,20 @@ def main():
     data = out / "data"
     data.mkdir(exist_ok=True)
 
-    windows = {"recent": [d for k, d in days.items() if k >= cutoff], "all": list(days.values())}
+    # Windows offered on the page: last 15 / 30 / WINDOW_DAYS days ("recent", the default,
+    # which also feeds history, drafts and screenshots) and all time.
+    def since(n):
+        start = (date.fromisoformat(last) - timedelta(days=n - 1)).isoformat()
+        return [d for k, d in days.items() if k >= start]
+    windows = {"d15": since(15), "d30": since(30), "recent": since(WINDOW_DAYS), "all": list(days.values())}
     stats = {w: window_stats(network, ds) for w, ds in windows.items()}
     hist = update_history(stats["recent"], last, network)
     for pid, r in stats["recent"]["routes"].items():
         r["moved"] = moved(hist, last, pid)
     for w, s in stats.items():
         (data / f"stats-{w}.json").write_text(json.dumps(s, separators=(",", ":")))
+    for w, ds in windows.items():
+        (data / f"hours-{w}.json").write_text(json.dumps(hour_stats(network, ds), separators=(",", ":")))
 
     # The last finished service day, measured against the recent window's clean run
     # (one day is too little to set its own). Used by the bot drafts and screenshot mode.
@@ -403,13 +463,15 @@ def main():
                 sig[b] = -1
     used = sorted({i for _, s in tagged for i in s if i >= 0})
     remap = {i: k for k, i in enumerate(used)}
+    signal_turns = match_turns(sigs, used)
     lite = {
         "bin_m": BIN_M,
         "pieces": [{**{k: p[k] for k in ("id", "routes", "bins", "stops", "length")},
                     "tags": tags, "sig": [remap.get(i, -1) for i in sig]}
                    for p, (tags, sig) in zip(network["pieces"], tagged)],
         "patterns": [{k: v for k, v in p.items()} for p in network["patterns"]],
-        "signals": [{k: sigs[i][k] for k in ("name", "tsp", "midblock", "lonlat")} for i in used],
+        "signals": [{**{k: sigs[i][k] for k in ("name", "tsp", "midblock", "lonlat")},
+                     **({"turns": signal_turns[i]} if signal_turns.get(i) else {})} for i in used],
     }
     (data / "network.json").write_text(json.dumps(lite, separators=(",", ":")))
     (data / "timeline.json").write_text(json.dumps({"routes": tl, "alerts": alert_texts}, separators=(",", ":")))

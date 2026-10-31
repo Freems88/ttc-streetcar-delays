@@ -104,6 +104,13 @@ def service_day(ts):
     return (datetime.fromtimestamp(ts) - timedelta(hours=DAY_CUTOFF_HOURS)).strftime("%Y-%m-%d")
 
 
+def hour_key(ts, day):
+    """Hour-of-day bucket 0..47 for the time-of-day slider: 0-23 on weekdays, 24-47 on
+    weekends, by the service day (so 1 a.m. Saturday night counts as Saturday)."""
+    weekend = datetime.strptime(day, "%Y-%m-%d").weekday() >= 5
+    return datetime.fromtimestamp(ts).hour + (24 if weekend else 0)
+
+
 def slot_of(ts, day):
     """Time-of-day slot for a moment `ts` within service day `day` (YYYY-MM-DD)."""
     t = datetime.fromtimestamp(ts)

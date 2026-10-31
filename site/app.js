@@ -1,6 +1,6 @@
 /* Toronto streetcar delay map: a 3D delay "curtain" over each piece of track. */
 (async function () {
-  const {MapboxOverlay, LineLayer, PathLayer, ScatterplotLayer} = deck;
+  const {MapboxOverlay, LineLayer, PathLayer, ScatterplotLayer, IconLayer} = deck;
 
   // Map colours per theme. On a dark map the top of the delay scale is bright magenta
   // instead of dark maroon, which would disappear; the clean-run speed scale mirrors it.
@@ -25,8 +25,8 @@
     bus: "Mostly buses", none: "No vehicles seen", nodata: "Not logged",
   };
 
-  const state = {window: "recent", slot: "all", route: "", dir: "both", show: "all", signals: true, height: 12,
-    view: "delay", stats: {}};
+  const state = {window: "recent", days: "all", time: "all", hour: 7, route: "", dir: "both", show: "all",
+    signals: true, height: 12, view: "delay", stats: {}};
   // Slice labels from build_site: 0 elsewhere, 1 stop, 2 signal, 3 stop + signal.
   const KINDS = [
     {name: "Elsewhere", color: "#9fb8ad"}, {name: "Stop only", color: "#f3c95b"},
@@ -60,9 +60,95 @@
   for (const p of net.patterns) routeNames[p.route] = p.name;
 
   // --- controls -------------------------------------------------------------------
-  document.getElementById("window-days").textContent = meta.window_days;
-  const slotSel = document.getElementById("slot");
-  for (const [k, v] of Object.entries(meta.slots)) slotSel.add(new Option(v, k));
+  const WINDOW_LABELS = {d15: "Last 15 days", d30: "Last 30 days", recent: `Last ${meta.window_days} days`, all: "All time"};
+  // Each window's stats are a separate file, fetched the first time it's picked.
+  async function loadWindow(w) {
+    if (!state.stats[w]) state.stats[w] = await get(`stats-${w}.json`);
+  }
+  // --- time of day ----------------------------------------------------------------
+  // Days (all / weekdays / weekends) x hours: a preset chip or any 2-hour window on the
+  // slider. "All day, all days" uses the window's stats as-is; anything else is built
+  // from per-hour data (hours-<window>.json), fetched the first time it's needed.
+  const PRESETS = {all: [0, 24, "All day"], am: [6, 10, "AM peak"], mid: [10, 15, "Midday"], pm: [15, 19, "PM peak"],
+    eve: [19, 24, "Evening"], night: [0, 6, "Overnight"]};
+  const DAYS_LABELS = {all: "All days", wd: "Weekdays", we: "Weekends"};
+  state.hourData = {};
+  const hourSlider = document.getElementById("hour");
+  const usesHours = () => !(state.time === "all" && state.days === "all");
+  const hourRange = () => (state.time === "custom" ? [state.hour, state.hour + 2] : PRESETS[state.time].slice(0, 2));
+  const clock = (h) => (h % 24 === 0 ? "midnight" : h === 12 ? "noon" : h < 12 ? `${h}am` : `${h - 12}pm`);
+  function timeLabel() {
+    const [a, b] = hourRange();
+    const hours = state.time === "custom" ? `${clock(a)}–${clock(b)}` : PRESETS[state.time][2];
+    return `${DAYS_LABELS[state.days]} · ${hours}`;
+  }
+  async function loadHours(w) {
+    if (usesHours() && !state.hourData[w]) state.hourData[w] = await get(`hours-${w}.json`);
+  }
+  function syncTimeControls() {
+    document.querySelectorAll("[data-days]").forEach((b) => b.classList.toggle("on", b.dataset.days === state.days));
+    document.querySelectorAll("[data-time]").forEach((b) => b.classList.toggle("on", b.dataset.time === state.time));
+    hourSlider.value = state.time === "custom" ? state.hour : Math.min(22, hourRange()[0]);
+    document.getElementById("time-label").textContent = `(${timeLabel()})`;
+  }
+  async function timeChanged() {
+    syncTimeControls();
+    await loadHours(state.window);
+    render();
+  }
+  document.querySelectorAll("[data-days]").forEach((b) => b.addEventListener("click", () => { state.days = b.dataset.days; timeChanged(); }));
+  document.querySelectorAll("[data-time]").forEach((b) => b.addEventListener("click", () => { state.time = b.dataset.time; timeChanged(); }));
+  hourSlider.addEventListener("input", () => { state.time = "custom"; state.hour = +hourSlider.value; timeChanged(); });
+
+  // The delay and pass arrays for a piece under the current time selection.
+  let viewKey = "", viewCache = new Map();
+  function viewOf(p, st) {
+    if (!usesHours()) return st.slots.all;
+    const key = `${state.window}|${state.days}|${hourRange()}`;
+    if (key !== viewKey) { viewKey = key; viewCache = new Map(); }
+    if (viewCache.has(p.id)) return viewCache.get(p.id);
+    const nb = p.bins.length, d = new Array(nb).fill(null), n = new Array(nb).fill(0);
+    const hp = state.hourData[state.window]?.pieces[p.id];
+    if (hp) {
+      const [a, z] = hourRange();
+      const keys = [];
+      for (let h = a; h < z; h++) {
+        if (state.days !== "we") keys.push(String(h));
+        if (state.days !== "wd") keys.push(String(h + 24));
+      }
+      const rows = keys.map((k) => hp[k]).filter(Boolean);
+      for (let b = 0; b < nb; b++) {
+        if (st.clean[b] == null) continue;
+        let c = 0, s = 0;
+        for (const [cn, mn] of rows) if (cn[b]) { c += cn[b]; s += cn[b] * mn[b]; }
+        if (c) { n[b] = c; d[b] = Math.max(0, s / c - st.clean[b]) * 100 / net.bin_m; }
+      }
+    }
+    const v = {d, n};
+    viewCache.set(p.id, v);
+    return v;
+  }
+
+  // A route direction's typical trip time under the current time selection: its slices'
+  // mean times where this selection has data, the all-day mean elsewhere. Null if under
+  // half the route has data for the selection.
+  function typicalFor(pat, r) {
+    if (!r || !r.typical_s) return null;
+    if (!usesHours()) return r.typical_s.all ?? null;
+    const stats = state.stats[state.window];
+    let total = 0, have = 0, all = 0;
+    for (const [pi, b] of pat.slices) {
+      const p = pieces[pi], st = stats.pieces[p.id];
+      if (!st || st.clean[b] == null) continue;
+      all += 1;
+      const v = viewOf(p, st);
+      const d = v.n[b] ? v.d[b] : st.slots.all.d[b];
+      if (v.n[b]) have += 1;
+      total += st.clean[b] + (d ?? 0) * net.bin_m / 100;
+    }
+    return all && have >= 0.5 * all ? Math.round(total) : null;
+  }
+
   const routeSel = document.getElementById("route");
   for (const r of Object.keys(routeNames).sort()) routeSel.add(new Option(`${r} ${routeNames[r]}`, r));
 
@@ -70,7 +156,10 @@
     document.querySelectorAll(`[data-${attr}]`).forEach((btn) => btn.addEventListener("click", async () => {
       document.querySelectorAll(`[data-${attr}]`).forEach((b) => b.classList.toggle("on", b === btn));
       state[key] = btn.dataset[attr];
-      if (key === "window" && !state.stats.all) state.stats.all = await get("stats-all.json");
+      if (key === "window") {
+        await loadWindow(state.window);
+        await loadHours(state.window);
+      }
       render();
     }));
   }
@@ -82,8 +171,9 @@
   function updateViewChrome() {
     const speed = state.view === "speed";
     document.getElementById("speed-note").hidden = !speed;
-    document.getElementById("slot-field").classList.toggle("disabled", speed);
-    slotSel.disabled = speed;
+    // Clean-run speed is all daytime pooled, so time of day doesn't apply.
+    document.getElementById("time-field").classList.toggle("disabled", speed);
+    document.querySelectorAll("#time-field button, #hour").forEach((el) => { el.disabled = speed; });
     document.getElementById("breakdown-box").hidden = speed;
     document.getElementById("legend-title").textContent = speed
       ? "Clean-run speed, km/h (stops not counted)" : "Delay vs. clean run, seconds per 100 m";
@@ -91,7 +181,6 @@
     document.getElementById("legend-ticks").innerHTML = (speed ? ["0", "10", "20", "30", "40", "55+"]
       : ["0", "5", "15", "35", "70+"]).map((t) => `<span>${t}</span>`).join("");
   }
-  slotSel.addEventListener("change", () => { state.slot = slotSel.value; render(); });
   routeSel.addEventListener("change", () => { state.route = routeSel.value; render(); flyToRoute(); });
   document.getElementById("height").addEventListener("input", (e) => { state.height = +e.target.value; render(); });
   document.getElementById("show-signals").addEventListener("change", (e) => { state.signals = e.target.checked; render(); });
@@ -185,7 +274,7 @@
     const days = meta.windows[state.window].days;
     document.getElementById("compare-note").textContent =
       (rows.length ? "" : "Not enough finished days logged yet. ") +
-      `${state.window === "all" ? "All time" : `Last ${meta.window_days} days`}, finished days only` +
+      `${WINDOW_LABELS[state.window]}, finished days only` +
       (days < 14 ? ", preliminary: partly logged days count in proportion to the hours logged" : "") + "." +
       (missing.length ? ` No streetcar service measured on ${missing.join(", ")}.` : "");
   }
@@ -241,15 +330,19 @@
 
   // --- shareable links --------------------------------------------------------------
   // Filters and camera live in the URL hash, e.g. #r=504&v=speed&c=-79.39,43.65,14,-17,58
-  const HASH_KEYS = {w: "window", t: "slot", r: "route", d: "dir", s: "show", v: "view"};
-  const DEFAULTS = {window: "recent", slot: "all", route: "", dir: "both", show: "all", view: "delay"};
-  const ALLOWED = {window: ["recent", "all"], slot: Object.keys(meta.slots), route: ["", ...Object.keys(routeNames)],
+  // t is a preset (am, pm, ...) or h<start hour> for a 2-hour window; dy is the day type.
+  const HASH_KEYS = {w: "window", dy: "days", r: "route", d: "dir", s: "show", v: "view"};
+  const DEFAULTS = {window: "recent", days: "all", route: "", dir: "both", show: "all", view: "delay"};
+  const ALLOWED = {window: Object.keys(WINDOW_LABELS), days: Object.keys(DAYS_LABELS), route: ["", ...Object.keys(routeNames)],
     dir: ["both", "en", "ws"], show: ["all", "nostop"], view: ["delay", "speed"]};
   function readHash() {
     const h = new URLSearchParams(location.hash.slice(1));
     for (const [k, key] of Object.entries(HASH_KEYS)) {
       if (ALLOWED[key].includes(h.get(k))) state[key] = h.get(k);
     }
+    const t = h.get("t") || "";
+    if (t in PRESETS) state.time = t;
+    else if (/^h\d{1,2}$/.test(t) && +t.slice(1) <= 22) { state.time = "custom"; state.hour = +t.slice(1); }
     if (h.get("sig") === "0") state.signals = false;
     const c = (h.get("c") || "").split(",").map(Number);
     return c.length === 5 && c.every(Number.isFinite)
@@ -259,6 +352,7 @@
     if (SHOT || !map) return;
     const h = new URLSearchParams();
     for (const [k, key] of Object.entries(HASH_KEYS)) if (state[key] !== DEFAULTS[key]) h.set(k, state[key]);
+    if (state.time !== "all") h.set("t", state.time === "custom" ? `h${state.hour}` : state.time);
     if (!state.signals) h.set("sig", "0");
     const c = map.getCenter();
     h.set("c", [c.lng.toFixed(4), c.lat.toFixed(4), map.getZoom().toFixed(2), map.getBearing().toFixed(0),
@@ -270,7 +364,7 @@
     for (const [attr, key] of [["window", "window"], ["dir", "dir"], ["show", "show"], ["view", "view"]]) {
       document.querySelectorAll(`[data-${attr}]`).forEach((b) => b.classList.toggle("on", b.dataset[attr] === state[key]));
     }
-    slotSel.value = state.slot;
+    syncTimeControls();
     routeSel.value = state.route;
     document.getElementById("show-signals").checked = state.signals;
   }
@@ -279,7 +373,8 @@
   // updates use replaceState, which doesn't fire this.)
   addEventListener("hashchange", () => location.reload());
   syncControls();
-  if (state.window === "all") state.stats.all = await get("stats-all.json");
+  await loadWindow(state.window);
+  await loadHours(state.window);
   const copyBtn = document.getElementById("copy-link");
   copyBtn.addEventListener("click", async () => {
     writeHash();
@@ -351,7 +446,26 @@
   function updateOffset() {
     offsetM = state.dir === "both" ? OFFSET_PX * 40075016 * KX / (512 * 2 ** map.getZoom()) : 0;
   }
-  map.on("zoomend", () => { if (!SHOT && state.dir === "both") render(); });
+  // Re-render on zoom: the direction offset is in pixels and turn-ban icons appear close in.
+  map.on("zoomend", () => { if (!SHOT) render(); });
+
+  // Turn bans (City by-law) as a small icon beside the signal, only when zoomed in close.
+  const TURN_ZOOM = 15;
+  const TURN_ICON = {
+    url: "data:image/svg+xml;charset=utf-8," + encodeURIComponent(
+      "<svg xmlns='http://www.w3.org/2000/svg' width='64' height='64' viewBox='0 0 32 32'>" +
+      "<circle cx='16' cy='16' r='13' fill='white' stroke='#c62f2f' stroke-width='3'/>" +
+      "<path d='M12 24 V16 Q12 12 16 12 H21' fill='none' stroke='#222' stroke-width='2.6' stroke-linecap='round'/>" +
+      "<path d='M18 8.5 L22 12 L18 15.5' fill='none' stroke='#222' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/>" +
+      "<line x1='7.5' y1='7.5' x2='24.5' y2='24.5' stroke='#c62f2f' stroke-width='3'/></svg>"),
+    width: 64, height: 64,
+  };
+  function turnLayer(sigShown) {
+    return new IconLayer({id: "turn-bans", visible: state.signals && map.getZoom() >= TURN_ZOOM,
+      data: [...sigShown].map((i) => net.signals[i]).filter((s) => s.turns),
+      getPosition: (s) => s.lonlat, getIcon: () => TURN_ICON, getSize: 18, sizeUnits: "pixels",
+      getPixelOffset: [13, -13], pickable: true, onHover: showSignalTip, onClick: showSignalTip});
+  }
 
   function visiblePieces() {
     return pieces.filter((p) => (!state.route || p.routes.includes(state.route)) &&
@@ -434,6 +548,7 @@
         lineWidthUnits: "meters", getLineWidth: 4, lineWidthMinPixels: 0.5, lineWidthMaxPixels: 1.5, getLineColor: [138, 28, 43, 255],
         getFillColor: (s) => (s.tsp ? [138, 28, 43, 255] : [255, 255, 255, 255]),
         pickable: true, onHover: showSignalTip, onClick: showSignalTip}),
+      turnLayer(sigShown),
     ]});
     renderRouteCard();
   }
@@ -455,7 +570,7 @@
       p.sig.forEach((i, b) => { if (i >= 0 && onRoute(p, b)) sigShown.add(i); });
       stops.push(...stopsOf(p));
       if (!st) continue;
-      const slot = st.slots[state.slot];
+      const slot = viewOf(p, st);
       const d = smoothed(slot.d);
       for (let b = 0; b < p.bins.length; b++) {
         if (d[b] == null || !binVisible(p, b)) continue;
@@ -500,10 +615,11 @@
           getLineColor: [138, 28, 43, 255],
           getFillColor: (s) => (s.tsp ? [138, 28, 43, 255] : [255, 255, 255, 255]),
           pickable: true, onHover: showSignalTip, onClick: showSignalTip}),
+        turnLayer(sigShown),
         new LineLayer({id: "ridge", data: ridge, getSourcePosition: (x) => x.from, getTargetPosition: (x) => x.to,
-          getColor: (x) => x.color, getWidth: 2.5, pickable: true, autoHighlight: true, highlightColor: [0, 0, 0, 255],
+          getColor: (x) => x.color, getWidth: 3.5, pickable: true, autoHighlight: true, highlightColor: [0, 0, 0, 255],
           onHover: showTooltip, onClick: showTooltip,
-          updateTriggers: {getColor: [state.window, state.slot]}}),
+          updateTriggers: {getColor: [state.window, timeLabel()]}}),
       ],
     });
     renderRouteCard();
@@ -560,7 +676,7 @@
   function routeLine(pid) {
     const pat = patterns[pid], r = state.stats[state.window].routes[pid];
     if (!r || !r.clean_s) return "";
-    const typ = r.typical_s[state.slot] ?? r.typical_s.all;
+    const typ = typicalFor(pat, r);
     if (typ == null) return "";
     return `<div><b>${pat.route} ${pat.name}</b> ${pat.direction.toLowerCase()} to ${pat.to}: ` +
       `a typical trip loses <b>${mins(typ - r.clean_s)}</b> in total across all its segments ` +
@@ -637,9 +753,13 @@
   function showSignalTip(info) {
     if (!info.object) { tip.hidden = true; return; }
     const s = info.object;
-    tip.innerHTML = `<div class="t-title">${s.midblock ? "Pedestrian signal" : "Traffic signal"}: ${s.name}</div>` +
+    const esc = (t) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+    const bans = (s.turns || []).map((t) => `<div>${esc(t.dir)} ${esc(t.turn.toLowerCase())}` +
+      `${/turn/i.test(t.turn) ? "" : " turn"}: <span class="t-dim">${esc(t.when)}</span></div>`).join("");
+    tip.innerHTML = `<div class="t-title">${s.midblock ? "Pedestrian signal" : "Traffic signal"}: ${esc(s.name)}</div>` +
       `<div class="t-dim">${s.tsp ? "Has transit signal priority (can extend a green or shorten a red for a streetcar)."
-        : "No transit signal priority."}</div>`;
+        : "No transit signal priority."}</div>` +
+      (bans ? `<div class="t-routes"><div class="t-head">Turns banned (City by-law)</div>${bans}</div>` : "");
     placeTip(info);
   }
 
@@ -647,7 +767,7 @@
     if (!info.object) { tip.hidden = true; return; }
     const {piece: p, bin: b} = info.object;
     const st = state.stats[state.window].pieces[p.id];
-    const slot = st.slots[state.slot];
+    const slot = viewOf(p, st);
     const stop = nearestStop(p, b);
     // Same ~125 m weighted average the ridge is drawn with.
     const rate = smoothAt(slot.d, b);
@@ -655,16 +775,15 @@
     const lostHere = rate * span / 100;
     const cleanHere = smoothAt(st.clean.map((c, i) => (slot.d[i] == null ? null : c)), b) * span / net.bin_m;
     const typical = cleanHere + lostHere;
-    const days = meta.windows[state.window].days;
     const routes = (sliceRoutes.get(`${p.index}:${b}`) || []).filter((id) => !state.route || patterns[id].route === state.route);
     tip.innerHTML =
       `<div class="t-title">${stop ? `Near ${stop}` : "Streetcar track"}</div>` +
-      `<div class="t-dim">${p.routes.join(", ")} · ${meta.slots[state.slot]}</div>` +
+      `<div class="t-dim">${p.routes.join(", ")} · ${timeLabel()}</div>` +
       `<div class="t-kind">${kindText(p, b)}</div>` +
       `<div class="t-big">${rate.toFixed(1)} s lost per 100 m</div>` +
       `<div>The ${span} m around here cost a typical car <b>${lostHere < 1 ? "under 1 s" : `${Math.round(lostHere)} s`}</b></div>` +
       `<div class="t-dim">${cleanHere.toFixed(1)} s clean run vs ${typical.toFixed(1)} s typical<br>` +
-      `${fmt(slot.n[b])} passes · streetcars passed here on ${st.days[b]} of ${days} day${days === 1 ? "" : "s"}</div>` +
+      `Based on ${fmt(slot.n[b])} pass${slot.n[b] === 1 ? "" : "es"}</div>` +
       (routes.length ? `<div class="t-routes"><div class="t-head">Whole route${routes.length > 1 ? "s" : ""} through here</div>` +
         `${routes.map(routeLine).join("")}</div>` : "") +
       `<div class="t-routes t-dim">Clean run: each segment's fastest 10% of real daytime passes, stops included. More under “?” on the legend.</div>`;
@@ -681,7 +800,7 @@
     let html = `<h2>${state.route} ${routeNames[state.route]}</h2>`;
     for (const pat of dirs) {
       const r = stats.routes[pat.id] || {};
-      const typ = r.typical_s ? (r.typical_s[state.slot] ?? r.typical_s.all) : null;
+      const typ = typicalFor(pat, r);
       let movedTxt = "";
       if (r.moved) {
         const m = r.moved.change_s / 60;
@@ -693,7 +812,7 @@
           `<br>${mins(typ)} typical vs ${mins(r.clean_s)} ` +
           `<button class="linkish" data-explain>clean-run total</button> · scheduled ${mins(pat.sched_s)}` +
           `<br>${fmt(r.samples)} slice passes · ${Math.round(r.data_coverage * 100)}% of the route measured${movedTxt}`
-          : "No streetcar data yet for this direction") +
+          : r.clean_s ? `Not enough data yet for ${timeLabel().toLowerCase()}` : "No streetcar data yet for this direction") +
         `</div></div>`;
     }
     const rows = timeline.routes[state.route] || [];

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Toronto Streetcar Delays</title>
-<meta name="description" content="Where Toronto streetcars lose time compared with a clean run that only stops at passenger stops. Built from TTC GTFS-Realtime vehicle positions.">
+<meta name="description" content="Stuck: where Toronto streetcars lose time compared with a clean run that only stops at passenger stops. Built from TTC GTFS-Realtime vehicle positions.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%238a1c2b'/%3E%3Cpolyline points='4,24 9,22 12,10 15,21 19,19 22,6 25,20 28,22' fill='none' stroke='%23fff' stroke-width='2.4' stroke-linejoin='round' stroke-linecap='round'/%3E%3Cline x1='4' y1='26.5' x2='28' y2='26.5' stroke='%238cc5ad' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E">
 <meta name="theme-color" content="#f4f4f2" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#121314" media="(prefers-color-scheme: dark)">
@@ -20,17 +20,19 @@
 
 <aside id="panel" class="panel">
   <button id="panel-toggle" class="panel-toggle" aria-expanded="true" aria-controls="panel-body">
-    <span>Where Toronto streetcars lose time</span><span class="chev" aria-hidden="true"></span>
+    <span>Stuck: Toronto's streetcar delays</span><span class="chev" aria-hidden="true"></span>
   </button>
   <div id="panel-body" class="panel-body">
-    <h1>Where Toronto streetcars lose time</h1>
+    <h1>Stuck: Toronto's streetcar delays</h1>
     <p class="lede">Extra time a typical streetcar spends on each 25&nbsp;m of track, compared with a clean run that only stops at passenger stops. <button class="linkish" data-explain>What's a clean run?</button></p>
     <div id="prelim" class="prelim" hidden></div>
 
     <div class="field">
       <span class="label">Data</span>
       <div class="seg" role="group" aria-label="Time window">
-        <button data-window="recent" class="on">Last <span id="window-days">90</span> days</button>
+        <button data-window="d15">15 days</button>
+        <button data-window="d30">30 days</button>
+        <button data-window="recent" class="on">90 days</button>
         <button data-window="all">All time</button>
       </div>
     </div>
@@ -42,10 +44,24 @@
       </div>
       <p id="speed-note" class="field-note" hidden>How fast a clean run moves, not counting time stopped at stops. Shows slowness every car shares (curves, switches, slow orders) that the delay view can't. <button class="linkish" data-explain>More</button></p>
     </div>
-    <label class="field" id="slot-field">
-      <span class="label">Time of day</span>
-      <select id="slot"></select>
-    </label>
+    <div class="field" id="time-field">
+      <span class="label">Time of day <span class="label-note" id="time-label"></span></span>
+      <div class="seg seg-sm" role="group" aria-label="Days">
+        <button data-days="all" class="on">All days</button>
+        <button data-days="wd">Weekdays</button>
+        <button data-days="we">Weekends</button>
+      </div>
+      <div class="chips" role="group" aria-label="Time of day">
+        <button data-time="all" class="on">All day</button>
+        <button data-time="am">AM peak</button>
+        <button data-time="mid">Midday</button>
+        <button data-time="pm">PM peak</button>
+        <button data-time="eve">Evening</button>
+        <button data-time="night">Overnight</button>
+      </div>
+      <input id="hour" type="range" min="0" max="22" step="1" value="0" aria-label="Any two-hour window: start hour">
+      <div class="hour-ticks" aria-hidden="true"><span style="left:0%">12am</span><span style="left:27.3%">6am</span><span style="left:54.5%">noon</span><span style="left:81.8%">6pm</span><span style="left:100%">10pm</span></div>
+    </div>
     <label class="field">
       <span class="label">Route</span>
       <select id="route"><option value="">All routes</option></select>
@@ -113,6 +129,7 @@
     <span><i class="k-stop"></i>Stop</span>
     <span><i class="k-sig"></i>Signal</span>
     <span><i class="k-tsp"></i>Signal with transit priority</span>
+    <span><i class="k-turn"></i>Turn ban (zoom in)</span>
   </div>
 </div>
 
@@ -149,11 +166,11 @@
     <li><b>Elsewhere:</b> between stops and signals: traffic, turning cars, slow zones and long queues backing up from a signal.</li>
   </ul>
   <p>"Hide stop-only spots" leaves out the spots that are only a stop, to focus on signals and traffic. The tooltip also says whether a signal has transit priority.</p>
-  <p>Signals that streetcars pass <i>under</i> are left out: the Spadina and St Clair West station loops and the Bay Street tunnel to Union (thanks to @ontariotrafficman for spotting these). So are signals on track no streetcar has used yet, such as lines currently running buses; they come back once streetcars do.</p>
+  <p><b>Turn bans.</b> Zoom in and a small icon marks signals where the City's traffic by-law bans turns; hover for which turns, which directions and when, and whether streetcars are exempt. "No turn on red" rules are left out.</p>
   <h3 id="explain-tsp">Transit signal priority</h3>
   <p>The panel compares the time a typical streetcar loses approaching signals <b>with</b> and <b>without</b> transit signal priority: the median across signal approaches (the ~100&nbsp;m before each signal, each direction separately, with at least 20 passes). It follows the route, direction and time-of-day filters. Read it with care:</p>
   <ul>
-    <li><b>Not a fair experiment.</b> Priority was installed on purpose, likely where streetcars had the most trouble. Similar delay could mean priority is pulling bad spots back to average, or that it does little. This data can't tell those apart.</li>
+    <li><b>Priority wasn't placed at random.</b> It was installed on purpose, likely where streetcars had the most trouble. Similar delay could mean priority is pulling bad spots back to average, or that it does little. This data can't tell those apart.</li>
     <li><b>"Priority" isn't one thing.</b> The City's open data only says <i>whether</i> a signal has transit priority, not what kind: extending a green, cutting a red short, changing the phase order, a queue jump, or only helping cars running late. Very different strategies are lumped together here, and there's no public data to separate them.</li>
     <li><b>Early days.</b> With little data, a few bad days at a handful of signals can swing either number.</li>
   </ul>

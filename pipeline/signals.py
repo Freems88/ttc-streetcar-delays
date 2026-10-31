@@ -77,7 +77,8 @@ def load_signals():
             name = f"{main} / {side}" if side else (f"{main}, midblock {mid}".strip(", ") if mid else main)
             out.append({"x": to_xy(lon, lat), "lonlat": [round(lon, 6), round(lat, 6)],
                         "name": name, "tsp": r["TRANSIT_PREEMPT"] == "1",
-                        "midblock": bool(mid) and not side})
+                        "midblock": bool(mid) and not side,
+                        "streets": [s for s in (main, side, _street(r["SIDE2_STREET"])) if s]})
     return out
 
 

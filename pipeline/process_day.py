@@ -34,7 +34,7 @@ import sys
 from collections import defaultdict
 
 from common import (BIN_M, DATA_DIR, FLEXITY_IDS, NIGHT_TWIN, WORK_DIR, PathGeom,
-                    angle_diff, slot_of, to_xy)
+                    angle_diff, hour_key, slot_of, to_xy)
 
 MATCH_M = 35        # max distance from the track for a ping to count as on it
 BEARING_TOL = 60    # max heading difference from the track direction, degrees
@@ -225,6 +225,8 @@ def process(day, network=None):
     hist = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))   # piece -> bin -> bucket -> n
     sums = defaultdict(lambda: defaultdict(lambda: defaultdict(float)))  # piece -> slot -> bin -> s
     cnts = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))    # piece -> slot -> bin -> n
+    hsums = defaultdict(lambda: defaultdict(lambda: defaultdict(float)))  # piece -> hour key -> bin -> s
+    hcnts = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))    # piece -> hour key -> bin -> n
     ihist = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))  # piece -> interval -> bucket -> n
     n_pings = n_passes = n_samples = 0
     for key, by_ts in runs.items():
@@ -254,6 +256,9 @@ def process(day, network=None):
                         hist[pid][b][bucket(v)] += 1
                     sums[pid][slot][b] += v
                     cnts[pid][slot][b] += 1
+                    hk = hour_key(t_in, day)
+                    hsums[pid][hk][b] += v
+                    hcnts[pid][hk][b] += 1
                 for k, (v, t_in) in interval_times(seq, m.bounds[pi]).items():
                     if slot_of(t_in, day) != "night":
                         ihist[pid][k][bucket(v)] += 1
@@ -273,6 +278,8 @@ def process(day, network=None):
         "ihist": ihist,
         "sums": {p: {s: {b: round(v, 2) for b, v in d.items()} for s, d in sl.items()} for p, sl in sums.items()},
         "cnts": cnts,
+        "hsums": {p: {h: {b: round(v, 1) for b, v in d.items()} for h, d in hs.items()} for p, hs in hsums.items()},
+        "hcnts": hcnts,
     }
     dest = WORK_DIR / "agg" / f"{day}.json.gz"
     dest.parent.mkdir(parents=True, exist_ok=True)
