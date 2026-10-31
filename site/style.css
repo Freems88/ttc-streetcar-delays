@@ -108,6 +108,7 @@ input[type=range] { accent-color: var(--accent); }
 .compare-open { margin: 0 0 12px; font-size: 13px; }
 .compare { max-width: 600px; }
 .compare-lede { color: var(--muted); }
+.compare-seg { margin: 4px 0 10px; max-width: 340px; }
 .compare-rows { margin: 12px 0; }
 .compare-row {
   display: grid; grid-template-columns: 150px 1fr; gap: 2px 12px; align-items: center; width: 100%;

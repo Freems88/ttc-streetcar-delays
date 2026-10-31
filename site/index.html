@@ -80,7 +80,7 @@
       <div id="tsp" class="tsp"></div>
     </div>
 
-    <p class="compare-open"><button class="linkish" id="compare-open">Compare routes: hours lost a day</button></p>
+    <p class="compare-open"><button class="linkish" id="compare-open">Compare routes</button></p>
 
     <div id="route-card" class="route-card" hidden></div>
 
@@ -121,8 +121,12 @@
 
 <dialog id="compare" class="explain compare" aria-labelledby="compare-title">
   <button class="close" aria-label="Close" data-close>×</button>
-  <h2 id="compare-title">Hours lost a day, by route</h2>
-  <p class="compare-lede">Streetcar hours a day spent beyond the clean run, from the trips actually run. Tap a route to see it on the map.</p>
+  <h2 id="compare-title">Routes compared</h2>
+  <div class="seg compare-seg" role="group" aria-label="Measure">
+    <button data-measure="perkm" class="on">Per km of route</button>
+    <button data-measure="total">Total a day</button>
+  </div>
+  <p class="compare-lede" id="compare-lede"></p>
   <div id="compare-rows" class="compare-rows" role="list"></div>
   <p class="compare-note" id="compare-note"></p>
   <p class="compare-note">This is an observation, not a cost: no trip avoids every delay, and time saved could just as well become more frequent service. <button class="linkish" data-explain>How the clean run works</button></p>

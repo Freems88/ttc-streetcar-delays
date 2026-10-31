@@ -126,26 +126,50 @@
     compareDlg.showModal();
   });
 
+  // Two measures: per km (how bad a route is, length aside; the map's own unit) and
+  // total a day (where the most time goes, so long and frequent routes count for more).
+  let compareMeasure = "perkm";
+  document.querySelectorAll("[data-measure]").forEach((b) => b.addEventListener("click", () => {
+    compareMeasure = b.dataset.measure;
+    document.querySelectorAll("[data-measure]").forEach((x) => x.classList.toggle("on", x === b));
+    renderCompare();
+  }));
+  const MEASURES = {
+    perkm: {
+      lede: "Seconds a typical trip loses per 100 m of route, beyond the clean run: the average height of the route's curtain on the map. Tap a route to see it.",
+      value: (p, r) => (r.typical_s?.all != null && r.clean_s ? (r.typical_s.all - r.clean_s) / p.length * 100 : null),
+      label: (v) => `${v.toFixed(1)} s / 100 m`,
+      sub: (p, r) => `a typical trip loses ${Math.round((r.typical_s.all - r.clean_s) / 60)} min over ` +
+        `${(p.length / 1000).toFixed(1)} km · takes ${r.ratio.toFixed(2)}× its clean-run total`,
+    },
+    total: {
+      lede: "Streetcar hours a day spent beyond the clean run, from the trips actually run. Long, frequent routes count for more. Tap a route to see it.",
+      value: (p, r) => r.hours_lost_per_day ?? null,
+      label: (v) => `${Math.round(v)} h`,
+      sub: (p, r) => `${Math.round(r.trips_per_day)} trips a day · a typical trip takes ${r.ratio.toFixed(2)}× its clean-run total`,
+    },
+  };
+
   function renderCompare() {
     const stats = state.stats[state.window];
-    const rows = net.patterns.map((p) => ({p, r: stats.routes[p.id] || {}}))
-      .filter(({r}) => r.hours_lost_per_day != null)
-      .sort((a, b) => b.r.hours_lost_per_day - a.r.hours_lost_per_day);
-    const max = Math.max(1, ...rows.map(({r}) => r.hours_lost_per_day));
+    const m = MEASURES[compareMeasure];
+    document.getElementById("compare-lede").textContent = m.lede;
+    const rows = net.patterns.map((p) => {
+      const r = stats.routes[p.id] || {};
+      return {p, r, v: r.ratio != null ? m.value(p, r) : null};
+    }).filter((x) => x.v != null).sort((a, b) => b.v - a.v);
+    const max = Math.max(0.01, ...rows.map((x) => x.v));
     const box = document.getElementById("compare-rows");
     box.textContent = "";
-    for (const {p, r} of rows) {
+    for (const {p, r, v} of rows) {
       const row = document.createElement("button");
       row.className = "compare-row";
       row.setAttribute("role", "listitem");
-      row.title = `${p.route} ${p.name} ${p.direction.toLowerCase()}: ${r.hours_lost_per_day} streetcar hours a day beyond ` +
-        `clean runs (${r.trips_per_day} trips a day, each taking ${r.ratio}× its clean-run total). Tap to show on the map.`;
+      row.title = `${p.route} ${p.name} ${p.direction.toLowerCase()}: ${m.label(v)}; ${m.sub(p, r)}. Tap to show on the map.`;
       row.innerHTML =
         `<span class="compare-name">${p.route} ${p.name}<span>${p.direction}</span></span>` +
-        `<span class="compare-bar"><i style="width:${(r.hours_lost_per_day / max * 78).toFixed(1)}%"></i>` +
-        `<b>${Math.round(r.hours_lost_per_day)} h</b></span>` +
-        `<span class="compare-sub">${Math.round(r.trips_per_day)} trips a day · a typical trip takes ` +
-        `${r.ratio.toFixed(2)}× its clean-run total</span>`;
+        `<span class="compare-bar"><i style="width:${(v / max * 70).toFixed(1)}%"></i><b>${m.label(v)}</b></span>` +
+        `<span class="compare-sub">${m.sub(p, r)}</span>`;
       row.addEventListener("click", () => {
         state.route = p.route;
         state.dir = /^(East|North)/.test(p.direction) ? "en" : "ws";
@@ -156,8 +180,8 @@
       });
       box.append(row);
     }
-    const missing = [...new Set(net.patterns.filter((p) => !(stats.routes[p.id] || {}).hours_lost_per_day)
-      .map((p) => `${p.route} ${p.name}`))];
+    const shown = new Set(rows.map((x) => x.p.route));
+    const missing = [...new Set(net.patterns.filter((p) => !shown.has(p.route)).map((p) => `${p.route} ${p.name}`))];
     const days = meta.windows[state.window].days;
     document.getElementById("compare-note").textContent =
       (rows.length ? "" : "Not enough finished days logged yet. ") +
