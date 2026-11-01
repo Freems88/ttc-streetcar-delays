@@ -168,6 +168,7 @@ input[type=range] { accent-color: var(--accent); }
 
 .route-card { border-top: 1px solid var(--line); margin-top: 4px; padding-top: 12px; }
 .route-card h2 { font-size: 15px; margin: 0 0 8px; }
+.route-sec + .route-sec { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 12px; }
 .dir { margin-bottom: 12px; }
 .dir-name { font-weight: 600; }
 .dir-stats { color: var(--muted); font-size: 13px; }

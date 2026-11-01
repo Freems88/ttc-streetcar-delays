@@ -68,10 +68,12 @@
       </div>
       <div class="hour-ticks" aria-hidden="true"><span style="left:0%">12am</span><span style="left:25%">6am</span><span style="left:50%">noon</span><span style="left:75%">6pm</span><span style="left:100%">12am</span></div>
     </div>
-    <label class="field">
-      <span class="label">Route</span>
-      <select id="route"><option value="">All routes</option></select>
-    </label>
+    <div class="field">
+      <span class="label">Routes <span class="label-note">(pick any)</span></span>
+      <div class="chips route-chips" id="routes" role="group" aria-label="Routes">
+        <button data-route="" class="on" aria-pressed="true">All</button>
+      </div>
+    </div>
     <div class="field">
       <span class="label">Direction</span>
       <div class="seg" role="group" aria-label="Direction">

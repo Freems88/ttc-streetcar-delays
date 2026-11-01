@@ -31,7 +31,7 @@
     bus: "Mostly buses", none: "No vehicles seen", nodata: "Not logged",
   };
 
-  const state = {window: "recent", days: "all", time: "all", range: [7, 10], route: "", dir: "both",
+  const state = {window: "recent", days: "all", time: "all", range: [7, 10], routes: [], dir: "both",
     signals: true, height: 12, view: "delay", stats: {}, heads: {}};
   // Slice labels from build_site: 0 elsewhere, 1 stop, 2 signal, 3 stop + signal.
   const KINDS = [
@@ -93,7 +93,7 @@
   }
   // Headway sums per stop, route and hour (headways-<window>.json), for the waits view,
   // route cards and the routes chart; fetched the first time one of those needs them.
-  const needHeads = () => state.view === "wait" || !!state.route;
+  const needHeads = () => state.view === "wait" || state.routes.length > 0;
   async function loadHeads(w, force) {
     if ((force || needHeads()) && !state.heads[w]) state.heads[w] = await get(`headways-${w}.json`);
   }
@@ -224,8 +224,32 @@
     return all && have >= 0.5 * all ? Math.round(total) : null;
   }
 
-  const routeSel = document.getElementById("route");
-  for (const r of Object.keys(routeNames).sort()) routeSel.add(new Option(`${r} ${routeNames[r]}`, r));
+  // Routes: pick any number (none picked = all routes).
+  const routeOn = (r) => !state.routes.length || state.routes.includes(r);
+  const routeBox = document.getElementById("routes");
+  for (const r of Object.keys(routeNames).sort()) {
+    const b = document.createElement("button");
+    b.dataset.route = r;
+    b.textContent = `${r} ${routeNames[r]}`;
+    routeBox.append(b);
+  }
+  function syncRouteChips() {
+    routeBox.querySelectorAll("button").forEach((b) => {
+      const on = b.dataset.route === "" ? !state.routes.length : state.routes.includes(b.dataset.route);
+      b.classList.toggle("on", on);
+      b.setAttribute("aria-pressed", on);
+    });
+  }
+  routeBox.addEventListener("click", async (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    const r = b.dataset.route;
+    state.routes = r === "" ? [] : state.routes.includes(r) ? state.routes.filter((x) => x !== r) : [...state.routes, r].sort();
+    syncRouteChips();
+    await loadHeads(state.window);
+    render();
+    flyToRoute();
+  });
 
   function segGroup(attr, key) {
     document.querySelectorAll(`[data-${attr}]`).forEach((btn) => btn.addEventListener("click", async () => {
@@ -260,12 +284,7 @@
     document.querySelectorAll(".legend-key .k-sig, .legend-key .k-tsp, .legend-key .k-turn")
       .forEach((el) => { el.parentElement.hidden = wait; });
   }
-  routeSel.addEventListener("change", async () => {
-    state.route = routeSel.value;
-    await loadHeads(state.window);
-    render();
-    flyToRoute();
-  });
+
   document.getElementById("height").addEventListener("input", (e) => { state.height = +e.target.value; render(); });
   document.getElementById("show-signals").addEventListener("change", (e) => { state.signals = e.target.checked; render(); });
   const panel = document.getElementById("panel");
@@ -422,7 +441,7 @@
         `<span class="compare-bar"><i style="width:${(v / max * 70).toFixed(1)}%"></i><b>${m.label(v)}</b></span>` +
         `<span class="compare-sub">${m.sub(p, r)}</span>`;
       row.addEventListener("click", () => {
-        state.route = p.route;
+        state.routes = [p.route];
         state.dir = /^(East|North)/.test(p.direction) ? "en" : "ws";
         syncControls();
         compareDlg.close();
@@ -494,15 +513,17 @@
   // --- shareable links --------------------------------------------------------------
   // Filters and camera live in the URL hash, e.g. #r=504&v=speed&c=-79.39,43.65,14,-17,58
   // t is a preset (am, pm, ...) or h<start hour> for a 2-hour window; dy is the day type.
-  const HASH_KEYS = {w: "window", dy: "days", r: "route", d: "dir", v: "view"};
-  const DEFAULTS = {window: "recent", days: "all", route: "", dir: "both", view: "delay"};
-  const ALLOWED = {window: Object.keys(WINDOW_LABELS), days: Object.keys(DAYS_LABELS), route: ["", ...Object.keys(routeNames)],
+  // r is a comma-separated list of routes, e.g. r=501,504.
+  const HASH_KEYS = {w: "window", dy: "days", d: "dir", v: "view"};
+  const DEFAULTS = {window: "recent", days: "all", dir: "both", view: "delay"};
+  const ALLOWED = {window: Object.keys(WINDOW_LABELS), days: Object.keys(DAYS_LABELS),
     dir: ["both", "en", "ws"], view: ["delay", "speed", "wait"]};
   function readHash() {
     const h = new URLSearchParams(location.hash.slice(1));
     for (const [k, key] of Object.entries(HASH_KEYS)) {
       if (ALLOWED[key].includes(h.get(k))) state[key] = h.get(k);
     }
+    state.routes = [...new Set((h.get("r") || "").split(",").filter((r) => r in routeNames))].sort();
     const t = h.get("t") || "";
     if (t in PRESETS) state.time = t;
     const m = t.match(/^h(\d{1,2})-(\d{1,2})$/);
@@ -516,6 +537,7 @@
     if (SHOT || !map) return;
     const h = new URLSearchParams();
     for (const [k, key] of Object.entries(HASH_KEYS)) if (state[key] !== DEFAULTS[key]) h.set(k, state[key]);
+    if (state.routes.length) h.set("r", state.routes.join(","));
     if (state.time !== "all") h.set("t", state.time === "custom" ? `h${state.range[0]}-${state.range[1]}` : state.time);
     if (!state.signals) h.set("sig", "0");
     const c = map.getCenter();
@@ -529,7 +551,7 @@
       document.querySelectorAll(`[data-${attr}]`).forEach((b) => b.classList.toggle("on", b.dataset[attr] === state[key]));
     }
     syncTimeControls();
-    routeSel.value = state.route;
+    syncRouteChips();
     document.getElementById("show-signals").checked = state.signals;
   }
   const linkCamera = SHOT ? null : readHash();
@@ -748,14 +770,14 @@
   }
 
   function visiblePieces() {
-    return pieces.filter((p) => (!state.route || p.routes.includes(state.route)) &&
+    return pieces.filter((p) => p.routes.some(routeOn) &&
       (state.dir === "both" || (state.dir === "en") === p.en));
   }
 
   // With a route picked, only the slices its own patterns run over (pieces are shared).
   function onRoute(p, b) {
-    if (!state.route) return true;
-    return (sliceRoutes.get(`${p.index}:${b}`) || []).some((id) => patterns[id].route === state.route);
+    if (!state.routes.length) return true;
+    return (sliceRoutes.get(`${p.index}:${b}`) || []).some((id) => state.routes.includes(patterns[id].route));
   }
 
   function runsOf(p) {
@@ -845,7 +867,7 @@
       for (const s of stopsOf(p)) {
         if (seen.has(s.id)) continue;
         seen.add(s.id);
-        const routes = Object.keys(heads.stops[s.id] || {}).filter((r) => !state.route || r === state.route).sort();
+        const routes = Object.keys(heads.stops[s.id] || {}).filter(routeOn).sort();
         const per = routes.map((r) => [r, stopWaits(s.id, r, keys)]).filter(([, w]) => w);
         if (!per.length) continue;
         // Several routes at one stop: their excess waits averaged by number of headways.
@@ -1095,7 +1117,7 @@
     if (!info.object) { tip.hidden = true; return; }
     const c = info.object;
     const off = state.heads[state.window]?.off[c.id] || {};
-    const offTxt = Object.entries(off).filter(([r]) => !state.route || r === state.route)
+    const offTxt = Object.entries(off).filter(([r]) => routeOn(r))
       .map(([r, d]) => `${r}: not served on ${d} day${d === 1 ? "" : "s"} (diverted or off the track), left out`);
     const ewtTxt = (v) => (v < -0.05 ? `${minTxt(-v)} shorter than scheduled` : `+${minTxt(v)} excess wait`);
     tip.innerHTML =
@@ -1134,7 +1156,7 @@
     const lostHere = rate * span / 100;
     const cleanHere = smoothAt(st.clean.map((c, i) => (slot.d[i] == null ? null : c)), b) * span / net.bin_m;
     const typical = cleanHere + lostHere;
-    const routes = (sliceRoutes.get(`${p.index}:${b}`) || []).filter((id) => !state.route || patterns[id].route === state.route);
+    const routes = (sliceRoutes.get(`${p.index}:${b}`) || []).filter((id) => routeOn(patterns[id].route));
     tip.innerHTML =
       `<div class="t-title">${stop ? `Near ${stop}` : "Streetcar track"}</div>` +
       `<div class="t-dim">${p.routes.join(", ")} · ${timeLabel()}</div>` +
@@ -1151,12 +1173,17 @@
   map.getCanvas().addEventListener("mouseleave", () => { tip.hidden = true; });
 
   // --- route card -----------------------------------------------------------------
+  // One section per picked route.
   function renderRouteCard() {
     const card = document.getElementById("route-card");
-    if (!state.route) { card.hidden = true; return; }
+    if (!state.routes.length) { card.hidden = true; return; }
+    card.innerHTML = state.routes.map((r) => `<section class="route-sec">${routeSection(r)}</section>`).join("");
+    card.hidden = false;
+  }
+  function routeSection(route) {
     const stats = state.stats[state.window];
-    const dirs = net.patterns.filter((p) => p.route === state.route);
-    let html = `<h2>${state.route} ${routeNames[state.route]}</h2>`;
+    const dirs = net.patterns.filter((p) => p.route === route);
+    let html = `<h2>${route} ${routeNames[route]}</h2>`;
     for (const pat of dirs) {
       const r = stats.routes[pat.id] || {};
       const typ = typicalFor(pat, r);
@@ -1178,7 +1205,7 @@
         waitTxt + `</div></div>`;
     }
     html += hourChart(dirs);
-    const rows = timeline.routes[state.route] || [];
+    const rows = timeline.routes[route] || [];
     const seen = new Map();
     const cells = rows.map((row) => {
       for (const a of row.alerts || []) if (!seen.has(a)) seen.set(a, row.day);
@@ -1198,8 +1225,7 @@
       }).join("");
       html += `<div class="timeline-label"><span>Recent TTC alerts for this route</span></div><ul class="alerts-list">${list}</ul>`;
     }
-    card.innerHTML = html;
-    card.hidden = false;
+    return html;
   }
 
   // Delay by hour of day for the picked route (both directions), weekdays vs weekends:
@@ -1267,10 +1293,14 @@
   // Hover / touch on the hour chart: a crosshair and the two values in the legend line.
   document.addEventListener("pointermove", (e) => {
     const hit = e.target.closest?.(".hc-hit");
-    const svg = hit?.ownerSVGElement || document.querySelector(".hc-svg");
-    if (!svg) return;
+    for (const other of document.querySelectorAll(".hc-svg")) {
+      if (hit && other === hit.ownerSVGElement) continue;
+      other.querySelector(".hc-cross").setAttribute("visibility", "hidden");
+      other.parentElement.querySelector(".hc-read").textContent = "";
+    }
+    if (!hit) return;
+    const svg = hit.ownerSVGElement;
     const cross = svg.querySelector(".hc-cross"), read = svg.parentElement.querySelector(".hc-read");
-    if (!hit) { cross.setAttribute("visibility", "hidden"); read.textContent = ""; return; }
     const r = hit.getBoundingClientRect(), box = svg.viewBox.baseVal;
     const sx = box.width / svg.getBoundingClientRect().width;
     const hx = +hit.getAttribute("x"), hw = +hit.getAttribute("width");
