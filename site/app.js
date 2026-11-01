@@ -364,13 +364,23 @@
     document.querySelectorAll("[data-measure]").forEach((x) => x.classList.toggle("on", x === b));
     renderCompare();
   }));
+  // km/h over the measured part of a route direction (coverage is the share of it with data).
+  const kmh = (p, secs, coverage) => p.length * coverage / secs * 3.6;
   const MEASURES = {
     perkm: {
       lede: "Seconds a typical trip loses per 100 m of route, beyond the clean run: the average height of the route's curtain on the map. Tap a route to see it.",
       value: (p, r) => (r.typical_s?.all != null && r.clean_s ? (r.typical_s.all - r.clean_s) / p.length * 100 : null),
       label: (v) => `${v.toFixed(1)} s / 100 m`,
       sub: (p, r) => `a typical trip loses ${Math.round((r.typical_s.all - r.clean_s) / 60)} min over ` +
-        `${(p.length / 1000).toFixed(1)} km · takes ${r.ratio.toFixed(2)}× its clean-run total`,
+        `${(p.length / 1000).toFixed(1)} km · travel time index ${r.ratio.toFixed(2)} (typical ÷ clean run)`,
+    },
+    speed: {
+      lede: "Average speed of a typical trip end to end, stops and delays included: the operating speed transit agencies report. Slowest first. Tap a route to see it.",
+      value: (p, r) => (r.typical_s?.all ? kmh(p, r.typical_s.all, r.data_coverage) : null),
+      label: (v) => `${v.toFixed(1)} km/h`,
+      sub: (p, r) => `clean run ${kmh(p, r.clean_s, r.data_coverage).toFixed(1)} km/h` +
+        (p.sched_s ? ` · scheduled ${kmh(p, p.sched_s, 1).toFixed(1)} km/h` : ""),
+      ascending: true,
     },
     total: {
       lede: "Streetcar hours a day spent beyond the clean run, from the trips actually run. Long, frequent routes count for more. Tap a route to see it.",
@@ -398,7 +408,7 @@
     const rows = net.patterns.map((p) => {
       const r = stats.routes[p.id] || {};
       return {p, r, v: r.ratio != null || m.needsDelay === false ? m.value(p, r) : null};
-    }).filter((x) => x.v != null).sort((a, b) => b.v - a.v);
+    }).filter((x) => x.v != null).sort((a, b) => (m.ascending ? a.v - b.v : b.v - a.v));
     const max = Math.max(0.01, ...rows.map((x) => x.v));
     const box = document.getElementById("compare-rows");
     box.textContent = "";
@@ -891,8 +901,9 @@
         // Signal approaches (one per piece and signal) for the priority comparison.
         if (slot.d[b] != null && p.sig[b] >= 0 && p.tags[b] >= 2) {
           const k = `${p.index}:${p.sig[b]}`;
-          const a = approaches.get(k) || {lost: 0, slices: 0, passes: Infinity, tsp: net.signals[p.sig[b]].tsp};
+          const a = approaches.get(k) || {lost: 0, slices: 0, passes: Infinity, tsp: net.signals[p.sig[b]].tsp, stop: false};
           a.lost += slot.d[b] * net.bin_m / 100;
+          a.stop ||= p.tags[b] === 3;
           a.slices += 1;
           a.passes = Math.min(a.passes, slot.n[b]);
           approaches.set(k, a);
@@ -943,26 +954,31 @@
   // Median time lost per signal approach, with vs without transit priority. A rate, not a
   // share: two-thirds of signals on the network have priority, so shares would mislead.
   const MIN_APPROACH_PASSES = 20;
+  // Split by whether the approach has a stop: boarding time there swamps anything priority
+  // can do, so signals with a stop and without one are compared separately.
   function renderTsp(approaches) {
-    const groups = {true: [], false: []};
+    const groups = {nostop: {true: [], false: []}, stop: {true: [], false: []}};
     for (const a of approaches.values()) {
-      if (a.slices >= 3 && a.passes >= MIN_APPROACH_PASSES) groups[a.tsp].push(a.lost);
+      if (a.slices >= 3 && a.passes >= MIN_APPROACH_PASSES) groups[a.stop ? "stop" : "nostop"][a.tsp].push(a.lost);
     }
     const median = (v) => {
       v.sort((x, y) => x - y);
       const m = v.length >> 1;
       return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2;
     };
+    const row = (g, label) => (g.true.length < 5 || g.false.length < 5
+      ? `<div>${label}: <span class="tsp-sub">too few approaches in this view</span></div>`
+      : `<div>${label}: <b>${Math.round(median(g.true))} s</b> with priority · <b>${Math.round(median(g.false))} s</b> without ` +
+        `<span class="tsp-sub">(${g.true.length} / ${g.false.length})</span></div>`);
     const el = document.getElementById("tsp");
-    if (groups.true.length < 5 || groups.false.length < 5) {
+    if ([groups.nostop, groups.stop].every((g) => g.true.length < 5 || g.false.length < 5)) {
       el.innerHTML = `Not enough signal approaches in this view to compare transit priority. ` +
         `<button class="linkish" data-explain="tsp">Why?</button>`;
       return;
     }
-    el.innerHTML = `<div><b>At signals, a typical streetcar loses</b> ${Math.round(median(groups.true))} s ` +
-      `with transit priority · ${Math.round(median(groups.false))} s without</div>` +
-      `<div class="tsp-sub">Median per signal approach · ${groups.true.length} / ${groups.false.length} approaches · ` +
-      `<button class="linkish" data-explain="tsp">read with care</button></div>`;
+    el.innerHTML = `<div class="tsp-head">Time a typical streetcar loses approaching a signal</div>` +
+      row(groups.nostop, "No stop at the signal") + row(groups.stop, "Stop at the signal") +
+      `<div class="tsp-sub">Median per signal approach · <button class="linkish" data-explain="tsp">read with care</button></div>`;
   }
 
   function renderBreakdown(lost) {
@@ -1161,6 +1177,7 @@
           : r.clean_s ? `Not enough data yet for ${timeLabel().toLowerCase()}` : "No streetcar data yet for this direction") +
         waitTxt + `</div></div>`;
     }
+    html += hourChart(dirs);
     const rows = timeline.routes[state.route] || [];
     const seen = new Map();
     const cells = rows.map((row) => {
@@ -1184,6 +1201,86 @@
     card.innerHTML = html;
     card.hidden = false;
   }
+
+  // Delay by hour of day for the picked route (both directions), weekdays vs weekends:
+  // seconds lost per 100 m over the slices measured in that hour. An hour counts once at
+  // least half the route has passes in it.
+  const HOUR_MIN_N = 3;
+  function hourProfile(dirs) {
+    const hd = state.hourData[state.window], stats = state.stats[state.window];
+    const out = {wd: new Array(24).fill(null), we: new Array(24).fill(null)};
+    let total = 0;
+    for (const pat of dirs) total += pat.slices.length;
+    for (const [kind, add] of [["wd", 0], ["we", 24]]) {
+      for (let h = 0; h < 24; h++) {
+        let lost = 0, slices = 0;
+        for (const pat of dirs) {
+          for (const [pi, b] of pat.slices) {
+            const p = pieces[pi], st = stats.pieces[p.id], row = hd.pieces[p.id]?.[String(h + add)];
+            if (!st || st.clean[b] == null || !row || row[0][b] < HOUR_MIN_N) continue;
+            lost += Math.max(0, row[1][b] - st.clean[b]);
+            slices += 1;
+          }
+        }
+        if (slices >= 0.5 * total) out[kind][h] = lost / (slices * net.bin_m) * 100;
+      }
+    }
+    return out;
+  }
+  const HOUR_SERIES = [["wd", "Weekdays"], ["we", "Weekends"]];
+  function hourChart(dirs) {
+    if (!state.hourData[state.window]) {
+      // Fetched the first time a route card needs it, then the card redraws.
+      get(`hours-${state.window}.json`).then((d) => { state.hourData[state.window] = d; renderRouteCard(); });
+      return `<div class="hour-chart"><div class="label">Delay by hour</div><p class="dir-stats">Loading…</p></div>`;
+    }
+    const prof = hourProfile(dirs);
+    const vals = [...prof.wd, ...prof.we].filter((v) => v != null);
+    if (vals.length < 4) return "";
+    const W = 300, H = 110, L = 26, R = 8, T = 8, B = 18;
+    const ymax = Math.max(5, Math.ceil(Math.max(...vals) / 5) * 5);
+    const x = (h) => L + (h + 0.5) / 24 * (W - L - R), y = (v) => T + (1 - v / ymax) * (H - T - B);
+    const path = (arr) => arr.map((v, h) => (v == null ? null : `${x(h).toFixed(1)},${y(v).toFixed(1)}`))
+      .reduce((acc, pt) => { if (pt) acc[acc.length - 1].push(pt); else if (acc[acc.length - 1].length) acc.push([]); return acc; }, [[]])
+      .filter((seg) => seg.length > 1).map((seg) => `M${seg.join("L")}`).join("");
+    const dots = (arr, cls) => arr.map((v, h) => (v == null ? "" : `<circle class="${cls}" cx="${x(h).toFixed(1)}" cy="${y(v).toFixed(1)}" r="1.6"/>`)).join("");
+    const [a, z] = hourRange();
+    const band = state.time !== "all"
+      ? `<rect class="hc-band" x="${(L + a / 24 * (W - L - R)).toFixed(1)}" y="${T}" width="${((z - a) / 24 * (W - L - R)).toFixed(1)}" height="${H - T - B}"/>` : "";
+    const grid = [0, ymax / 2, ymax].map((v) => `<line class="hc-grid" x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/>` +
+      `<text class="hc-tick" x="${L - 4}" y="${y(v) + 3}" text-anchor="end">${v}</text>`).join("");
+    const xt = [0, 6, 12, 18, 24].map((h) => `<text class="hc-tick" x="${(L + h / 24 * (W - L - R)).toFixed(1)}" y="${H - 4}" text-anchor="middle">${clock(h).replace("midnight", "12am")}</text>`).join("");
+    const summary = HOUR_SERIES.map(([k, name]) => {
+      const v = prof[k], peak = v.reduce((best, val, h) => (val != null && (best < 0 || val > v[best]) ? h : best), -1);
+      return peak < 0 ? "" : `${name}: worst ${clock(peak)}–${clock(peak + 1)}, ${v[peak].toFixed(1)} s per 100 m`;
+    }).filter(Boolean).join(". ");
+    return `<div class="hour-chart"><div class="label">Delay by hour <span class="label-note">(${WINDOW_LABELS[state.window].toLowerCase()})</span></div>` +
+      `<div class="hc-legend">${HOUR_SERIES.map(([k, n]) => `<span class="hc-${k}"><i></i>${n}</span>`).join("")}` +
+      `<span class="hc-read" aria-live="polite"></span></div>` +
+      `<svg viewBox="0 0 ${W} ${H}" class="hc-svg" role="img" aria-label="Delay by hour of day, seconds per 100 metres. ${summary}">` +
+      band + grid + xt +
+      HOUR_SERIES.map(([k]) => `<path class="hc-line hc-${k}" d="${path(prof[k])}"/>${dots(prof[k], `hc-dot hc-${k}`)}`).join("") +
+      `<line class="hc-cross" x1="0" x2="0" y1="${T}" y2="${H - B}" visibility="hidden"/>` +
+      `<rect class="hc-hit" x="${L}" y="0" width="${W - L - R}" height="${H}" data-prof='${JSON.stringify(prof)}'/></svg>` +
+      `<p class="hc-note">Seconds lost per 100 m, both directions. Shaded: the time of day picked above.</p></div>`;
+  }
+  // Hover / touch on the hour chart: a crosshair and the two values in the legend line.
+  document.addEventListener("pointermove", (e) => {
+    const hit = e.target.closest?.(".hc-hit");
+    const svg = hit?.ownerSVGElement || document.querySelector(".hc-svg");
+    if (!svg) return;
+    const cross = svg.querySelector(".hc-cross"), read = svg.parentElement.querySelector(".hc-read");
+    if (!hit) { cross.setAttribute("visibility", "hidden"); read.textContent = ""; return; }
+    const r = hit.getBoundingClientRect(), box = svg.viewBox.baseVal;
+    const sx = box.width / svg.getBoundingClientRect().width;
+    const hx = +hit.getAttribute("x"), hw = +hit.getAttribute("width");
+    const h = Math.max(0, Math.min(23, Math.floor((e.clientX - r.left) * sx / hw * 24)));
+    const prof = JSON.parse(hit.dataset.prof);
+    const cx = hx + (h + 0.5) / 24 * hw;
+    cross.setAttribute("x1", cx); cross.setAttribute("x2", cx); cross.setAttribute("visibility", "visible");
+    const f = (v) => (v == null ? "–" : `${v.toFixed(1)} s`);
+    read.textContent = `${clock(h)}–${clock(h + 1)}: ${f(prof.wd[h])} weekdays · ${f(prof.we[h])} weekends`;
+  });
 
   function flyToRoute() {
     const ps = visiblePieces();

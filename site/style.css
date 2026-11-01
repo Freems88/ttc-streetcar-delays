@@ -6,6 +6,8 @@
   --line: #e2e2de;
   --accent: #8a1c2b;
   --shadow: 0 6px 24px rgba(20, 20, 30, 0.12);
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
   --s-normal: #8cc5ad;
   --s-diverted: #f08b3a;
   --s-mixed: #f3c95b;
@@ -30,7 +32,7 @@
     --bg: #121314; --card: rgba(28, 29, 31, 0.96); --surface: #1f2023; --ink: #e8e8e6; --on-ink: #121314;
     --muted: #a3a6aa; --line: #34363a; --accent: #ff7a8c; --shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
     --s-normal: #5f9e86; --s-diverted: #e07b2e; --s-mixed: #d9b24a; --s-bus: #d0506a; --s-none: #3a3c40; --s-nodata: #26282b;
-    --prelim-bg: #3a2f17; --prelim-ink: #f1d9a6; --tip-bg: rgba(44, 46, 50, 0.97); --k-stop: #d0d0d0; --ctrl-icon-filter: invert(0.9);
+    --series-1: #3987e5; --series-2: #d95926; --prelim-bg: #3a2f17; --prelim-ink: #f1d9a6; --tip-bg: rgba(44, 46, 50, 0.97); --k-stop: #d0d0d0; --ctrl-icon-filter: invert(0.9);
     --legend-delay: linear-gradient(90deg, #6ebea0 0%, #f3d36b 13.3%, #f08b3a 25%, #e64646 50%, #ff5aa0 100%);
     --legend-speed: linear-gradient(90deg, #ff5aa0 0%, #e64646 18%, #f08b3a 36%, #f3d36b 55%, #6ebea0 73%, #3c9c86 100%);
     color-scheme: dark;
@@ -40,7 +42,7 @@
   --bg: #121314; --card: rgba(28, 29, 31, 0.96); --surface: #1f2023; --ink: #e8e8e6; --on-ink: #121314;
   --muted: #a3a6aa; --line: #34363a; --accent: #ff7a8c; --shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
   --s-normal: #5f9e86; --s-diverted: #e07b2e; --s-mixed: #d9b24a; --s-bus: #d0506a; --s-none: #3a3c40; --s-nodata: #26282b;
-  --prelim-bg: #3a2f17; --prelim-ink: #f1d9a6; --tip-bg: rgba(44, 46, 50, 0.97); --k-stop: #d0d0d0; --ctrl-icon-filter: invert(0.9);
+  --series-1: #3987e5; --series-2: #d95926; --prelim-bg: #3a2f17; --prelim-ink: #f1d9a6; --tip-bg: rgba(44, 46, 50, 0.97); --k-stop: #d0d0d0; --ctrl-icon-filter: invert(0.9);
   --legend-delay: linear-gradient(90deg, #6ebea0 0%, #f3d36b 13.3%, #f08b3a 25%, #e64646 50%, #ff5aa0 100%);
   --legend-speed: linear-gradient(90deg, #ff5aa0 0%, #e64646 18%, #f08b3a 36%, #f3d36b 55%, #6ebea0 73%, #3c9c86 100%);
   color-scheme: dark;
@@ -126,6 +128,23 @@ input[type=range] { accent-color: var(--accent); }
 .breakdown-note { font-size: 12px; color: var(--muted); margin: 6px 0 10px; }
 .tsp { font-size: 13px; margin: 0 0 12px; padding: 8px 10px; background: var(--bg); border-radius: 6px; }
 .tsp .tsp-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.tsp .tsp-head { font-weight: 600; margin-bottom: 2px; }
+.tsp > div + div { margin-top: 2px; }
+.hour-chart { margin: 10px 0 4px; }
+.hc-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--muted); margin: 2px 0; min-height: 16px; }
+.hc-legend i { display: inline-block; width: 12px; height: 2px; border-radius: 1px; vertical-align: middle; margin-right: 4px; background: var(--c); }
+.hc-legend .hc-read { color: var(--ink); margin-left: auto; }
+.hc-svg { width: 100%; height: auto; display: block; overflow: visible; touch-action: pan-y; }
+.hc-line { fill: none; stroke: var(--c); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.hc-dot { fill: var(--c); }
+.hc-wd { --c: var(--series-1); }
+.hc-we { --c: var(--series-2); }
+.hc-grid { stroke: var(--line); stroke-width: 1; }
+.hc-tick { font-size: 9px; fill: var(--muted); }
+.hc-band { fill: var(--ink); opacity: 0.06; }
+.hc-cross { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 2 2; }
+.hc-hit { fill: transparent; cursor: crosshair; }
+.hc-note { font-size: 11px; color: var(--muted); margin: 2px 0 0; }
 
 .compare-open { margin: 0 0 12px; font-size: 13px; }
 .compare { max-width: 600px; }
