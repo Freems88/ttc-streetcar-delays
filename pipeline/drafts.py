@@ -281,10 +281,9 @@ def waits_post(when, net, agg):
     label = lambda pid: f"{pats[pid]['route']} {pats[pid]['name']} {pats[pid]['direction'].lower()}"
     extra = lambda m: f"{m:.1f} min extra" if m >= 0.05 else "no extra wait"
     worst, best = max(per, key=lambda p: per[p]["ewt"]), min(per, key=lambda p: per[p]["ewt"])
-    head = (f"{when}: on frequent streetcar routes, bunching and missing cars added {max(0, avg):.1f} min "
-            f"to the average wait, compared with the schedule.\n\n")
-    worst_line = (f"Worst: {label(worst)}, {extra(per[worst]['ewt'])}; "
-                  f"{share_text(per[worst]['bunched'])} cars came bunched.")
+    head = (f"{when}: on frequent routes, bunching and missing cars made the average wait at a stop "
+            f"{max(0, avg):.1f} min longer than scheduled.\n\n")
+    worst_line = f"Worst: {label(worst)}, {extra(per[worst]['ewt'])}; {share_text(per[worst]['bunched'])} cars bunched."
     best_line = f"\nSteadiest: {label(best)}, {extra(per[best]['ewt'])}."
     link = f"\n\n{SITE_URL}#v=wait"
     # Long route names can push it over the limit; the steadiest route goes first.
