@@ -626,7 +626,7 @@
       const b = Math.min(p.bins.length - 1, Math.floor(s.along / net.bin_m));
       if (!onRoute(p, b)) return [];
       const o = offsetM ? [p.normals[b][0] * offsetM, p.normals[b][1] * offsetM] : [0, 0];
-      return [{pos: [s.lonlat[0] + o[0], s.lonlat[1] + o[1]], name: s.name, id: s.id}];
+      return [{pos: [s.lonlat[0] + o[0], s.lonlat[1] + o[1]], name: s.name, id: s.id, dir: approachAt(p, b)}];
     });
   }
   function updateOffset() {
@@ -873,7 +873,7 @@
         // Several routes at one stop: their excess waits averaged by number of headways.
         const n = per.reduce((t, [, w]) => t + w.n, 0);
         const ewt = per.reduce((t, [, w]) => t + w.ewt * w.n, 0) / n;
-        cols.push({pos: s.pos, name: s.name, id: s.id, per, ewt, n,
+        cols.push({pos: s.pos, name: s.name, id: s.id, dir: s.dir, per, ewt, n,
           color: colorFor(Math.max(0, ewt), confidence(n / 2), pal.wait)});
       }
     }
@@ -1093,7 +1093,7 @@
     const nearStop = p.tags[b] === 1 || p.tags[b] === 3;
     tip.innerHTML =
       `<div class="t-title">${stop ? `Near ${stop}` : "Streetcar track"}</div>` +
-      `<div class="t-dim">${p.routes.join(", ")}</div>` +
+      `<div class="t-dim">${approachAt(p, b)} · ${p.routes.join(", ")}</div>` +
       `<div class="t-big">${Math.round(kmh)} km/h clean-run speed</div>` +
       `<div class="t-dim">How fast the quickest 10% of daytime passes move here, not counting time stopped at stops.` +
       `<br>${fmt(st.n[b])} passes</div>` +
@@ -1143,7 +1143,7 @@
     const ewtTxt = (v) => (v < -0.05 ? `${minTxt(-v)} shorter than scheduled` : `+${minTxt(v)} excess wait`);
     tip.innerHTML =
       `<div class="t-title">${c.name}</div>` +
-      `<div class="t-dim">${c.per.map(([r]) => r).join(", ")} · ${timeLabel()}</div>` +
+      `<div class="t-dim">${c.dir} · ${c.per.map(([r]) => r).join(", ")} · ${timeLabel()}</div>` +
       (c.per.length === 1 ? `<div class="t-big">${ewtTxt(c.per[0][1].ewt)}</div>${waitLines(c.per[0][1])}`
         : `<div class="t-big">${ewtTxt(c.ewt)} (routes averaged)</div>` + c.per.map(([r, w]) =>
           `<div class="t-routes"><div class="t-head">${r} ${routeNames[r] || ""}: ${ewtTxt(w.ewt)}</div>${waitLines(w)}</div>`).join("")) +
@@ -1180,7 +1180,7 @@
     const routes = (sliceRoutes.get(`${p.index}:${b}`) || []).filter((id) => routeOn(patterns[id].route));
     tip.innerHTML =
       `<div class="t-title">${stop ? `Near ${stop}` : "Streetcar track"}</div>` +
-      `<div class="t-dim">${p.routes.join(", ")} · ${timeLabel()}</div>` +
+      `<div class="t-dim">${approachAt(p, b)} · ${p.routes.join(", ")} · ${timeLabel()}</div>` +
       `<div class="t-kind">${kindText(p, b)}</div>` +
       `<div class="t-big">${rate.toFixed(1)} s lost per 100 m</div>` +
       `<div>The ${span} m around here cost a typical car <b>${lostHere < 1 ? "under 1 s" : `${Math.round(lostHere)} s`}</b></div>` +
