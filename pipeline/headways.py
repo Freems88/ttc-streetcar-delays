@@ -12,6 +12,7 @@ sums the page combines over any time selection:
   nb, ng        bunched (under half the scheduled headway) and gaps (over 1.5x)
   shm, sd2      sum of the scheduled headway each observed one is set against, and of
                 (observed - scheduled)^2, for the TCQSM headway coefficient of variation
+  h0..h7        observed headways by length: under 2, 4, 6, 8, 10, 15, 20 minutes, and longer
   ns, shs, shs2 scheduled headways: count, sum, sum of squares
 
 From those: average wait for a rider turning up at random, sh2 / (2 sh), against the
@@ -35,7 +36,8 @@ LOG_GAP_S = 300      # no positions fetched for longer than this = a gap in logg
 SAME_CAR_S = 300     # the same vehicle leaving the same stop again this soon is one departure
 BUNCHED, GAP = 0.5, 1.5
 DEPART_M = 15        # time a car passes this far beyond the stop: it's moving again by then
-FIELDS = ["n", "sh", "sh2", "nb", "ng", "shm", "sd2", "ns", "shs", "shs2"]
+HIST_EDGES = [120, 240, 360, 480, 600, 900, 1200]  # seconds; the spread of gaps shown on the page
+FIELDS = ["n", "sh", "sh2", "nb", "ng", "shm", "sd2", "ns", "shs", "shs2"] + [f"h{i}" for i in range(len(HIST_EDGES) + 1)]
 
 
 def _reader(z, name):
@@ -226,6 +228,7 @@ def summarize(day, departures, fetch_times, hour_key, track_stops):
             row[4] += h > GAP * hs
             row[5] += hs
             row[6] += (h - hs) ** 2
+            row[10 + bisect.bisect_right(HIST_EDGES, h)] += 1
         if sum(r[0] for r in rows.values()) < n_sched / 3:
             off[stop].append(route)
             continue

@@ -312,7 +312,8 @@
   // --- waits (headway regularity) --------------------------------------------------
   // Per stop and route, sums over the selected hours (see pipeline/headways.py):
   // [n, sum h, sum h², bunched, gaps, sum scheduled h at each observed one,
-  //  sum (h - scheduled)², scheduled n, scheduled sum h, scheduled sum h²], seconds.
+  //  sum (h - scheduled)², scheduled n, scheduled sum h, scheduled sum h², then counts of
+  //  headways under 2, 4, 6, 8, 10, 15, 20 min and longer], seconds.
   const ALL_KEYS = Array.from({length: 48}, (_, i) => String(i));
   const MIN_HEADWAYS = 20;
   // TCQSM headway adherence (coefficient of variation of headway deviations).
@@ -325,7 +326,8 @@
     const awt = sh2 / (2 * sh) / 60, swt = shs2 / (2 * shs) / 60, even = sh / (2 * n) / 60;
     const cv = Math.sqrt(sd2 / n) / (shm / n);
     return {n, ns, awt, swt, ewt: awt - swt, uneven: awt - even, missing: even - swt, bunched: nb / n, gaps: ng / n,
-      seen: n / ns, cv, los: TCQSM.find(([x]) => cv <= x), schedH: shs / ns / 60};
+      seen: n / ns, cv, los: TCQSM.find(([x]) => cv <= x), schedH: shs / ns / 60, obsH: sh / n / 60,
+      spread: a.length >= 18 ? a.slice(10, 18) : null};
   }
   function sumHours(hours, keys) {
     if (!hours) return null;
@@ -1102,12 +1104,33 @@
   }
 
   const minTxt = (m) => `${Math.abs(m) < 0.05 ? "0" : m.toFixed(1)} min`;
+  // The spread of gaps between cars as small bars, with the scheduled gap marked.
+  const SPREAD_EDGES = [0, 2, 4, 6, 8, 10, 15, 20];
+  function spreadSvg(w) {
+    if (!w.spread) return "";
+    const W = 240, H = 58, B = 12, bw = W / 8, max = Math.max(...w.spread, 1);
+    const bars = w.spread.map((c, i) => {
+      const h = c / max * (H - B - 4);
+      return `<rect x="${(i * bw + 1).toFixed(1)}" y="${(H - B - h).toFixed(1)}" width="${(bw - 2).toFixed(1)}" height="${h.toFixed(1)}" rx="1"/>`;
+    }).join("");
+    const labels = SPREAD_EDGES.map((m, i) => `<text x="${(i * bw).toFixed(1)}" y="${H - 2}">${m}</text>`).join("") +
+      `<text x="${W}" y="${H - 2}" text-anchor="end">min</text>`;
+    // Scheduled gap, placed within its bar's range.
+    const k = Math.min(7, SPREAD_EDGES.filter((m) => m <= w.schedH).length - 1);
+    const hi = SPREAD_EDGES[k + 1] ?? SPREAD_EDGES[k] + 10;
+    const sx = (k + Math.min(1, (w.schedH - SPREAD_EDGES[k]) / (hi - SPREAD_EDGES[k]))) * bw;
+    return `<svg class="t-spread" viewBox="0 0 ${W} ${H}" role="img" aria-label="Gaps between cars: ` +
+      `${w.spread.map((c, i) => `${c} ${i < 7 ? `under ${SPREAD_EDGES[i + 1]}` : "over 20"} min`).join(", ")}">${bars}` +
+      `<line x1="${sx.toFixed(1)}" x2="${sx.toFixed(1)}" y1="0" y2="${H - B}"/>${labels}</svg>`;
+  }
   function waitLines(w) {
     const parts = [];
     if (w.uneven >= 0.1) parts.push(`uneven spacing adds ${minTxt(w.uneven)}`);
     if (w.missing >= 0.1) parts.push(`missing cars add ${minTxt(w.missing)}`);
-    return `<div>Riders turning up at random waited <b>${minTxt(w.awt)}</b> on average, ` +
-      `vs ${minTxt(w.swt)} if cars had come as scheduled (about every ${Math.round(w.schedH)} min)` +
+    return `<div>Cars came every <b>${minTxt(w.obsH)}</b> on average; scheduled every ${minTxt(w.schedH)}</div>` +
+      (w.spread ? `<div class="t-dim">Gaps between cars <span class="t-key">(dashed: scheduled gap)</span></div>${spreadSvg(w)}` : "") +
+      `<div>Riders turning up at random waited <b>${minTxt(w.awt)}</b> on average, ` +
+      `vs ${minTxt(w.swt)} if cars had come as scheduled` +
       (parts.length ? `: ${parts.join(", ")}` : "") + `</div>` +
       `<div class="t-dim">${Math.round(w.bunched * 100)}% of cars came bunched (under half the scheduled gap behind the one ahead) · ` +
       `${Math.round(w.gaps * 100)}% after a big gap (over 1.5×) · ${Math.round(Math.min(w.seen, 9.99) * 100)}% of scheduled cars seen<br>` +

@@ -26,6 +26,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 import fleet
+import headways
 import signals
 import turns
 from common import BIN_M, DATA_DIR, NIGHT_TWIN, SLOT_LABELS, SLOTS, WORK_DIR, service_day
@@ -263,7 +264,8 @@ def headway_stats(days):
             for route, hours in routes.items():
                 acc = stops[stop][route]
                 for h, row in hours.items():
-                    acc[h] = [x + y for x, y in zip(acc[h], row)] if h in acc else list(row)
+                    row = list(row) + [0] * (len(headways.FIELDS) - len(row))  # days from before the spread was kept
+                    acc[h] = [x + y for x, y in zip(acc[h], row)] if h in acc else row
         for stop, routes in d.get("heads_off", {}).items():
             for route in routes:
                 off[stop][route] += 1
