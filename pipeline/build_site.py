@@ -247,6 +247,28 @@ def hour_stats(network, days):
     return {"pieces": out}
 
 
+def headway_stats(days):
+    """Per stop, route and hour key: the headway sums from headways.py added up over the
+    days (only days a saved schedule covered have them), plus how many of those days each
+    stop wasn't served on its route (diverted, or buses off the track)."""
+    stops = defaultdict(lambda: defaultdict(dict))
+    off = defaultdict(lambda: defaultdict(int))
+    n_days = 0
+    for d in days:
+        if "heads" not in d:
+            continue
+        n_days += 1
+        for stop, routes in d["heads"].items():
+            for route, hours in routes.items():
+                acc = stops[stop][route]
+                for h, row in hours.items():
+                    acc[h] = [x + y for x, y in zip(acc[h], row)] if h in acc else list(row)
+        for stop, routes in d.get("heads_off", {}).items():
+            for route in routes:
+                off[stop][route] += 1
+    return {"days": n_days, "stops": stops, "off": off}
+
+
 def timeline(days, network):
     route_ids = sorted({p["route"] for p in network["patterns"]})
     last = max(days) if days else date.today().isoformat()
@@ -424,6 +446,7 @@ def main():
         return [d for k, d in days.items() if k >= start]
     windows = {"d15": since(15), "d30": since(30), "recent": since(WINDOW_DAYS), "all": list(days.values())}
     stats = {w: window_stats(network, ds) for w, ds in windows.items()}
+    head_days = {}
     hist = update_history(stats["recent"], last, network)
     for pid, r in stats["recent"]["routes"].items():
         r["moved"] = moved(hist, last, pid)
@@ -431,6 +454,9 @@ def main():
         (data / f"stats-{w}.json").write_text(json.dumps(s, separators=(",", ":")))
     for w, ds in windows.items():
         (data / f"hours-{w}.json").write_text(json.dumps(hour_stats(network, ds), separators=(",", ":")))
+        heads = headway_stats(ds)
+        head_days[w] = heads["days"]
+        (data / f"headways-{w}.json").write_text(json.dumps(heads, separators=(",", ":")))
 
     # The last finished service day, measured against the recent window's clean run
     # (one day is too little to set its own). Used by the bot drafts and screenshot mode.
@@ -482,7 +508,8 @@ def main():
     meta = {
         "generated": int(time.time()),
         "first_day": min(days), "last_day": last,
-        "windows": {w: {"days": len(ds), "from": min(d["day"] for d in ds), **totals(ds)} for w, ds in windows.items()},
+        "windows": {w: {"days": len(ds), "from": min(d["day"] for d in ds), "headway_days": head_days[w], **totals(ds)}
+                    for w, ds in windows.items()},
         "window_days": WINDOW_DAYS, "clean_pct": CLEAN_PCT, "min_samples": MIN_SAMPLES,
         "slots": SLOT_LABELS,
         "yesterday": yesterday,

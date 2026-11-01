@@ -11,7 +11,8 @@ The TTC publishes live streetcar positions (GTFS-Realtime) but keeps no history,
   - `gtfs_snapshot.py`: saves each new TTC static GTFS published on Toronto Open Data (daily check).
 - `pipeline/`: stdlib-only Python, run nightly on the Pi by `pi/ttc-delays-nightly.timer`.
   - `network.py`: builds directed track pieces from every streetcar pattern in every saved schedule. Pieces never change once made, so stats stay comparable when routes change; new track adds pieces.
-  - `process_day.py`: snaps a day's pings to the track and records the seconds each pass spent on every 25 m slice and every stop interval.
+  - `process_day.py`: snaps a day's pings to the track and records the seconds each pass spent on every 25 m slice and every stop interval, plus when every vehicle on the route (buses too) left each stop.
+  - `headways.py`: headway regularity against the schedule in effect that day (cached per saved schedule in `sched/`): excess wait (TfL), bunching and gaps, cars seen vs scheduled, and the TCQSM headway coefficient of variation, per stop, route and hour.
   - `build_site.py`: combines days into last-90-days and all-time stats, route summaries and a per-route bus/diversion timeline with alerts.
   - `signals.py`: fetches the City of Toronto traffic signal list (monthly) and labels each slice stop / signal / both / elsewhere, since stop delay is mostly boarding and signal delay mostly red lights.
   - `turns.py`: turn prohibitions from the traffic by-law (Chapter 950, Schedule 23), streamed from the City's ~800 MB by-law file every 90 days and matched to signals by street name.
@@ -23,6 +24,7 @@ The TTC publishes live streetcar positions (GTFS-Realtime) but keeps no history,
 
 - **Clean run, per slice:** taken from daytime passes only (06:00 to midnight), so overnight cars skipping quiet stops don't set it. It's the 10th-percentile time through the slice, plus the stop's normal stopping time spread around each passenger stop. That stopping time is the 10th-percentile time from the midpoint before the stop to the midpoint after it, minus the fast-pass times of the slices in between.
 - **Delay:** the average time minus the clean run, per 100 m, overall or by time of day.
+- **Waits:** headways at each stop, frequent service only (scheduled every 12 min or better). Average wait for a rider arriving at random is sum(h²) / 2 sum(h); excess wait is that minus the same for the scheduled headways. Bunched = under half the scheduled headway, gap = over 1.5×. A stop where under a third of scheduled cars showed up that day counts as not served (diversion) and is left out. Only days a saved schedule covers have headway data (from 2026-11-01).
 - **Excluded:** standing still for over 3 minutes counts as a layover and is cut out. Buses on streetcar routes are left out of delay stats but counted in the route timeline.
 
 ## Running locally

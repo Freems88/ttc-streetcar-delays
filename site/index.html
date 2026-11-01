@@ -41,7 +41,9 @@
       <div class="seg" role="group" aria-label="What the map shows">
         <button data-view="delay" class="on">Delay</button>
         <button data-view="speed">Clean-run speed</button>
+        <button data-view="wait">Waits</button>
       </div>
+      <p id="wait-note" class="field-note" hidden>How much longer riders wait at each stop than if cars came as scheduled: bunching and gaps, plus cars that never came. Taller and hotter is worse. <button class="linkish" data-explain="waits">More</button><span id="wait-empty" hidden><br><b>No headway data in this window yet.</b> It starts with the first day a saved TTC schedule covers.</span></p>
       <p id="speed-note" class="field-note" hidden>How fast a clean run moves, not counting time stopped at stops. Shows slowness every car shares (curves, switches, slow orders) that the delay view can't. <button class="linkish" data-explain>More</button></p>
     </div>
     <div class="field" id="time-field">
@@ -76,13 +78,6 @@
         <button data-dir="both" class="on">Both</button>
         <button data-dir="en">East / North</button>
         <button data-dir="ws">West / South</button>
-      </div>
-    </div>
-    <div class="field">
-      <span class="label">Show delay at</span>
-      <div class="seg" role="group" aria-label="Which spots to show">
-        <button data-show="all" class="on">Everywhere</button>
-        <button data-show="nostop">Hide stop-only spots</button>
       </div>
     </div>
     <label class="check">
@@ -146,6 +141,7 @@
   <div class="seg compare-seg" role="group" aria-label="Measure">
     <button data-measure="perkm" class="on">Per km of route</button>
     <button data-measure="total">Total a day</button>
+    <button data-measure="wait">Excess wait</button>
   </div>
   <p class="compare-lede" id="compare-lede"></p>
   <div id="compare-rows" class="compare-rows" role="list"></div>
@@ -170,7 +166,7 @@
     <li><b>Stop and signal:</b> both at once. Most Toronto stops are at intersections, and with positions only every ~30 seconds there's no way to split "doors open" from "waiting for green" there.</li>
     <li><b>Elsewhere:</b> between stops and signals: traffic, turning cars, slow zones and long queues backing up from a signal.</li>
   </ul>
-  <p>"Hide stop-only spots" leaves out the spots that are only a stop, to focus on signals and traffic. The tooltip also says whether a signal has transit priority.</p>
+  <p>The tooltip also says whether a signal has transit priority.</p>
   <p><b>Turn bans.</b> Zoom in and a small icon marks signals where the City's traffic by-law bans turns; hover for which turns, which directions and when, and whether streetcars are exempt. "No turn on red" rules are left out.</p>
   <h3 id="explain-tsp">Transit signal priority</h3>
   <p>The panel compares the time a typical streetcar loses approaching signals <b>with</b> and <b>without</b> transit signal priority: the median across signal approaches (the ~100&nbsp;m before each signal, each direction separately, with at least 20 passes). It follows the route, direction and time-of-day filters. Read it with care:</p>
@@ -181,6 +177,16 @@
   </ul>
   <h3>Clean-run speed view</h3>
   <p>The delay view compares each spot with its own clean run, so slowness that every car shares is invisible there. The <b>clean-run speed</b> view shows that instead: how fast a clean run moves through each part of the track (the fastest 10% of daytime passes), leaving out time stopped at stops. Slow spots away from stops point to curves, switches and special trackwork, or slow orders on worn track. Near stops cars are braking and pulling away, so those parts are faded.</p>
+  <h3 id="explain-waits">Waits at stops</h3>
+  <p>Delay is about the car; riders also feel <i>spacing</i>. Two cars arriving together and then a long gap leave far more people waiting than evenly spaced cars, even if every car runs on time between stops. The <b>Waits</b> view measures that the way London and North American transit agencies do:</p>
+  <ul>
+    <li><b>Headway:</b> the time between one car and the next on the same route, leaving the same stop. Every vehicle on the route counts, buses included, since riders board those too.</li>
+    <li><b>Average wait:</b> for someone turning up at a random moment. Long gaps count for more: you're more likely to arrive during one, and you wait longer when you do.</li>
+    <li><b>Excess wait</b> (Transport for London's headline measure for frequent routes): the average wait minus the wait if cars had come exactly as the TTC's schedule says. It splits into <b>uneven spacing</b> (the cars that ran were bunched) and <b>missing cars</b> (fewer ran than scheduled, for example short turns).</li>
+    <li><b>Bunched:</b> a car leaving less than half the scheduled gap behind the one ahead. <b>Big gap:</b> more than 1.5× the scheduled gap.</li>
+    <li><b>Headway regularity (TCQSM):</b> the US <i>Transit Capacity and Quality of Service Manual</i> grades how far headways stray from schedule, from A ("like clockwork") to F ("most cars bunched"), by the coefficient of variation of the differences.</li>
+  </ul>
+  <p>Only frequent service counts: hours scheduled every 12 minutes or better. On infrequent service people time their trips to the schedule, so on-time performance matters more there. The schedule is the TTC's published one in effect that day. A stop where fewer than a third of scheduled cars showed up that day is treated as not served (a diversion, or buses off the track) and left out; its tooltip says on how many days. Departure times come from positions about every 30 seconds, so each headway is good to within about 10 to 20 seconds; a car the feed lost track of shows up as a longer gap.</p>
   <h3>What this doesn't show</h3>
   <ul>
     <li><b>Why.</b> It shows where, when and how much time is lost, not the cause. The stop and signal labels and the TTC's alerts are clues, not explanations.</li>

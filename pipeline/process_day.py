@@ -21,6 +21,9 @@ midnight: overnight cars on empty streets skip most stops, so they'd make the
 clean run a non-stopping run. Overnight passes still count in the sums and counts,
 and are compared against the daytime clean run.
 
+Every vehicle on a streetcar route, buses included, also gets the time it left each
+stop on the track, for the headway measures in headways.py.
+
 Standing still longer than LAYOVER_S is treated as a layover (terminal loops,
 change-offs) and cut out of the pass.
 
@@ -33,6 +36,7 @@ import math
 import sys
 from collections import defaultdict
 
+import headways
 from common import (BIN_M, DATA_DIR, FLEXITY_IDS, NIGHT_TWIN, WORK_DIR, PathGeom,
                     angle_diff, hour_key, slot_of, to_xy)
 
@@ -75,6 +79,9 @@ class Matcher:
         for p in self.pieces:
             a = [s["along"] for s in p["stops"]]
             self.bounds.append([(x + y) / 2 for x, y in zip(a, a[1:])])
+        # Where to time each stop's departures: a little past the stop, where cars are moving.
+        self.departs = [sorted(((s["id"], min(s["along"] + headways.DEPART_M, g.length - 1)) for s in p["stops"]),
+                               key=lambda v: v[1]) for p, g in zip(self.pieces, self.geoms)]
 
     def candidates(self, x, y, bearing):
         """{piece: [(along, distance)]} for track within MATCH_M heading the same way."""
@@ -161,6 +168,21 @@ def interval_times(seq, bounds):
     return {k: (cross[k + 1] - cross[k], cross[k]) for k in cross if k + 1 in cross}
 
 
+def departures(seq, targets):
+    """[(stop id, time)] for stop departure points [(stop id, along)] the pass went through."""
+    out = []
+    j = 0
+    for sid, x in targets:
+        while j + 1 < len(seq) and seq[j + 1][1] < x:
+            j += 1
+        if j + 1 >= len(seq):
+            break
+        (t1, a1), (t2, a2) = seq[j], seq[j + 1]
+        if a1 <= x < a2 and t2 - t1 <= MAX_GAP_S:
+            out.append((sid, t1 + (t2 - t1) * (x - a1) / (a2 - a1)))
+    return out
+
+
 def slice_times(seq):
     """{bin: (seconds, entry_time)} for slices the pass fully crossed."""
     first = math.ceil(seq[0][1] / BIN_M)
@@ -195,23 +217,26 @@ def process(day, network=None):
     m = Matcher(network)
 
     runs = defaultdict(dict)  # (vehicle, trip) -> {vehicle_ts: (t, x, y, bearing)}
+    bus_runs = defaultdict(dict)  # the same for buses on streetcar routes (headways only)
     run_route = {}
+    fetches = set()
     route_days = defaultdict(lambda: {"flex_on": 0, "flex_off": 0, "bus": 0})
     first_ts = last_ts = None  # how much of the day was logged
     with opener(src, "rt", newline="") as f:
         for r in csv.DictReader(f):
             ts = int(r["fetch_ts"])
+            fetches.add(ts)
             first_ts = ts if first_ts is None else min(first_ts, ts)
             last_ts = ts if last_ts is None else max(last_ts, ts)
             route = NIGHT_TWIN.get(r["route_id"], r["route_id"])
             vid = r["vehicle_id"]
-            if not (vid.isdigit() and int(vid) in FLEXITY_IDS):
+            flexity = vid.isdigit() and int(vid) in FLEXITY_IDS
+            if not flexity:
                 route_days[route]["bus"] += 1
-                continue
             vts = int(r["vehicle_ts"] or r["fetch_ts"])
             x, y = to_xy(float(r["lon"]), float(r["lat"]))
             brg = float(r["bearing"]) if r["bearing"] else None
-            runs[(vid, r["trip_id"])][vts] = (vts, x, y, brg)
+            (runs if flexity else bus_runs)[(vid, r["trip_id"])][vts] = (vts, x, y, brg)
             run_route[(vid, r["trip_id"])] = route
 
     # Route pattern slices, to count how much of its route each run covered ("trip
@@ -228,6 +253,7 @@ def process(day, network=None):
     hsums = defaultdict(lambda: defaultdict(lambda: defaultdict(float)))  # piece -> hour key -> bin -> s
     hcnts = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))    # piece -> hour key -> bin -> n
     ihist = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))  # piece -> interval -> bucket -> n
+    deps = defaultdict(list)  # (route, stop) -> [(time, vehicle)]
     n_pings = n_passes = n_samples = 0
     for key, by_ts in runs.items():
         route = run_route[key]
@@ -262,12 +288,23 @@ def process(day, network=None):
                 for k, (v, t_in) in interval_times(seq, m.bounds[pi]).items():
                     if slot_of(t_in, day) != "night":
                         ihist[pid][k][bucket(v)] += 1
+                for sid, t in departures(seq, m.departs[pi]):
+                    deps[(route, sid)].append((t, key[0]))
         # A run belongs to the direction it covered most (loops are shared by both).
         if run_cover:
             best = max(run_cover, key=run_cover.get)
             cover[route][best] += run_cover[best]
     for route, pats in cover.items():
         route_days[route]["cover"] = dict(pats)
+    for key, by_ts in bus_runs.items():
+        pings = [by_ts[t] for t in sorted(by_ts)]
+        passes, _ = split_passes(pings, [m.candidates(x, y, b) for _, x, y, b in pings])
+        for pi, whole in passes:
+            for seq in split_layovers(whole):
+                for sid, t in departures(seq, m.departs[pi]):
+                    deps[(run_route[key], sid)].append((t, key[0]))
+    heads = headways.summarize(day, deps, sorted(fetches), hour_key,
+                               {s["id"] for p in m.pieces for s in p["stops"]})
 
     out = {
         "day": day,
@@ -281,6 +318,8 @@ def process(day, network=None):
         "hsums": {p: {h: {b: round(v, 1) for b, v in d.items()} for h, d in hs.items()} for p, hs in hsums.items()},
         "hcnts": hcnts,
     }
+    if heads is not None:
+        out["heads"], out["heads_off"] = heads
     dest = WORK_DIR / "agg" / f"{day}.json.gz"
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_suffix(".tmp")

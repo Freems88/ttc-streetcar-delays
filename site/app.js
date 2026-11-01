@@ -1,6 +1,6 @@
 /* Toronto streetcar delay map: a 3D delay "curtain" over each piece of track. */
 (async function () {
-  const {MapboxOverlay, LineLayer, PathLayer, ScatterplotLayer, IconLayer} = deck;
+  const {MapboxOverlay, LineLayer, PathLayer, ScatterplotLayer, IconLayer, ColumnLayer} = deck;
 
   // Map colours per theme. On a dark map the top of the delay scale is bright magenta
   // instead of dark maroon, which would disappear; the clean-run speed scale mirrors it.
@@ -18,6 +18,9 @@
       base: [95, 160, 135, 220], faint: [110, 110, 110, 170], stop: [215, 215, 215, 220], vertical: [190, 190, 190, 55],
     },
   };
+  // Waits view: the delay colours at excess-wait breaks of 0, 1, 2, 4 and 8+ minutes.
+  const WAIT_BREAKS = [0, 1, 2, 4, 8];
+  for (const pl of Object.values(PALETTES)) pl.wait = pl.delay.map(([, c], i) => [WAIT_BREAKS[i], c]);
   let pal = PALETTES.light;
   const MAX_SHOWN = 100; // s per 100 m; taller peaks are capped (the tooltip shows the real value)
   // Peaks rise with the square root of the delay, so the few worst spots don't swamp the
@@ -28,8 +31,8 @@
     bus: "Mostly buses", none: "No vehicles seen", nodata: "Not logged",
   };
 
-  const state = {window: "recent", days: "all", time: "all", range: [7, 10], route: "", dir: "both", show: "all",
-    signals: true, height: 12, view: "delay", stats: {}};
+  const state = {window: "recent", days: "all", time: "all", range: [7, 10], route: "", dir: "both",
+    signals: true, height: 12, view: "delay", stats: {}, heads: {}};
   // Slice labels from build_site: 0 elsewhere, 1 stop, 2 signal, 3 stop + signal.
   const KINDS = [
     {name: "Elsewhere", color: "#9fb8ad"}, {name: "Stop only", color: "#f3c95b"},
@@ -87,6 +90,21 @@
   }
   async function loadHours(w) {
     if (usesHours() && !state.hourData[w]) state.hourData[w] = await get(`hours-${w}.json`);
+  }
+  // Headway sums per stop, route and hour (headways-<window>.json), for the waits view,
+  // route cards and the routes chart; fetched the first time one of those needs them.
+  const needHeads = () => state.view === "wait" || !!state.route;
+  async function loadHeads(w, force) {
+    if ((force || needHeads()) && !state.heads[w]) state.heads[w] = await get(`headways-${w}.json`);
+  }
+  // Hour keys (0-23 weekday, 24-47 weekend) in the current time selection.
+  function hourKeys() {
+    const [a, z] = hourRange(), keys = [];
+    for (let h = a; h < z; h++) {
+      if (state.days !== "we") keys.push(String(h));
+      if (state.days !== "wd") keys.push(String(h + 24));
+    }
+    return keys;
   }
   // A range that matches a preset is that preset, so its chip lights up.
   function setRange(a, b) {
@@ -173,12 +191,7 @@
     const hp = state.hourData[state.window]?.pieces[p.id];
     if (hp) {
       const [a, z] = hourRange();
-      const keys = [];
-      for (let h = a; h < z; h++) {
-        if (state.days !== "we") keys.push(String(h));
-        if (state.days !== "wd") keys.push(String(h + 24));
-      }
-      const rows = keys.map((k) => hp[k]).filter(Boolean);
+      const rows = hourKeys().map((k) => hp[k]).filter(Boolean);
       for (let b = 0; b < nb; b++) {
         if (st.clean[b] == null) continue;
         let c = 0, s = 0;
@@ -222,28 +235,37 @@
         await loadWindow(state.window);
         await loadHours(state.window);
       }
+      await loadHeads(state.window);
       render();
     }));
   }
   segGroup("window", "window");
   segGroup("dir", "dir");
-  segGroup("show", "show");
   segGroup("view", "view");
 
   function updateViewChrome() {
-    const speed = state.view === "speed";
+    const speed = state.view === "speed", wait = state.view === "wait";
     document.getElementById("speed-note").hidden = !speed;
+    document.getElementById("wait-note").hidden = !wait;
     // Clean-run speed is all daytime pooled, so time of day doesn't apply.
     document.getElementById("time-field").classList.toggle("disabled", speed);
     document.querySelectorAll("#time-field button").forEach((el) => { el.disabled = speed; });
-    document.getElementById("breakdown-box").hidden = speed;
-    document.getElementById("legend-title").textContent = speed
-      ? "Clean-run speed, km/h (stops not counted)" : "Delay vs. clean run, seconds per 100 m";
+    document.getElementById("breakdown-box").hidden = speed || wait;
+    document.getElementById("show-signals").disabled = wait;
+    document.getElementById("legend-title").textContent = speed ? "Clean-run speed, km/h (stops not counted)"
+      : wait ? "Excess wait at stops, minutes" : "Delay vs. clean run, seconds per 100 m";
     document.getElementById("legend-bar").classList.toggle("speed", speed);
     document.getElementById("legend-ticks").innerHTML = (speed ? ["0", "10", "20", "30", "40", "55+"]
-      : ["0", "8", "15", "30", "60+"]).map((t) => `<span>${t}</span>`).join("");
+      : wait ? ["0", "1", "2", "4", "8+"] : ["0", "8", "15", "30", "60+"]).map((t) => `<span>${t}</span>`).join("");
+    document.querySelectorAll(".legend-key .k-sig, .legend-key .k-tsp, .legend-key .k-turn")
+      .forEach((el) => { el.parentElement.hidden = wait; });
   }
-  routeSel.addEventListener("change", () => { state.route = routeSel.value; render(); flyToRoute(); });
+  routeSel.addEventListener("change", async () => {
+    state.route = routeSel.value;
+    await loadHeads(state.window);
+    render();
+    flyToRoute();
+  });
   document.getElementById("height").addEventListener("input", (e) => { state.height = +e.target.value; render(); });
   document.getElementById("show-signals").addEventListener("change", (e) => { state.signals = e.target.checked; render(); });
   const panel = document.getElementById("panel");
@@ -268,11 +290,67 @@
     else if (e.target.tagName === "DIALOG") e.target.close(); // click on the backdrop
   });
 
+  // --- waits (headway regularity) --------------------------------------------------
+  // Per stop and route, sums over the selected hours (see pipeline/headways.py):
+  // [n, sum h, sum h², bunched, gaps, sum scheduled h at each observed one,
+  //  sum (h - scheduled)², scheduled n, scheduled sum h, scheduled sum h²], seconds.
+  const ALL_KEYS = Array.from({length: 48}, (_, i) => String(i));
+  const MIN_HEADWAYS = 20;
+  // TCQSM headway adherence (coefficient of variation of headway deviations).
+  const TCQSM = [[0.21, "A", "like clockwork"], [0.30, "B", "slightly off headway"], [0.39, "C", "often off headway"],
+    [0.52, "D", "irregular, some bunching"], [0.74, "E", "frequent bunching"], [Infinity, "F", "most cars bunched"]];
+  function waitStats(a) {
+    if (!a) return null;
+    const [n, sh, sh2, nb, ng, shm, sd2, ns, shs, shs2] = a;
+    if (n < MIN_HEADWAYS || ns < MIN_HEADWAYS) return null;
+    const awt = sh2 / (2 * sh) / 60, swt = shs2 / (2 * shs) / 60, even = sh / (2 * n) / 60;
+    const cv = Math.sqrt(sd2 / n) / (shm / n);
+    return {n, ns, awt, swt, ewt: awt - swt, uneven: awt - even, missing: even - swt, bunched: nb / n, gaps: ng / n,
+      seen: n / ns, cv, los: TCQSM.find(([x]) => cv <= x), schedH: shs / ns / 60};
+  }
+  function sumHours(hours, keys) {
+    if (!hours) return null;
+    let acc = null;
+    for (const k of keys) {
+      const row = hours[k];
+      if (!row) continue;
+      acc ||= new Array(row.length).fill(0);
+      row.forEach((v, i) => { acc[i] += v; });
+    }
+    return acc;
+  }
+  const stopWaits = (stopId, route, keys = hourKeys()) =>
+    waitStats(sumHours(state.heads[state.window]?.stops[stopId]?.[route], keys));
+  // Each route direction's stops, in order along its pattern.
+  const patternStops = {};
+  for (const pat of net.patterns) {
+    const ids = [], on = new Set(pat.slices.map(([pi, b]) => `${pi}:${b}`));
+    for (const [pi] of pat.slices) {
+      for (const st of pieces[pi].stops) {
+        const b = Math.min(pieces[pi].bins.length - 1, Math.floor(st.along / net.bin_m));
+        if (on.has(`${pi}:${b}`) && !ids.includes(st.id)) ids.push(st.id);
+      }
+    }
+    patternStops[pat.id] = ids;
+  }
+  // A route direction's waits: excess wait averaged over its stops (as TfL averages a route's
+  // timing points); bunching, gaps and cars seen pooled over all its headways.
+  function routeWaits(pat, keys = hourKeys()) {
+    const per = patternStops[pat.id].map((id) => stopWaits(id, pat.route, keys)).filter(Boolean);
+    if (per.length < 3) return null;
+    const sum = (f) => per.reduce((t, w) => t + f(w), 0);
+    const n = sum((w) => w.n);
+    return {stops: per.length, ewt: sum((w) => w.ewt) / per.length, awt: sum((w) => w.awt) / per.length,
+      swt: sum((w) => w.swt) / per.length, bunched: sum((w) => w.bunched * w.n) / n, gaps: sum((w) => w.gaps * w.n) / n,
+      seen: n / sum((w) => w.ns)};
+  }
+
   // --- routes compared ------------------------------------------------------------
   // Hours a day of streetcar service spent beyond clean runs, per route and direction,
   // as sorted bars. Tapping a row shows that route and direction on the map.
   const compareDlg = document.getElementById("compare");
-  document.getElementById("compare-open").addEventListener("click", () => {
+  document.getElementById("compare-open").addEventListener("click", async () => {
+    await loadHeads(state.window, true);
     renderCompare();
     compareDlg.showModal();
   });
@@ -280,8 +358,9 @@
   // Two measures: per km (how bad a route is, length aside; the map's own unit) and
   // total a day (where the most time goes, so long and frequent routes count for more).
   let compareMeasure = "perkm";
-  document.querySelectorAll("[data-measure]").forEach((b) => b.addEventListener("click", () => {
+  document.querySelectorAll("[data-measure]").forEach((b) => b.addEventListener("click", async () => {
     compareMeasure = b.dataset.measure;
+    await loadHeads(state.window, true);
     document.querySelectorAll("[data-measure]").forEach((x) => x.classList.toggle("on", x === b));
     renderCompare();
   }));
@@ -299,6 +378,17 @@
       label: (v) => `${Math.round(v)} h`,
       sub: (p, r) => `${Math.round(r.trips_per_day)} trips a day · a typical trip takes ${r.ratio.toFixed(2)}× its clean-run total`,
     },
+    wait: {
+      lede: "Excess wait: how much longer riders wait for a car than they would if cars came as scheduled, averaged over the route's stops (frequent service only, all day). Tap a route to see it.",
+      value: (p) => routeWaits(p, ALL_KEYS)?.ewt ?? null,
+      label: (v) => `${v.toFixed(1)} min`,
+      sub: (p) => {
+        const w = routeWaits(p, ALL_KEYS);
+        return `${Math.round(w.bunched * 100)}% of cars bunched · ${Math.round(w.gaps * 100)}% after a big gap · ` +
+          `${Math.round(Math.min(w.seen, 9.99) * 100)}% of scheduled cars seen`;
+      },
+      needsDelay: false,
+    },
   };
 
   function renderCompare() {
@@ -307,7 +397,7 @@
     document.getElementById("compare-lede").textContent = m.lede;
     const rows = net.patterns.map((p) => {
       const r = stats.routes[p.id] || {};
-      return {p, r, v: r.ratio != null ? m.value(p, r) : null};
+      return {p, r, v: r.ratio != null || m.needsDelay === false ? m.value(p, r) : null};
     }).filter((x) => x.v != null).sort((a, b) => b.v - a.v);
     const max = Math.max(0.01, ...rows.map((x) => x.v));
     const box = document.getElementById("compare-rows");
@@ -335,7 +425,8 @@
     const missing = [...new Set(net.patterns.filter((p) => !shown.has(p.route)).map((p) => `${p.route} ${p.name}`))];
     const days = meta.windows[state.window].days;
     document.getElementById("compare-note").textContent =
-      (rows.length ? "" : "Not enough finished days logged yet. ") +
+      (rows.length ? "" : compareMeasure === "wait" ? "No headway data yet: it starts with the first day a saved schedule covers. "
+        : "Not enough finished days logged yet. ") +
       `${WINDOW_LABELS[state.window]}, finished days only` +
       (days < 14 ? ", preliminary: partly logged days count in proportion to the hours logged" : "") + "." +
       (missing.length ? ` No streetcar service measured on ${missing.join(", ")}.` : "");
@@ -393,10 +484,10 @@
   // --- shareable links --------------------------------------------------------------
   // Filters and camera live in the URL hash, e.g. #r=504&v=speed&c=-79.39,43.65,14,-17,58
   // t is a preset (am, pm, ...) or h<start hour> for a 2-hour window; dy is the day type.
-  const HASH_KEYS = {w: "window", dy: "days", r: "route", d: "dir", s: "show", v: "view"};
-  const DEFAULTS = {window: "recent", days: "all", route: "", dir: "both", show: "all", view: "delay"};
+  const HASH_KEYS = {w: "window", dy: "days", r: "route", d: "dir", v: "view"};
+  const DEFAULTS = {window: "recent", days: "all", route: "", dir: "both", view: "delay"};
   const ALLOWED = {window: Object.keys(WINDOW_LABELS), days: Object.keys(DAYS_LABELS), route: ["", ...Object.keys(routeNames)],
-    dir: ["both", "en", "ws"], show: ["all", "nostop"], view: ["delay", "speed"]};
+    dir: ["both", "en", "ws"], view: ["delay", "speed", "wait"]};
   function readHash() {
     const h = new URLSearchParams(location.hash.slice(1));
     for (const [k, key] of Object.entries(HASH_KEYS)) {
@@ -424,7 +515,7 @@
   }
   // Put the controls in line with state (after reading a link).
   function syncControls() {
-    for (const [attr, key] of [["window", "window"], ["dir", "dir"], ["show", "show"], ["view", "view"]]) {
+    for (const [attr, key] of [["window", "window"], ["dir", "dir"], ["view", "view"]]) {
       document.querySelectorAll(`[data-${attr}]`).forEach((b) => b.classList.toggle("on", b.dataset[attr] === state[key]));
     }
     syncTimeControls();
@@ -438,6 +529,7 @@
   syncControls();
   await loadWindow(state.window);
   await loadHours(state.window);
+  await loadHeads(state.window);
   const copyBtn = document.getElementById("copy-link");
   copyBtn.addEventListener("click", async () => {
     writeHash();
@@ -503,7 +595,7 @@
       const b = Math.min(p.bins.length - 1, Math.floor(s.along / net.bin_m));
       if (!onRoute(p, b)) return [];
       const o = offsetM ? [p.normals[b][0] * offsetM, p.normals[b][1] * offsetM] : [0, 0];
-      return [{pos: [s.lonlat[0] + o[0], s.lonlat[1] + o[1]], name: s.name}];
+      return [{pos: [s.lonlat[0] + o[0], s.lonlat[1] + o[1]], name: s.name, id: s.id}];
     });
   }
   function updateOffset() {
@@ -656,11 +748,6 @@
     return (sliceRoutes.get(`${p.index}:${b}`) || []).some((id) => patterns[id].route === state.route);
   }
 
-  // Also drops stop-only spots when "Hide stop-only spots" is on.
-  function binVisible(p, b) {
-    return !(state.show === "nostop" && p.tags[b] === 1) && onRoute(p, b);
-  }
-
   function runsOf(p) {
     const runs = [];
     let cur = null;
@@ -735,12 +822,52 @@
     renderRouteCard();
   }
 
+  // Waits view: a column at each stop, as tall and as hot as its excess wait.
+  const MAX_WAIT = 12; // minutes; taller columns are capped (the tooltip shows the real value)
+  const waitHeight = (v) => Math.sqrt(Math.max(0, Math.min(v, MAX_WAIT))) * state.height * 14;
+  function renderWait() {
+    const base = [], cols = [], seen = new Set();
+    const heads = state.heads[state.window];
+    const keys = hourKeys();
+    for (const p of visiblePieces()) {
+      for (const path of runsOf(p)) base.push({path});
+      if (!heads) continue;
+      for (const s of stopsOf(p)) {
+        if (seen.has(s.id)) continue;
+        seen.add(s.id);
+        const routes = Object.keys(heads.stops[s.id] || {}).filter((r) => !state.route || r === state.route).sort();
+        const per = routes.map((r) => [r, stopWaits(s.id, r, keys)]).filter(([, w]) => w);
+        if (!per.length) continue;
+        // Several routes at one stop: their excess waits averaged by number of headways.
+        const n = per.reduce((t, [, w]) => t + w.n, 0);
+        const ewt = per.reduce((t, [, w]) => t + w.ewt * w.n, 0) / n;
+        cols.push({pos: s.pos, name: s.name, id: s.id, per, ewt, n,
+          color: colorFor(Math.max(0, ewt), confidence(n / 2), pal.wait)});
+      }
+    }
+    // Thin columns that stay a few pixels wide at any zoom.
+    const mpp = 40075016 * KX / (512 * 2 ** map.getZoom());
+    drawn = cols.flatMap((c) => [c.pos[0], c.pos[1], 0, c.pos[0], c.pos[1], waitHeight(c.ewt)]);
+    screenPts = null;
+    overlay.setProps({layers: [
+      new PathLayer({id: "base", data: base, getPath: (x) => x.path, getColor: pal.faint, widthUnits: "pixels", getWidth: 2}),
+      new ColumnLayer({id: "waits", data: cols, getPosition: (x) => x.pos, getElevation: (x) => waitHeight(x.ewt),
+        radius: Math.max(8, 2.2 * mpp), diskResolution: 10, extruded: true, getFillColor: (x) => x.color,
+        material: false, pickable: true, autoHighlight: true, highlightColor: [0, 0, 0, 255],
+        onHover: showWaitTip, onClick: showWaitTip,
+        updateTriggers: {getElevation: [state.height, state.window, timeLabel()], getFillColor: [state.window, timeLabel()]}}),
+    ]});
+    renderRouteCard();
+    document.getElementById("wait-empty").hidden = (meta.windows[state.window].headway_days || 0) > 0;
+  }
+
   function render() {
     updateViewChrome();
     updateOffset();
     writeHash();
     document.getElementById("loading").hidden = true;
     if (state.view === "speed") return renderSpeed();
+    if (state.view === "wait") return renderWait();
     const stats = state.stats[state.window];
     const ridge = [], verticals = [], base = [], stops = [];
     const lostByKind = [0, 0, 0, 0];
@@ -759,7 +886,7 @@
       const slot = viewOf(p, st);
       const d = smoothed(slot.d);
       for (let b = 0; b < p.bins.length; b++) {
-        if (d[b] == null || !binVisible(p, b)) continue;
+        if (d[b] == null || !onRoute(p, b)) continue;
         if (slot.d[b] != null) lostByKind[p.tags[b]] += slot.d[b] * net.bin_m / 100;
         // Signal approaches (one per piece and signal) for the priority comparison.
         if (slot.d[b] != null && p.sig[b] >= 0 && p.tags[b] >= 2) {
@@ -772,7 +899,7 @@
         }
         const h = peakHeight(d[b]);
         verticals.push({from: [...pos(p, b), 0], to: [...pos(p, b), h]});
-        if (b + 1 < p.bins.length && d[b + 1] != null && binVisible(p, b + 1)) {
+        if (b + 1 < p.bins.length && d[b + 1] != null && onRoute(p, b + 1)) {
           const h2 = peakHeight(d[b + 1]);
           const n = Math.min(slot.n[b], slot.n[b + 1]);
           ridge.push({
@@ -936,6 +1063,36 @@
     placeTip(info);
   }
 
+  const minTxt = (m) => `${Math.abs(m) < 0.05 ? "0" : m.toFixed(1)} min`;
+  function waitLines(w) {
+    const parts = [];
+    if (w.uneven >= 0.1) parts.push(`uneven spacing adds ${minTxt(w.uneven)}`);
+    if (w.missing >= 0.1) parts.push(`missing cars add ${minTxt(w.missing)}`);
+    return `<div>Riders turning up at random waited <b>${minTxt(w.awt)}</b> on average, ` +
+      `vs ${minTxt(w.swt)} if cars had come as scheduled (about every ${Math.round(w.schedH)} min)` +
+      (parts.length ? `: ${parts.join(", ")}` : "") + `</div>` +
+      `<div class="t-dim">${Math.round(w.bunched * 100)}% of cars came bunched (under half the scheduled gap behind the one ahead) · ` +
+      `${Math.round(w.gaps * 100)}% after a big gap (over 1.5×) · ${Math.round(Math.min(w.seen, 9.99) * 100)}% of scheduled cars seen<br>` +
+      `Headway regularity (TCQSM): ${w.los[1]}, ${w.los[2]} · ${fmt(w.n)} headways</div>`;
+  }
+  function showWaitTip(info) {
+    if (!info.object) { tip.hidden = true; return; }
+    const c = info.object;
+    const off = state.heads[state.window]?.off[c.id] || {};
+    const offTxt = Object.entries(off).filter(([r]) => !state.route || r === state.route)
+      .map(([r, d]) => `${r}: not served on ${d} day${d === 1 ? "" : "s"} (diverted or off the track), left out`);
+    const ewtTxt = (v) => (v < -0.05 ? `${minTxt(-v)} shorter than scheduled` : `+${minTxt(v)} excess wait`);
+    tip.innerHTML =
+      `<div class="t-title">${c.name}</div>` +
+      `<div class="t-dim">${c.per.map(([r]) => r).join(", ")} · ${timeLabel()}</div>` +
+      (c.per.length === 1 ? `<div class="t-big">${ewtTxt(c.per[0][1].ewt)}</div>${waitLines(c.per[0][1])}`
+        : `<div class="t-big">${ewtTxt(c.ewt)} (routes averaged)</div>` + c.per.map(([r, w]) =>
+          `<div class="t-routes"><div class="t-head">${r} ${routeNames[r] || ""}: ${ewtTxt(w.ewt)}</div>${waitLines(w)}</div>`).join("")) +
+      (offTxt.length ? `<div class="t-routes t-dim">${offTxt.join("<br>")}</div>` : "") +
+      `<div class="t-routes t-dim">Frequent service only (scheduled every 12 min or better). Buses on the route count. More under “?”.</div>`;
+    placeTip(info);
+  }
+
   function showSignalTip(info) {
     if (!info.object) { tip.hidden = true; return; }
     const s = info.object.signal || info.object; // a turn sign carries its signal
@@ -992,6 +1149,9 @@
         const m = r.moved.change_s / 60;
         movedTxt = ` · clean-run total ${Math.abs(m) < 0.05 ? "unchanged" : `moved ${m > 0 ? "+" : "−"}${Math.abs(m).toFixed(1)} min`} since ${dayFmt(r.moved.since)}`;
       }
+      const w = state.heads[state.window] ? routeWaits(pat) : null;
+      const waitTxt = w ? `<br>Riders wait <b>${w.ewt < 0 ? `${minTxt(-w.ewt)} less` : `${minTxt(w.ewt)} longer`}</b> than scheduled ` +
+        `on average (<button class="linkish" data-explain="waits">excess wait</button>) · ${Math.round(w.bunched * 100)}% of cars bunched` : "";
       html += `<div class="dir"><div class="dir-name">${pat.direction} to ${pat.to}</div>` +
         `<div class="dir-stats">` +
         (r.clean_s && typ != null ? `A typical trip loses <b>${mins(typ - r.clean_s)}</b> to delays` +
@@ -999,7 +1159,7 @@
           `<button class="linkish" data-explain>clean-run total</button> · scheduled ${mins(pat.sched_s)}` +
           `<br>${fmt(r.samples)} slice passes · ${Math.round(r.data_coverage * 100)}% of the route measured${movedTxt}`
           : r.clean_s ? `Not enough data yet for ${timeLabel().toLowerCase()}` : "No streetcar data yet for this direction") +
-        `</div></div>`;
+        waitTxt + `</div></div>`;
     }
     const rows = timeline.routes[state.route] || [];
     const seen = new Map();
