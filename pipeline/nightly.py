@@ -4,9 +4,10 @@
 Publishing force-pushes a single fresh commit to the gh-pages branch, so the repo
 doesn't accumulate a copy of the data every night.
 
-Usage: nightly.py [--rebuild] [--no-publish] [--include-today]
+Usage: nightly.py [--rebuild] [--no-publish] [--include-today] [--drafts-today]
   --rebuild        reprocess every day (after a method change)
   --include-today  also process the service day still being logged (for a first publish)
+  --drafts-today   also draft bot posts for the day so far (hourly refreshes)
 """
 import shutil
 import subprocess
@@ -64,6 +65,8 @@ def main():
     # Bot dry run: draft yesterday's posts (once per day) and ship them with the site.
     try:
         drafts.make(SITE_OUT)
+        if "--drafts-today" in args:
+            drafts.make(SITE_OUT, today=True)
     except Exception as e:
         print(f"drafts failed: {type(e).__name__}: {e}", file=sys.stderr)
     if drafts.DRAFTS.exists():

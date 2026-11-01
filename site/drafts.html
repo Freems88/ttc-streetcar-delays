@@ -58,7 +58,8 @@
     const head = document.createElement("div");
     head.className = "day";
     const h = document.createElement("h2");
-    h.textContent = new Date(day + "T12:00").toLocaleDateString("en-CA", {weekday: "long", month: "long", day: "numeric"});
+    h.textContent = new Date(draft.day + "T12:00").toLocaleDateString("en-CA", {weekday: "long", month: "long", day: "numeric"}) +
+      (draft.partial ? " (so far)" : "");
     const info = document.createElement("span");
     info.textContent = `${draft.positions.toLocaleString("en-CA")} positions · drafted ${new Date(draft.generated * 1000).toLocaleString("en-CA", {dateStyle: "medium", timeStyle: "short"})}`;
     head.append(h, info);

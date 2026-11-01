@@ -12,7 +12,11 @@ Waits and fleet need a saved schedule for the day (from 2026-11-01).
 
 Comparisons with "usual" only appear once the recent window holds MIN_NORMAL_DAYS days.
 
-Usage: drafts.py SITE_DIR [--force]   (SITE_DIR is the built site, used for the image)
+With today=True (hourly refreshes while data builds up) it drafts the service day so far
+instead, into drafts/<day>-sofar/, redone every run and removed once the day's own
+draft is written.
+
+Usage: drafts.py SITE_DIR [--force] [--today]   (SITE_DIR is the built site, used for the image)
 Writes WORK_DIR/drafts/<day>/draft.json (+ segment.png) and WORK_DIR/drafts/index.json.
 """
 import functools
@@ -48,10 +52,10 @@ STATUS_TEXT = {"bus": "ran mostly with buses", "mixed": "ran partly with buses",
                "diverted": "was often off its usual track"}
 
 
-def load(site):
+def load(site, win):
     d = Path(site) / "data"
     get = lambda name: json.loads((d / name).read_text())
-    return get("network.json"), get("stats-recent.json"), get("stats-yesterday.json"), get("timeline.json"), get("meta.json")
+    return get("network.json"), get("stats-recent.json"), get(f"stats-{win}.json"), get("timeline.json"), get("meta.json")
 
 
 def compass(lonlat_a, lonlat_b):
@@ -117,7 +121,7 @@ def route_losses(net, stats):
     return out
 
 
-def summary_post(day_label, net, recent, yest, have_normal):
+def summary_post(day_label, net, recent, yest, have_normal, partial=False):
     pats = {p["id"]: p for p in net["patterns"]}
     loss_y, loss_n = route_losses(net, yest), route_losses(net, recent)
     if not loss_y:
@@ -129,7 +133,7 @@ def summary_post(day_label, net, recent, yest, have_normal):
     else:
         worst = max(loss_y, key=loss_y.get)
     best = min(loss_y, key=lambda p: loss_y[p] / max(1, pats[p]["length"]))
-    lines = [f"Yesterday ({day_label}), Toronto streetcars spent {hours_lost(yest):,.0f} hours held up "
+    lines = [f"{'So far today' if partial else 'Yesterday'} ({day_label}), Toronto streetcars spent {hours_lost(yest):,.0f} hours held up "
              f"beyond a clean run."]
     if worst:
         usual = f" (usually {loss_n[worst]:.0f})" if have_normal and worst in loss_n else ""
@@ -138,7 +142,7 @@ def summary_post(day_label, net, recent, yest, have_normal):
     return {"kind": "summary", "text": "\n\n".join(lines[:1] + ["\n".join(lines[1:])]) + f"\n\n{SITE_URL}"}
 
 
-def segment_post(day_label, net, recent, yest, have_normal):
+def segment_post(day_label, net, recent, yest, have_normal, partial=False):
     best = None
     for p, b0, b1, stop in segments(net):
         y = seg_loss(yest, p["id"], b0, b1)
@@ -155,13 +159,13 @@ def segment_post(day_label, net, recent, yest, have_normal):
     where = f"{street} {direction} approaching {cross}" if sig else f"{street} {direction} at {cross}"
     hours = lost * passes / 3600
     normal = seg_loss(recent, p["id"], b0, b1) if have_normal else None
-    lines = [f"Slowest segment yesterday: {where}.",
+    lines = [f"Slowest segment {'so far today' if partial else 'yesterday'}: {where}.",
              f"Each streetcar lost {lost:.0f} s here on average"
              + (f" (usually {normal[0]:.0f} s)" if normal else "")
              + f", over {passes} passes: {hours:.1f} hours in all."]
     if sig:
         lines.append("The signal here has transit priority." if sig["tsp"] else "The signal here has no transit priority.")
-    shot = {"shot": "1", "win": "yesterday", "piece": p["id"], "b0": b0, "b1": b1,
+    shot = {"shot": "1", "win": "today" if partial else "yesterday", "piece": p["id"], "b0": b0, "b1": b1,
             "title": f"{street} {direction}, {'approaching' if sig else 'at'} {cross}",
             "sub": f"{day_label}: {lost:.0f} s lost per streetcar · {passes} passes"}
     alt = (f"3D map of {street} around {cross}, rotated to Toronto's street grid. Delay is drawn as a coloured "
@@ -267,14 +271,14 @@ def waits_post(day_label, net, agg):
     return {"kind": "waits", "text": text}
 
 
-def fleet_post(day, day_label, net, agg):
+def fleet_post(day, day_label, net, agg, partial=False):
     fl = agg.get("fleet") or {}
     act, sch = fl.get("actual") or {}, fl.get("sched")
     if not sch or not act:
         return None
     nb = fleet.N_BUCKETS
     logged = [b for b in range(nb) if any(v["car"][b] is not None for v in act.values())]
-    if len(logged) < MIN_LOGGED * nb:
+    if len(logged) < (0.1 if partial else MIN_LOGGED) * nb:
         return None
     names = {p["route"]: p["name"] for p in net["patterns"]}
     hours = lambda arr: sum(arr[b] or 0 for b in logged) / 6
@@ -292,7 +296,7 @@ def fleet_post(day, day_label, net, agg):
              if r in act and hours(sch[r]["car"]) >= 20 and hours(act[r]["bus"]) < 0.5 * hours(sch[r]["car"])}
     lines = [f"Streetcars in service, {day_label}: at the busiest point ({when}), {cars[peak]:.0f} were carrying "
              f"passengers, against {sched[peak]:.0f} scheduled.",
-             f"Over the day, {car_h / sched_h:.0%} of scheduled streetcar hours ran"
+             f"{'So far' if partial else 'Over the day'}, {car_h / sched_h:.0%} of scheduled streetcar hours ran"
              + (f", plus {bus_h:,.0f} bus hours on streetcar routes." if bus_h >= 1 else ".")]
     if short:
         r = min(short, key=short.get)
@@ -320,29 +324,39 @@ def capture_image(site, shot, out):
         srv.shutdown()
 
 
-def make(site, force=False):
-    net, recent, yest, timeline, meta = load(site)
+def make(site, force=False, today=False):
+    if today and not (Path(site) / "data" / "stats-today.json").exists():
+        return
+    net, recent, yest, timeline, meta = load(site, "today" if today else "yesterday")
     day = yest["day"]
-    out_dir = DRAFTS / day
-    if (out_dir / "draft.json").exists() and not force:
+    out_dir = DRAFTS / (f"{day}-sofar" if today else day)
+    if (out_dir / "draft.json").exists() and not (force or today):
         return
     out_dir.mkdir(parents=True, exist_ok=True)
     d = date.fromisoformat(day)
     day_label = f"{d:%a %b} {d.day}"
+    if today:
+        now = time.localtime()
+        day_label += f", to {now.tm_hour % 12 or 12}:{now.tm_min:02d} {'am' if now.tm_hour < 12 else 'pm'}"
     have_normal = meta["windows"]["recent"]["days"] >= MIN_NORMAL_DAYS
     agg = load_agg(day)
-    posts = [p for p in (summary_post(day_label, net, recent, yest, have_normal),
-                         segment_post(day_label, net, recent, yest, have_normal),
+    posts = [p for p in (summary_post(day_label, net, recent, yest, have_normal, today),
+                         segment_post(day_label, net, recent, yest, have_normal, today),
                          waits_post(day_label, net, agg),
-                         fleet_post(day, day_label, net, agg),
+                         fleet_post(day, day_label, net, agg, today),
                          service_post(day, day_label, net, timeline)) if p]
     for p in posts:
         p["chars"] = len(p["text"])
         if p.get("shot") and capture_image(site, p["shot"], out_dir / "segment.png"):
             p["image"] = "segment.png"
-    draft = {"day": day, "generated": int(time.time()), "normal_days": meta["windows"]["recent"]["days"],
+    draft = {"day": day, "partial": today, "generated": int(time.time()), "normal_days": meta["windows"]["recent"]["days"],
              "have_normal": have_normal, "positions": yest["stats"]["pings"], "posts": posts}
     (out_dir / "draft.json").write_text(json.dumps(draft, indent=1))
+    sofar = DRAFTS / f"{day}-sofar"
+    if not today and sofar.exists():  # the finished day replaces its so-far drafts
+        for f in sofar.iterdir():
+            f.unlink()
+        sofar.rmdir()
     days = sorted((p.name for p in DRAFTS.iterdir() if (p / "draft.json").exists()), reverse=True)
     for old in days[KEEP_DAYS:]:
         for f in (DRAFTS / old).iterdir():
@@ -353,4 +367,4 @@ def make(site, force=False):
 
 
 if __name__ == "__main__":
-    make(sys.argv[1], "--force" in sys.argv)
+    make(sys.argv[1], "--force" in sys.argv, "--today" in sys.argv)

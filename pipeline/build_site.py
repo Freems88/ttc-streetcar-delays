@@ -505,12 +505,19 @@ def main():
     # (one day is too little to set its own). Used by the bot drafts and screenshot mode.
     finished = [k for k in days if k < service_day(time.time())]
     yesterday = max(finished) if finished else None
+    clean_recent = {pid: p["clean"] for pid, p in stats["recent"]["pieces"].items()}
     if yesterday:
-        clean_recent = {pid: p["clean"] for pid, p in stats["recent"]["pieces"].items()}
         ys = window_stats(network, [days[yesterday]], clean_from=clean_recent)
         ys["day"] = yesterday
         ys["stats"] = days[yesterday]["stats"]
         (data / "stats-yesterday.json").write_text(json.dumps(ys, separators=(",", ":")))
+    # The day still being logged (hourly refreshes process it), for so-far bot drafts.
+    today = service_day(time.time())
+    if today in days:
+        ts = window_stats(network, [days[today]], clean_from=clean_recent)
+        ts["day"] = today
+        ts["stats"] = days[today]["stats"]
+        (data / "stats-today.json").write_text(json.dumps(ts, separators=(",", ":")))
 
     tl, alert_texts = timeline(days, network)
     # Label each slice stop / signal / both / elsewhere, keeping only signals that touch track.
