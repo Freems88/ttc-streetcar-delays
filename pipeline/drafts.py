@@ -264,10 +264,15 @@ def waits_post(day_label, net, agg):
         return None
     label = lambda pid: f"{pats[pid]['route']} {pats[pid]['name']} {pats[pid]['direction'].lower()}"
     worst, best = max(per, key=lambda p: per[p]["ewt"]), min(per, key=lambda p: per[p]["ewt"])
-    text = (f"Waiting at the stop, {day_label}: on frequent streetcar routes, riders waited "
-            f"{avg:.1f} min longer than scheduled, on average.\n\n"
-            f"Worst: {label(worst)}, +{per[worst]['ewt']:.1f} min, with {per[worst]['bunched']:.0%} of cars bunched.\n"
-            f"Steadiest: {label(best)}, +{max(0, per[best]['ewt']):.1f} min.\n\n{SITE_URL}#v=wait")
+    head = (f"Waiting at the stop, {day_label}: on frequent streetcar routes, riders waited "
+            f"{avg:.1f} min longer than scheduled, on average.\n\n")
+    worst_line = f"Worst: {label(worst)}, +{per[worst]['ewt']:.1f} min, with {per[worst]['bunched']:.0%} of cars bunched."
+    best_line = f"\nSteadiest: {label(best)}, +{max(0, per[best]['ewt']):.1f} min."
+    link = f"\n\n{SITE_URL}#v=wait"
+    # Long route names can push it over the limit; the steadiest route goes first.
+    text = head + worst_line + best_line + link
+    if len(text) > POST_LIMIT:
+        text = head + worst_line + link
     return {"kind": "waits", "text": text}
 
 
@@ -300,8 +305,9 @@ def fleet_post(day, day_label, net, agg, partial=False):
              + (f", plus {bus_h:,.0f} bus hours on streetcar routes." if bus_h >= 1 else ".")]
     if short:
         r = min(short, key=short.get)
-        if short[r] < 0.95:
-            lines.append(f"Furthest short: {r} {names.get(r, '')}, {short[r]:.0%} of its scheduled streetcar hours.")
+        line = f"Furthest short: {r} {names.get(r, '')}, {short[r]:.0%} of its scheduled streetcar hours."
+        if short[r] < 0.95 and len("\n".join(lines + [line])) <= POST_LIMIT:
+            lines.append(line)
     return {"kind": "fleet", "text": "\n".join(lines)}
 
 
