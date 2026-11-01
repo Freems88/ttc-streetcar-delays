@@ -54,7 +54,7 @@ def _snapshot_cache(zpath):
     """Scheduled departures for streetcar routes in one static GTFS file, cached:
     {"feed_start", "calendar", "dates", "deps": {service: {route: {stop: [secs]}}},
      "trips": {service: [[route, block, start secs, end secs, replacement bus?]]}}."""
-    cache = WORK_DIR / "sched" / (zpath.stem + ".v2.json.gz")
+    cache = WORK_DIR / "sched" / (zpath.stem + ".v3.json.gz")
     if cache.exists():
         with gzip.open(cache, "rt") as f:
             return json.load(f)
@@ -64,11 +64,21 @@ def _snapshot_cache(zpath):
     trips = {k: (NIGHT_TWIN.get(t["route_id"], t["route_id"]), t["service_id"]) for k, t in trip_rows.items()}
     deps = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
     span = {}  # trip -> [first departure, last arrival]
+    last = {}  # trip -> (stop sequence, stop, departure) of its final stop so far
     for r in _reader(z, "stop_times.txt"):
         tr = trips.get(r["trip_id"])
         if tr and r["departure_time"]:
-            deps[tr[1]][tr[0]][r["stop_id"]].append(_secs(r["departure_time"]))
-            a, d = _secs(r["arrival_time"] or r["departure_time"]), _secs(r["departure_time"])
+            seq, d = int(r["stop_sequence"]), _secs(r["departure_time"])
+            prev = last.get(r["trip_id"])
+            # A trip's final stop is an arrival, not a departure: at a terminal the next
+            # trip's first stop is the car leaving, and counting both doubles the service.
+            if prev is None or seq > prev[0]:
+                if prev is not None:
+                    deps[tr[1]][tr[0]][prev[1]].append(prev[2])
+                last[r["trip_id"]] = (seq, r["stop_id"], d)
+            else:
+                deps[tr[1]][tr[0]][r["stop_id"]].append(d)
+            a = _secs(r["arrival_time"] or r["departure_time"])
             sp = span.setdefault(r["trip_id"], [d, a])
             sp[0], sp[1] = min(sp[0], d), max(sp[1], a)
     trip_spans = defaultdict(list)

@@ -22,7 +22,10 @@ clean run a non-stopping run. Overnight passes still count in the sums and count
 and are compared against the daytime clean run.
 
 Every vehicle on a streetcar route, buses included, also gets the time it left each
-stop on the track, for the headway measures in headways.py, and each fetch's count of
+stop on the track, for the headway measures in headways.py. Those come from each
+vehicle's whole day, not per trip (a new trip often starts right at a stop), and are
+carried across joins between pieces of track (a stop just past a join would otherwise
+fall between a car's last position on one piece and its first on the next), and each fetch's count of
 vehicles per route, for the cars-in-service counts in fleet.py.
 
 Standing still longer than LAYOVER_S is treated as a layover (terminal loops,
@@ -30,6 +33,7 @@ change-offs) and cut out of the pass.
 
 Usage: process_day.py YYYY-MM-DD [...]   Writes WORK_DIR/agg/<day>.json.gz
 """
+import bisect
 import csv
 import gzip
 import json
@@ -48,6 +52,7 @@ MAX_GAP_S = 90      # a longer silence between pings ends the pass
 MAX_SPEED = 25      # m/s; faster implied movement means a bad match
 STILL_M = 3         # moved less than this between pings = standing still
 LAYOVER_S = 180     # standing this long in one place = layover, not delay
+JOIN_M = 30         # pieces of track whose ends come this close are joined
 CELL = 100          # spatial index cell, metres
 
 # Log-spaced histogram buckets for seconds-in-slice: 0.25 s .. ~600 s, ~21% wide.
@@ -84,6 +89,36 @@ class Matcher:
         # Where to time each stop's departures: a little past the stop, where cars are moving.
         self.departs = [sorted(((s["id"], min(s["along"] + headways.DEPART_M, g.length - 1)) for s in p["stops"]),
                                key=lambda v: v[1]) for p, g in zip(self.pieces, self.geoms)]
+        self.joins = {}
+
+    def junction(self, pa, pb):
+        """Where a car leaves piece pa for piece pb: (along pa, along pb), or None if they
+        don't meet. Either pb starts beside pa, or pa ends beside pb."""
+        if (pa, pb) not in self.joins:
+            ga, gb = self.geoms[pa], self.geoms[pb]
+            a, d = ga.project(gb.x[0], gb.y[0])
+            if d <= JOIN_M:
+                self.joins[(pa, pb)] = (a, 0.0)
+            else:
+                b, d = gb.project(ga.x[-1], ga.y[-1])
+                self.joins[(pa, pb)] = (ga.length, b) if d <= JOIN_M else None
+        return self.joins[(pa, pb)]
+
+    def bridge(self, pa, seq_a, pb, seq_b):
+        """Departures between a car's last position on piece pa and its first on pb."""
+        (t1, a1), (t2, b1) = seq_a[-1], seq_b[0]
+        dt = t2 - t1
+        j = self.junction(pa, pb)
+        if j is None or not 0 < dt <= MAX_GAP_S:
+            return []
+        ja, jb = j
+        da, db = ja - a1, b1 - jb
+        if da < -STILL_M or db < -STILL_M or not 0 < da + db <= MAX_SPEED * dt:
+            return []
+        da, db = max(0.0, da), max(0.0, db)
+        out = [(sid, t1 + dt * (x - a1) / (da + db)) for sid, x in self.departs[pa] if a1 <= x < ja]
+        out += [(sid, t1 + dt * (da + x - jb) / (da + db)) for sid, x in self.departs[pb] if jb <= x < b1]
+        return out
 
     def candidates(self, x, y, bearing):
         """{piece: [(along, distance)]} for track within MATCH_M heading the same way."""
@@ -219,7 +254,7 @@ def process(day, network=None):
     m = Matcher(network)
 
     runs = defaultdict(dict)  # (vehicle, trip) -> {vehicle_ts: (t, x, y, bearing)}
-    bus_runs = defaultdict(dict)  # the same for buses on streetcar routes (headways only)
+    tracks = defaultdict(dict)  # vehicle -> {vehicle_ts: ((t, x, y, bearing), route)}, buses too
     run_route = {}
     fetches = set()
     on_road = defaultdict(set)  # fetch -> {(route, kind, vehicle)}
@@ -239,7 +274,10 @@ def process(day, network=None):
             vts = int(r["vehicle_ts"] or r["fetch_ts"])
             x, y = to_xy(float(r["lon"]), float(r["lat"]))
             brg = float(r["bearing"]) if r["bearing"] else None
-            (runs if flexity else bus_runs)[(vid, r["trip_id"])][vts] = (vts, x, y, brg)
+            ping = (vts, x, y, brg)
+            if flexity:
+                runs[(vid, r["trip_id"])][vts] = ping
+            tracks[vid][vts] = (ping, route)
             on_road[ts].add((route, "car" if flexity else "bus", vid))
             run_route[(vid, r["trip_id"])] = route
 
@@ -257,13 +295,20 @@ def process(day, network=None):
     hsums = defaultdict(lambda: defaultdict(lambda: defaultdict(float)))  # piece -> hour key -> bin -> s
     hcnts = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))    # piece -> hour key -> bin -> n
     ihist = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))  # piece -> interval -> bucket -> n
-    deps = defaultdict(list)  # (route, stop) -> [(time, vehicle)]
+    opts = {}  # (vehicle, vehicle_ts) -> candidates, shared by trips and whole-day tracks
+
+    def candidates(vid, ping):
+        key = (vid, ping[0])
+        if key not in opts:
+            opts[key] = m.candidates(*ping[1:])
+        return opts[key]
+
     n_pings = n_passes = n_samples = 0
     for key, by_ts in runs.items():
         route = run_route[key]
         pings = [by_ts[t] for t in sorted(by_ts)]
         n_pings += len(pings)
-        opts_list = [m.candidates(x, y, b) for _, x, y, b in pings]
+        opts_list = [candidates(key[0], pg) for pg in pings]
         passes, off = split_passes(pings, opts_list)
         route_days[route]["flex_off"] += off
         route_days[route]["flex_on"] += len(pings) - off
@@ -292,21 +337,25 @@ def process(day, network=None):
                 for k, (v, t_in) in interval_times(seq, m.bounds[pi]).items():
                     if slot_of(t_in, day) != "night":
                         ihist[pid][k][bucket(v)] += 1
-                for sid, t in departures(seq, m.departs[pi]):
-                    deps[(route, sid)].append((t, key[0]))
         # A run belongs to the direction it covered most (loops are shared by both).
         if run_cover:
             best = max(run_cover, key=run_cover.get)
             cover[route][best] += run_cover[best]
     for route, pats in cover.items():
         route_days[route]["cover"] = dict(pats)
-    for key, by_ts in bus_runs.items():
-        pings = [by_ts[t] for t in sorted(by_ts)]
-        passes, _ = split_passes(pings, [m.candidates(x, y, b) for _, x, y, b in pings])
-        for pi, whole in passes:
-            for seq in split_layovers(whole):
-                for sid, t in departures(seq, m.departs[pi]):
-                    deps[(run_route[key], sid)].append((t, key[0]))
+    # Stop departures from each vehicle's whole day, credited to the route of the trip it
+    # was on just after leaving.
+    deps = defaultdict(list)  # (route, stop) -> [(time, vehicle)]
+    for vid, by_ts in tracks.items():
+        times = sorted(by_ts)
+        pings = [by_ts[t][0] for t in times]
+        passes, _ = split_passes(pings, [candidates(vid, pg) for pg in pings])
+        found = [d for pi, seq in passes for d in departures(seq, m.departs[pi])]
+        for (pa, sa), (pb, sb) in zip(passes, passes[1:]):
+            found += m.bridge(pa, sa, pb, sb)
+        for sid, t in found:
+            route = by_ts[times[min(bisect.bisect_left(times, t), len(times) - 1)]][1]
+            deps[(route, sid)].append((t, vid))
     heads = headways.summarize(day, deps, sorted(fetches), hour_key,
                                {s["id"] for p in m.pieces for s in p["stops"]})
 
