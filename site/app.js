@@ -316,17 +316,13 @@
   //  headways under 2, 4, 6, 8, 10, 15, 20 min and longer], seconds.
   const ALL_KEYS = Array.from({length: 48}, (_, i) => String(i));
   const MIN_HEADWAYS = 20;
-  // TCQSM headway adherence (coefficient of variation of headway deviations).
-  const TCQSM = [[0.21, "A", "like clockwork"], [0.30, "B", "slightly off headway"], [0.39, "C", "often off headway"],
-    [0.52, "D", "irregular, some bunching"], [0.74, "E", "frequent bunching"], [Infinity, "F", "most cars bunched"]];
   function waitStats(a) {
     if (!a) return null;
-    const [n, sh, sh2, nb, ng, shm, sd2, ns, shs, shs2] = a;
+    const [n, sh, sh2, nb, ng, , , ns, shs, shs2] = a;
     if (n < MIN_HEADWAYS || ns < MIN_HEADWAYS) return null;
     const awt = sh2 / (2 * sh) / 60, swt = shs2 / (2 * shs) / 60, even = sh / (2 * n) / 60;
-    const cv = Math.sqrt(sd2 / n) / (shm / n);
     return {n, ns, awt, swt, ewt: awt - swt, uneven: awt - even, missing: even - swt, bunched: nb / n, gaps: ng / n,
-      seen: n / ns, cv, los: TCQSM.find(([x]) => cv <= x), schedH: shs / ns / 60, obsH: sh / n / 60,
+      seen: n / ns, schedH: shs / ns / 60, obsH: sh / n / 60,
       spread: a.length >= 18 ? a.slice(10, 18) : null};
   }
   function sumHours(hours, keys) {
@@ -1135,8 +1131,8 @@
       `vs ${minTxt(w.swt)} if cars had come as scheduled` +
       (parts.length ? `: ${parts.join(", ")}` : "") + `</div>` +
       `<div class="t-dim">${Math.round(w.bunched * 100)}% of cars came bunched (under half the scheduled gap behind the one ahead) · ` +
-      `${Math.round(w.gaps * 100)}% after a big gap (over 1.5×) · ${Math.round(Math.min(w.seen, 9.99) * 100)}% of scheduled cars seen<br>` +
-      `Headway regularity (TCQSM): ${w.los[1]}, ${w.los[2]} · ${fmt(w.n)} headways</div>`;
+      `${Math.round(w.gaps * 100)}% after a big gap (over 1.5×) · ${Math.round(Math.min(w.seen, 9.99) * 100)}% of scheduled cars seen · ` +
+      `${fmt(w.n)} headways</div>`;
   }
   function showWaitTip(info) {
     if (!info.object) { tip.hidden = true; return; }

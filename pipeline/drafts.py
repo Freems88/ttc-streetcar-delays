@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 """Write the bot's would-be posts for the last finished service day. Dry run: nothing is posted.
 
-Three posts, each skipped when there's nothing worth saying:
+Up to five posts, each skipped when there's nothing worth saying:
   summary     hours streetcars lost to delay, worst and smoothest route
   segment     the slowest stop-centred segment (min passes), with a framed 3D image
+  waits       excess wait at stops: network average, worst and steadiest route direction
+  fleet       streetcars in service against the schedule: busiest moment, share of
+              scheduled streetcar hours that ran, the route furthest short
   service     routes running buses or off their usual track, with the TTC's reason
+Waits and fleet need a saved schedule for the day (from 2026-11-01).
 
 Comparisons with "usual" only appear once the recent window holds MIN_NORMAL_DAYS days.
 
@@ -12,6 +16,7 @@ Usage: drafts.py SITE_DIR [--force]   (SITE_DIR is the built site, used for the 
 Writes WORK_DIR/drafts/<day>/draft.json (+ segment.png) and WORK_DIR/drafts/index.json.
 """
 import functools
+import gzip
 import http.server
 import json
 import math
@@ -24,6 +29,7 @@ import urllib.parse
 from datetime import date
 from pathlib import Path
 
+import fleet
 from common import BIN_M, WORK_DIR
 
 DRAFTS = WORK_DIR / "drafts"
@@ -35,6 +41,9 @@ MIN_PASSES = 30          # a segment needs this many passes yesterday to be name
 MIN_NORMAL_DAYS = 7      # before this, no "usual" comparisons
 POST_LIMIT = 300         # Bluesky's limit, in characters (graphemes)
 KEEP_DAYS = 30
+MIN_HEADWAYS = 20        # per stop and route, as on the page
+MIN_WAIT_STOPS = 5       # a route direction needs this many measured stops to be named
+MIN_LOGGED = 0.9         # fleet post only for days logged at least this fully
 STATUS_TEXT = {"bus": "ran mostly with buses", "mixed": "ran partly with buses",
                "diverted": "was often off its usual track"}
 
@@ -178,8 +187,9 @@ def service_post(day, day_label, net, timeline):
             continue
         reason = next((shorten(timeline["alerts"][a]["text"], 60) for a in row.get("alerts", [])
                        if timeline["alerts"].get(a, {}).get("text")), "")
-        # The route's own name usually leads the alert ("504 King: Detour..."); don't say it twice.
-        reason = re.sub(rf"^{route}\s+{re.escape(names.get(route, ''))}:\s*", "", reason)
+        # The route's name usually leads the alert ("504 King: Detour...", or its night
+        # twin's, "304 King: ..."); don't say it twice.
+        reason = re.sub(r"^\d{3}\s+[^:]{1,30}:\s*", "", reason)
         notes.append(f"• {route} {names.get(route, '')} {STATUS_TEXT[row['status']]}"
                      + (f": {reason}" if reason else ""))
     if not notes:
@@ -194,6 +204,101 @@ def service_post(day, day_label, net, timeline):
     if shown < len(notes):
         text += f"\n+{len(notes) - shown} more on the map"
     return {"kind": "service", "text": text}
+
+
+def load_agg(day):
+    path = WORK_DIR / "agg" / f"{day}.json.gz"
+    if not path.exists():
+        return {}
+    with gzip.open(path, "rt") as f:
+        return json.load(f)
+
+
+def pattern_stops(net):
+    """{pattern id: stop ids along it}."""
+    out = {}
+    for pat in net["patterns"]:
+        on = {(pi, b) for pi, b in pat["slices"]}
+        ids = []
+        for pi in dict.fromkeys(pi for pi, _ in pat["slices"]):
+            p = net["pieces"][pi]
+            for s in p["stops"]:
+                b = min(len(p["bins"]) - 1, int(s["along"] // BIN_M))
+                if (pi, b) in on and s["id"] not in ids:
+                    ids.append(s["id"])
+        out[pat["id"]] = ids
+    return out
+
+
+def stop_wait(hours):
+    """Excess wait etc. for one stop and route from its per-hour sums (see headways.py)."""
+    if not hours:
+        return None
+    a = [sum(col) for col in zip(*hours.values())]
+    n, sh, sh2, nb, ng, _, _, ns, shs, shs2 = a[:10]
+    if n < MIN_HEADWAYS or ns < MIN_HEADWAYS:
+        return None
+    return {"n": n, "ns": ns, "nb": nb, "ewt": (sh2 / (2 * sh) - shs2 / (2 * shs)) / 60}
+
+
+def waits_post(day_label, net, agg):
+    heads = agg.get("heads")
+    if not heads:
+        return None
+    pats = {p["id"]: p for p in net["patterns"]}
+    every = [w for routes in heads.values() for hours in routes.values() if (w := stop_wait(hours))]
+    if len(every) < 20:
+        return None
+    avg = sum(w["ewt"] for w in every) / len(every)
+    per = {}
+    for pid, ids in pattern_stops(net).items():
+        ws = [w for s in ids if (w := stop_wait(heads.get(s, {}).get(pats[pid]["route"], {})))]
+        if len(ws) >= MIN_WAIT_STOPS:
+            per[pid] = {"ewt": sum(w["ewt"] for w in ws) / len(ws),
+                        "bunched": sum(w["nb"] for w in ws) / sum(w["n"] for w in ws)}
+    if len(per) < 2:
+        return None
+    label = lambda pid: f"{pats[pid]['route']} {pats[pid]['name']} {pats[pid]['direction'].lower()}"
+    worst, best = max(per, key=lambda p: per[p]["ewt"]), min(per, key=lambda p: per[p]["ewt"])
+    text = (f"Waiting at the stop, {day_label}: on frequent streetcar routes, riders waited "
+            f"{avg:.1f} min longer than scheduled, on average.\n\n"
+            f"Worst: {label(worst)}, +{per[worst]['ewt']:.1f} min, with {per[worst]['bunched']:.0%} of cars bunched.\n"
+            f"Steadiest: {label(best)}, +{max(0, per[best]['ewt']):.1f} min.\n\n{SITE_URL}#v=wait")
+    return {"kind": "waits", "text": text}
+
+
+def fleet_post(day, day_label, net, agg):
+    fl = agg.get("fleet") or {}
+    act, sch = fl.get("actual") or {}, fl.get("sched")
+    if not sch or not act:
+        return None
+    nb = fleet.N_BUCKETS
+    logged = [b for b in range(nb) if any(v["car"][b] is not None for v in act.values())]
+    if len(logged) < MIN_LOGGED * nb:
+        return None
+    names = {p["route"]: p["name"] for p in net["patterns"]}
+    hours = lambda arr: sum(arr[b] or 0 for b in logged) / 6
+    cars = [sum(v["car"][b] or 0 for v in act.values()) for b in range(nb)]
+    sched = [sum(v["car"][b] for v in sch.values()) for b in range(nb)]
+    peak = max(logged, key=lambda b: cars[b])
+    m = 240 + 10 * peak  # buckets count from 04:00
+    when = f"{(m // 60) % 12 or 12}:{m % 60:02d} {'am' if (m // 60) % 24 < 12 else 'pm'}"
+    car_h, sched_h = hours(cars), hours(sched)
+    bus_h = sum(hours(v["bus"]) for v in act.values())
+    if sched_h < 100:
+        return None
+    # Routes mostly run by buses are left to the service post.
+    short = {r: hours(act[r]["car"]) / hours(sch[r]["car"]) for r in sch
+             if r in act and hours(sch[r]["car"]) >= 20 and hours(act[r]["bus"]) < 0.5 * hours(sch[r]["car"])}
+    lines = [f"Streetcars in service, {day_label}: at the busiest point ({when}), {cars[peak]:.0f} were carrying "
+             f"passengers, against {sched[peak]:.0f} scheduled.",
+             f"Over the day, {car_h / sched_h:.0%} of scheduled streetcar hours ran"
+             + (f", plus {bus_h:,.0f} bus hours on streetcar routes." if bus_h >= 1 else ".")]
+    if short:
+        r = min(short, key=short.get)
+        if short[r] < 0.95:
+            lines.append(f"Furthest short: {r} {names.get(r, '')}, {short[r]:.0%} of its scheduled streetcar hours.")
+    return {"kind": "fleet", "text": "\n".join(lines)}
 
 
 def capture_image(site, shot, out):
@@ -225,8 +330,11 @@ def make(site, force=False):
     d = date.fromisoformat(day)
     day_label = f"{d:%a %b} {d.day}"
     have_normal = meta["windows"]["recent"]["days"] >= MIN_NORMAL_DAYS
+    agg = load_agg(day)
     posts = [p for p in (summary_post(day_label, net, recent, yest, have_normal),
                          segment_post(day_label, net, recent, yest, have_normal),
+                         waits_post(day_label, net, agg),
+                         fleet_post(day, day_label, net, agg),
                          service_post(day, day_label, net, timeline)) if p]
     for p in posts:
         p["chars"] = len(p["text"])
