@@ -1,6 +1,6 @@
 /* Toronto streetcar delay map: a 3D delay "curtain" over each piece of track. */
 (async function () {
-  const {MapboxOverlay, LineLayer, PathLayer, ScatterplotLayer, IconLayer, ColumnLayer} = deck;
+  const {MapboxOverlay, LineLayer, PathLayer, ScatterplotLayer, IconLayer} = deck;
 
   // Map colours per theme. On a dark map the top of the delay scale is bright magenta
   // instead of dark maroon, which would disappear; the clean-run speed scale mirrors it.
@@ -276,6 +276,7 @@
     document.querySelectorAll("#time-field button").forEach((el) => { el.disabled = speed; });
     document.getElementById("breakdown-box").hidden = speed || wait;
     document.getElementById("show-signals").disabled = wait;
+    document.getElementById("height").disabled = wait || speed;
     document.getElementById("legend-title").textContent = speed ? "Clean-run speed, km/h (stops not counted)"
       : wait ? "Excess wait at stops, minutes" : "Delay vs. clean run, seconds per 100 m";
     document.getElementById("legend-bar").classList.toggle("speed", speed);
@@ -856,40 +857,49 @@
     renderRouteCard();
   }
 
-  // Waits view: a column at each stop, as tall and as hot as its excess wait.
-  const MAX_WAIT = 12; // minutes; taller columns are capped (the tooltip shows the real value)
-  const waitHeight = (v) => Math.sqrt(Math.max(0, Math.min(v, MAX_WAIT))) * state.height * 14;
+  // Waits view: flat on the street, each stop's stretch of track (halfway to the stop before
+  // to halfway to the next) coloured by its excess wait, so waits building up along a
+  // route read as a run of colour.
+  const END_STRETCH_M = 150; // first and last stop on a piece: this far either side
   function renderWait() {
-    const base = [], cols = [], seen = new Set();
+    const base = [], segs = [], stops = [], seen = new Set();
     const heads = state.heads[state.window];
     const keys = hourKeys();
     for (const p of visiblePieces()) {
       for (const path of runsOf(p)) base.push({path});
+      stops.push(...stopsOf(p));
       if (!heads) continue;
-      for (const s of stopsOf(p)) {
-        if (seen.has(s.id)) continue;
+      const along = p.stops.map((s) => s.along), last = p.bins.length - 1;
+      p.stops.forEach((s, k) => {
+        if (seen.has(s.id)) return;
+        const lo = k > 0 ? (along[k - 1] + along[k]) / 2 : along[k] - END_STRETCH_M;
+        const hi = k < along.length - 1 ? (along[k] + along[k + 1]) / 2 : along[k] + END_STRETCH_M;
+        const bins = [];
+        for (let b = Math.max(0, Math.floor(lo / net.bin_m)); b <= Math.min(last, Math.floor(hi / net.bin_m)); b++) {
+          if (onRoute(p, b)) bins.push(b);
+        }
+        if (!bins.length) return;
         seen.add(s.id);
         const routes = Object.keys(heads.stops[s.id] || {}).filter(routeOn).sort();
         const per = routes.map((r) => [r, stopWaits(s.id, r, keys)]).filter(([, w]) => w);
-        if (!per.length) continue;
+        if (!per.length) return;
         // Several routes at one stop: their excess waits averaged by number of headways.
         const n = per.reduce((t, [, w]) => t + w.n, 0);
         const ewt = per.reduce((t, [, w]) => t + w.ewt * w.n, 0) / n;
-        cols.push({pos: s.pos, name: s.name, id: s.id, per, ewt, n,
+        if (bins.length === 1 && bins[0] < last) bins.push(bins[0] + 1);
+        segs.push({path: bins.map((b) => pos(p, b)), name: s.name, id: s.id, per, ewt, n,
           color: colorFor(Math.max(0, ewt), confidence(n / 2), pal.wait)});
-      }
+      });
     }
-    // Thin columns that stay a few pixels wide at any zoom.
-    const mpp = 40075016 * KX / (512 * 2 ** map.getZoom());
-    drawn = cols.flatMap((c) => [c.pos[0], c.pos[1], 0, c.pos[0], c.pos[1], waitHeight(c.ewt)]);
+    drawn = segs.flatMap((x) => x.path.flatMap((c) => [c[0], c[1], 0]));
     screenPts = null;
     overlay.setProps({layers: [
       new PathLayer({id: "base", data: base, getPath: (x) => x.path, getColor: pal.faint, widthUnits: "pixels", getWidth: 2}),
-      new ColumnLayer({id: "waits", data: cols, getPosition: (x) => x.pos, getElevation: (x) => waitHeight(x.ewt),
-        radius: Math.max(8, 2.2 * mpp), diskResolution: 10, extruded: true, getFillColor: (x) => x.color,
-        material: false, pickable: true, autoHighlight: true, highlightColor: [0, 0, 0, 255],
-        onHover: showWaitTip, onClick: showWaitTip,
-        updateTriggers: {getElevation: [state.height, state.window, timeLabel()], getFillColor: [state.window, timeLabel()]}}),
+      new PathLayer({id: "waits", data: segs, getPath: (x) => x.path, getColor: (x) => x.color, widthUnits: "pixels",
+        getWidth: 6, capRounded: true, jointRounded: true, pickable: true, autoHighlight: true, highlightColor: [0, 0, 0, 255],
+        onHover: showWaitTip, onClick: showWaitTip, updateTriggers: {getColor: [state.window, timeLabel()]}}),
+      new ScatterplotLayer({id: "stops", data: stops, getPosition: (x) => x.pos,
+        getRadius: 9, radiusUnits: "meters", radiusMinPixels: 1, radiusMaxPixels: 3, getFillColor: pal.stop}),
     ]});
     renderRouteCard();
     document.getElementById("wait-empty").hidden = (meta.windows[state.window].headway_days || 0) > 0;
