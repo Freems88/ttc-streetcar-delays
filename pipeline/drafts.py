@@ -48,8 +48,7 @@ KEEP_DAYS = 30
 MIN_HEADWAYS = 20        # per stop and route, as on the page
 MIN_WAIT_STOPS = 5       # a route direction needs this many measured stops to be named
 MIN_LOGGED = 0.9         # fleet post only for days logged at least this fully
-STATUS_TEXT = {"bus": "ran mostly with buses", "mixed": "ran partly with buses",
-               "diverted": "was often off its usual track"}
+STATUS_TEXT = {"bus": "mostly by bus", "mixed": "partly by bus", "diverted": "often off its usual route"}
 
 
 def load(site, win):
@@ -121,7 +120,24 @@ def route_losses(net, stats):
     return out
 
 
-def summary_post(day_label, net, recent, yest, have_normal, partial=False):
+def duration(secs):
+    """'45 s', '2 min 15 s'."""
+    secs = round(secs)
+    if secs < 90:
+        return f"{secs} s"
+    return f"{secs // 60} min" + (f" {secs % 60} s" if secs % 60 else "")
+
+
+def share_text(x):
+    """'1 in 5' when that's close, else a percentage."""
+    if x >= 0.08:
+        n = round(1 / x)
+        if n >= 2 and abs(1 / n - x) < 0.015:
+            return f"1 in {n}"
+    return f"{x:.0%}"
+
+
+def summary_post(when, net, recent, yest, have_normal):
     pats = {p["id"]: p for p in net["patterns"]}
     loss_y, loss_n = route_losses(net, yest), route_losses(net, recent)
     if not loss_y:
@@ -133,16 +149,16 @@ def summary_post(day_label, net, recent, yest, have_normal, partial=False):
     else:
         worst = max(loss_y, key=loss_y.get)
     best = min(loss_y, key=lambda p: loss_y[p] / max(1, pats[p]["length"]))
-    lines = [f"{'So far today' if partial else 'Yesterday'} ({day_label}), Toronto streetcars spent {hours_lost(yest):,.0f} hours held up "
-             f"beyond a clean run."]
+    head = f"{when}: Toronto's streetcars lost {hours_lost(yest):,.0f} hours to delays, across all routes."
+    lines = []
     if worst:
         usual = f" (usually {loss_n[worst]:.0f})" if have_normal and worst in loss_n else ""
-        lines.append(f"Worst: {label(worst)}, a typical trip lost {loss_y[worst]:.0f} min{usual}.")
-    lines.append(f"Smoothest: {label(best)}, {loss_y[best]:.0f} min lost.")
-    return {"kind": "summary", "text": "\n\n".join(lines[:1] + ["\n".join(lines[1:])]) + f"\n\n{SITE_URL}"}
+        lines.append(f"Hardest hit: {label(worst)}, where the typical trip lost {loss_y[worst]:.0f} min{usual}.")
+    lines.append(f"Smoothest: {label(best)}, {loss_y[best]:.0f} min.")
+    return {"kind": "summary", "text": f"{head}\n\n" + "\n".join(lines) + f"\n\n{SITE_URL}"}
 
 
-def segment_post(day_label, net, recent, yest, have_normal, partial=False):
+def segment_post(when, day_name, net, recent, yest, have_normal, partial=False):
     best = None
     for p, b0, b1, stop in segments(net):
         y = seg_loss(yest, p["id"], b0, b1)
@@ -156,21 +172,21 @@ def segment_post(day_label, net, recent, yest, have_normal, partial=False):
     street, cross = split_stop(stop["name"])
     direction = bound_word(compass(p["bins"][b0], p["bins"][b1]))
     sig = next((net["signals"][p["sig"][b]] for b in range(b0, b1 + 1) if p["sig"][b] >= 0), None)
-    where = f"{street} {direction} approaching {cross}" if sig else f"{street} {direction} at {cross}"
+    where = f"{direction} on {street}, {'approaching' if sig else 'at'} {cross}"
     hours = lost * passes / 3600
     normal = seg_loss(recent, p["id"], b0, b1) if have_normal else None
-    lines = [f"Slowest segment {'so far today' if partial else 'yesterday'}: {where}.",
-             f"Each streetcar lost {lost:.0f} s here on average"
-             + (f" (usually {normal[0]:.0f} s)" if normal else "")
-             + f", over {passes} passes: {hours:.1f} hours in all."]
+    lines = [f"{day_name}'s slowest spot{' so far' if partial else ''}: {where[0].upper() + where[1:]}.",
+             f"The average streetcar lost {duration(lost)} here"
+             + (f" (usually {duration(normal[0])})" if normal else "")
+             + f". Across {passes} trips, that adds up to {hours:.1f} hours."]
     if sig:
-        lines.append("The signal here has transit priority." if sig["tsp"] else "The signal here has no transit priority.")
+        lines.append("This signal has transit priority." if sig["tsp"] else "This signal has no transit priority.")
     shot = {"shot": "1", "win": "today" if partial else "yesterday", "piece": p["id"], "b0": b0, "b1": b1,
             "title": f"{street} {direction}, {'approaching' if sig else 'at'} {cross}",
-            "sub": f"{day_label}: {lost:.0f} s lost per streetcar · {passes} passes"}
+            "sub": f"{when}: {duration(lost)} lost per streetcar · {passes} trips"}
     alt = (f"3D map of {street} around {cross}, rotated to Toronto's street grid. Delay is drawn as a coloured "
-           f"ridge above the track, rising where streetcars lose time; the {direction} segment at {cross} "
-           f"is highlighted, peaking at about {lost:.0f} seconds lost per streetcar.")
+           f"ridge above the track, rising where streetcars lose time; the {direction} stretch at {cross} "
+           f"is highlighted, peaking at about {duration(lost)} lost per streetcar.")
     return {"kind": "segment", "text": "\n".join(lines), "alt": alt, "shot": shot}
 
 
@@ -182,7 +198,7 @@ def shorten(text, limit):
     return text[:limit].rsplit(" ", 1)[0].rstrip(",;:") + "…"
 
 
-def service_post(day, day_label, net, timeline):
+def service_post(day, when, net, timeline):
     names = {p["route"]: p["name"] for p in net["patterns"]}
     notes = []
     for route, rows in sorted(timeline["routes"].items()):
@@ -194,11 +210,11 @@ def service_post(day, day_label, net, timeline):
         # The route's name usually leads the alert ("504 King: Detour...", or its night
         # twin's, "304 King: ..."); don't say it twice.
         reason = re.sub(r"^\d{3}\s+[^:]{1,30}:\s*", "", reason)
-        notes.append(f"• {route} {names.get(route, '')} {STATUS_TEXT[row['status']]}"
+        notes.append(f"• {route} {names.get(route, '')}, {STATUS_TEXT[row['status']]}"
                      + (f": {reason}" if reason else ""))
     if not notes:
         return None
-    head = f"Service notes, {day_label}:"
+    head = f"Service changes, {when}:"
     text, shown = head, 0
     for n in notes:
         if len(text) + len(n) + 1 > POST_LIMIT - 25:  # room for the "+N more" line
@@ -245,7 +261,7 @@ def stop_wait(hours):
     return {"n": n, "ns": ns, "nb": nb, "ewt": (sh2 / (2 * sh) - shs2 / (2 * shs)) / 60}
 
 
-def waits_post(day_label, net, agg):
+def waits_post(when, net, agg):
     heads = agg.get("heads")
     if not heads:
         return None
@@ -263,11 +279,13 @@ def waits_post(day_label, net, agg):
     if len(per) < 2:
         return None
     label = lambda pid: f"{pats[pid]['route']} {pats[pid]['name']} {pats[pid]['direction'].lower()}"
+    extra = lambda m: f"{m:.1f} min extra" if m >= 0.05 else "no extra wait"
     worst, best = max(per, key=lambda p: per[p]["ewt"]), min(per, key=lambda p: per[p]["ewt"])
-    head = (f"Waiting at the stop, {day_label}: on frequent streetcar routes, riders waited "
-            f"{avg:.1f} min longer than scheduled, on average.\n\n")
-    worst_line = f"Worst: {label(worst)}, +{per[worst]['ewt']:.1f} min, with {per[worst]['bunched']:.0%} of cars bunched."
-    best_line = f"\nSteadiest: {label(best)}, +{max(0, per[best]['ewt']):.1f} min."
+    head = (f"{when}: on frequent streetcar routes, bunching and missing cars added {max(0, avg):.1f} min "
+            f"to the average wait, compared with the schedule.\n\n")
+    worst_line = (f"Worst: {label(worst)}, {extra(per[worst]['ewt'])}; "
+                  f"{share_text(per[worst]['bunched'])} cars came bunched.")
+    best_line = f"\nSteadiest: {label(best)}, {extra(per[best]['ewt'])}."
     link = f"\n\n{SITE_URL}#v=wait"
     # Long route names can push it over the limit; the steadiest route goes first.
     text = head + worst_line + best_line + link
@@ -276,7 +294,7 @@ def waits_post(day_label, net, agg):
     return {"kind": "waits", "text": text}
 
 
-def fleet_post(day, day_label, net, agg, partial=False):
+def fleet_post(when, net, agg, partial=False):
     fl = agg.get("fleet") or {}
     act, sch = fl.get("actual") or {}, fl.get("sched")
     if not sch or not act:
@@ -291,7 +309,7 @@ def fleet_post(day, day_label, net, agg, partial=False):
     sched = [sum(v["car"][b] for v in sch.values()) for b in range(nb)]
     peak = max(logged, key=lambda b: cars[b])
     m = 240 + 10 * peak  # buckets count from 04:00
-    when = f"{(m // 60) % 12 or 12}:{m % 60:02d} {'am' if (m // 60) % 24 < 12 else 'pm'}"
+    at = f"{(m // 60) % 12 or 12}:{m % 60:02d} {'am' if (m // 60) % 24 < 12 else 'pm'}"
     car_h, sched_h = hours(cars), hours(sched)
     bus_h = sum(hours(v["bus"]) for v in act.values())
     if sched_h < 100:
@@ -299,13 +317,13 @@ def fleet_post(day, day_label, net, agg, partial=False):
     # Routes mostly run by buses are left to the service post.
     short = {r: hours(act[r]["car"]) / hours(sch[r]["car"]) for r in sch
              if r in act and hours(sch[r]["car"]) >= 20 and hours(act[r]["bus"]) < 0.5 * hours(sch[r]["car"])}
-    lines = [f"Streetcars in service, {day_label}: at the busiest point ({when}), {cars[peak]:.0f} were carrying "
-             f"passengers, against {sched[peak]:.0f} scheduled.",
-             f"{'So far' if partial else 'Over the day'}, {car_h / sched_h:.0%} of scheduled streetcar hours ran"
-             + (f", plus {bus_h:,.0f} bus hours on streetcar routes." if bus_h >= 1 else ".")]
+    lines = [f"{when}: at the busiest moment ({at}), {cars[peak]:.0f} streetcars were in service, "
+             f"against {sched[peak]:.0f} scheduled.",
+             f"Overall, {car_h / sched_h:.0%} of scheduled streetcar service ran"
+             + (f", and buses ran {bus_h:,.0f} hours on streetcar routes." if bus_h >= 1 else ".")]
     if short:
         r = min(short, key=short.get)
-        line = f"Furthest short: {r} {names.get(r, '')}, {short[r]:.0%} of its scheduled streetcar hours."
+        line = f"Furthest behind: {r} {names.get(r, '')}, at {short[r]:.0%} of its scheduled service."
         if short[r] < 0.95 and len("\n".join(lines + [line])) <= POST_LIMIT:
             lines.append(line)
     return {"kind": "fleet", "text": "\n".join(lines)}
@@ -340,17 +358,19 @@ def make(site, force=False, today=False):
         return
     out_dir.mkdir(parents=True, exist_ok=True)
     d = date.fromisoformat(day)
-    day_label = f"{d:%a %b} {d.day}"
+    day_name = f"{d:%A}"
+    # "Saturday, Oct 31", or "Sunday so far (to 11:39 am)".
+    when = f"{day_name}, {d:%b} {d.day}"
     if today:
         now = time.localtime()
-        day_label += f", to {now.tm_hour % 12 or 12}:{now.tm_min:02d} {'am' if now.tm_hour < 12 else 'pm'}"
+        when = f"{day_name} so far (to {now.tm_hour % 12 or 12}:{now.tm_min:02d} {'am' if now.tm_hour < 12 else 'pm'})"
     have_normal = meta["windows"]["recent"]["days"] >= MIN_NORMAL_DAYS
     agg = load_agg(day)
-    posts = [p for p in (summary_post(day_label, net, recent, yest, have_normal, today),
-                         segment_post(day_label, net, recent, yest, have_normal, today),
-                         waits_post(day_label, net, agg),
-                         fleet_post(day, day_label, net, agg, today),
-                         service_post(day, day_label, net, timeline)) if p]
+    posts = [p for p in (summary_post(when, net, recent, yest, have_normal),
+                         segment_post(when, day_name, net, recent, yest, have_normal, today),
+                         waits_post(when, net, agg),
+                         fleet_post(when, net, agg, today),
+                         service_post(day, when, net, timeline)) if p]
     for p in posts:
         p["chars"] = len(p["text"])
         if p.get("shot") and capture_image(site, p["shot"], out_dir / "segment.png"):
