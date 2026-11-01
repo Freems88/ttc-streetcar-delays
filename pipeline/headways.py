@@ -50,20 +50,30 @@ def _secs(hms):
 
 def _snapshot_cache(zpath):
     """Scheduled departures for streetcar routes in one static GTFS file, cached:
-    {"feed_start", "calendar", "dates", "deps": {service: {route: {stop: [secs]}}}}."""
-    cache = WORK_DIR / "sched" / (zpath.stem + ".json.gz")
+    {"feed_start", "calendar", "dates", "deps": {service: {route: {stop: [secs]}}},
+     "trips": {service: [[route, block, start secs, end secs, replacement bus?]]}}."""
+    cache = WORK_DIR / "sched" / (zpath.stem + ".v2.json.gz")
     if cache.exists():
         with gzip.open(cache, "rt") as f:
             return json.load(f)
     z = zipfile.ZipFile(zpath)
     routes = {r["route_id"] for r in _reader(z, "routes.txt") if r["route_type"] == "0"}
-    trips = {t["trip_id"]: (NIGHT_TWIN.get(t["route_id"], t["route_id"]), t["service_id"])
-             for t in _reader(z, "trips.txt") if t["route_id"] in routes}
+    trip_rows = {t["trip_id"]: t for t in _reader(z, "trips.txt") if t["route_id"] in routes}
+    trips = {k: (NIGHT_TWIN.get(t["route_id"], t["route_id"]), t["service_id"]) for k, t in trip_rows.items()}
     deps = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
+    span = {}  # trip -> [first departure, last arrival]
     for r in _reader(z, "stop_times.txt"):
         tr = trips.get(r["trip_id"])
         if tr and r["departure_time"]:
             deps[tr[1]][tr[0]][r["stop_id"]].append(_secs(r["departure_time"]))
+            a, d = _secs(r["arrival_time"] or r["departure_time"]), _secs(r["departure_time"])
+            sp = span.setdefault(r["trip_id"], [d, a])
+            sp[0], sp[1] = min(sp[0], d), max(sp[1], a)
+    trip_spans = defaultdict(list)
+    for k, (start, end) in span.items():
+        t = trip_rows[k]
+        trip_spans[t["service_id"]].append([trips[k][0], t.get("block_id") or k, start, end,
+                                            "Replacement Bus" in t["trip_headsign"]])
     for sv in deps.values():
         for rt in sv.values():
             for times in rt.values():
@@ -73,6 +83,7 @@ def _snapshot_cache(zpath):
         "calendar": list(_reader(z, "calendar.txt")),
         "dates": list(_reader(z, "calendar_dates.txt")),
         "deps": deps,
+        "trips": trip_spans,
     }
     cache.parent.mkdir(parents=True, exist_ok=True)
     with gzip.open(cache, "wt") as f:
@@ -92,25 +103,43 @@ def _services(snap, date):
     return on
 
 
-def schedule(day):
-    """{(route, stop): sorted departure timestamps} for service day `day` (04:00 to 04:00),
-    from the newest saved schedule that had started by then. None if no saved schedule
-    covers the day."""
+def service_dates(day):
+    """The newest saved schedule that had started by service day `day`, and for the GTFS
+    service dates that can fall inside its 04:00-04:00 span (the day before, the day, the
+    day after): [(offset in days, timestamp the date's GTFS times count from, service ids)].
+    None if no saved schedule has started by then."""
     zips = sorted(STATIC_DIR.glob("surface-routes-and-schedules-for-bustime/*.zip"))
     snaps = [s for s in (_snapshot_cache(z) for z in zips) if s["feed_start"] <= day.replace("-", "")]
     if not snaps:
         return None
     snap = max(snaps, key=lambda s: s["feed_start"])
     d0 = datetime.strptime(day, "%Y-%m-%d")
-    lo, hi = (d0 + timedelta(hours=4)).timestamp(), (d0 + timedelta(hours=28)).timestamp()
-    out = defaultdict(list)
-    found = False
-    # Trips of the previous and next service dates can fall inside this 04:00-04:00 day.
+    out = []
     for k in (-1, 0, 1):
         date = d0 + timedelta(days=k)
         # GTFS times count from noon minus 12 h, which keeps them right across DST changes.
         base = date.replace(hour=12).timestamp() - 43200
-        for sid in _services(snap, date.strftime("%Y%m%d")):
+        out.append((k, base, _services(snap, date.strftime("%Y%m%d"))))
+    return snap, out
+
+
+def day_bounds(day):
+    d0 = datetime.strptime(day, "%Y-%m-%d")
+    return (d0 + timedelta(hours=4)).timestamp(), (d0 + timedelta(hours=28)).timestamp()
+
+
+def schedule(day):
+    """{(route, stop): sorted departure timestamps} for service day `day` (04:00 to 04:00).
+    None if no saved schedule covers the day."""
+    found_snap = service_dates(day)
+    if found_snap is None:
+        return None
+    snap, dates = found_snap
+    lo, hi = day_bounds(day)
+    out = defaultdict(list)
+    found = False
+    for k, base, sids in dates:
+        for sid in sids:
             for route, stops in snap["deps"].get(sid, {}).items():
                 for stop, times in stops.items():
                     for s in times:

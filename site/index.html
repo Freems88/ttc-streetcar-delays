@@ -97,7 +97,7 @@
       <div id="tsp" class="tsp"></div>
     </div>
 
-    <p class="compare-open"><button class="linkish" id="compare-open">Compare routes</button></p>
+    <p class="compare-open"><button class="linkish" id="compare-open">Compare routes</button> · <button class="linkish" id="fleet-open">Cars in service</button></p>
 
     <div id="route-card" class="route-card" hidden></div>
 
@@ -150,6 +150,20 @@
   <div id="compare-rows" class="compare-rows" role="list"></div>
   <p class="compare-note" id="compare-note"></p>
   <p class="compare-note">This is an observation, not a cost: no trip avoids every delay, and time saved could just as well become more frequent service. <button class="linkish" data-explain>How the clean run works</button></p>
+</dialog>
+
+<dialog id="fleet" class="explain compare" aria-labelledby="fleet-title">
+  <button class="close" aria-label="Close" data-close>×</button>
+  <h2 id="fleet-title">Cars in service</h2>
+  <p class="compare-lede"><span id="fleet-routes"></span>: streetcars carrying passengers through an average day, against the TTC's schedule. Pick routes in the panel to narrow it down.</p>
+  <div class="seg compare-seg" role="group" aria-label="Days">
+    <button data-fleet-days="wd" class="on">Weekdays</button>
+    <button data-fleet-days="we">Weekends</button>
+  </div>
+  <div id="fleet-chart" class="hour-chart"></div>
+  <h3 class="fleet-h">Day by day: scheduled streetcar hours that ran</h3>
+  <div id="fleet-days-list" class="compare-rows"></div>
+  <p class="compare-note">Counted from the live feed every 30 seconds: every streetcar signed on to a trip on these routes, wherever it is (including standing at the end of the line). Cars heading to or from the yard aren't in the feed. Scheduled: the TTC's published vehicle schedules, each car counted from its first trip until its last, unless it goes back to the yard in between. A day marked * was only partly logged; both numbers then cover the logged hours only. Buses on streetcar routes are shown separately; scheduled replacement buses aren't counted as streetcars.</p>
 </dialog>
 
 <dialog id="explain" class="explain" aria-labelledby="explain-title">

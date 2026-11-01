@@ -12,6 +12,7 @@ The TTC publishes live streetcar positions (GTFS-Realtime) but keeps no history,
 - `pipeline/`: stdlib-only Python, run nightly on the Pi by `pi/ttc-delays-nightly.timer`.
   - `network.py`: builds directed track pieces from every streetcar pattern in every saved schedule. Pieces never change once made, so stats stay comparable when routes change; new track adds pieces.
   - `process_day.py`: snaps a day's pings to the track and records the seconds each pass spent on every 25 m slice and every stop interval, plus when every vehicle on the route (buses too) left each stop.
+  - `fleet.py`: streetcars and buses in service per route in 10-minute steps, from each feed fetch, against the vehicle blocks in the schedule in effect.
   - `headways.py`: headway regularity against the schedule in effect that day (cached per saved schedule in `sched/`): excess wait (TfL), bunching and gaps, cars seen vs scheduled, and the TCQSM headway coefficient of variation, per stop, route and hour.
   - `build_site.py`: combines days into last-90-days and all-time stats, route summaries and a per-route bus/diversion timeline with alerts.
   - `signals.py`: fetches the City of Toronto traffic signal list (monthly) and labels each slice stop / signal / both / elsewhere, since stop delay is mostly boarding and signal delay mostly red lights.

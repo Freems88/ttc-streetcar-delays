@@ -1253,6 +1253,58 @@
     }
     return out;
   }
+  // A small one-axis line chart (inline SVG). Hovering shows a crosshair and every series'
+  // value at that point in the legend line. series: [{name, short, cls, values (null =
+  // gap), dashed}], xs: a label per position, ticks: [[fraction across, label]].
+  function niceMax(v) {
+    const mag = 10 ** Math.floor(Math.log10(Math.max(v, 1)));
+    const step = v / mag <= 2 ? mag / 2 : v / mag <= 5 ? mag : mag * 2;
+    return Math.max(step, Math.ceil(v / step) * step);
+  }
+  function lineChart({series, xs, ticks, decimals = 0, unit = "", band = null, dots = false, aria = ""}) {
+    const n = xs.length, W = 300, H = 110, L = 28, R = 8, T = 8, B = 18;
+    const vals = series.flatMap((s) => s.values).filter((v) => v != null);
+    if (!vals.length) return "";
+    const ymax = niceMax(Math.max(...vals));
+    const x = (i) => L + (i + 0.5) / n * (W - L - R), y = (v) => T + (1 - v / ymax) * (H - T - B);
+    const path = (arr) => arr.map((v, i) => (v == null ? null : `${x(i).toFixed(1)},${y(v).toFixed(1)}`))
+      .reduce((acc, pt) => { if (pt) acc[acc.length - 1].push(pt); else if (acc[acc.length - 1].length) acc.push([]); return acc; }, [[]])
+      .filter((seg) => seg.length > 1).map((seg) => `M${seg.join("L")}`).join("");
+    const dotsOf = (arr, cls) => arr.map((v, i) => (v == null ? "" : `<circle class="hc-dot ${cls}" cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="1.6"/>`)).join("");
+    const bandSvg = band ? `<rect class="hc-band" x="${(L + band[0] * (W - L - R)).toFixed(1)}" y="${T}" ` +
+      `width="${((band[1] - band[0]) * (W - L - R)).toFixed(1)}" height="${H - T - B}"/>` : "";
+    const grid = [0, ymax / 2, ymax].map((v) => `<line class="hc-grid" x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/>` +
+      `<text class="hc-tick" x="${L - 4}" y="${y(v) + 3}" text-anchor="end">${+v.toFixed(1)}</text>`).join("");
+    const xt = ticks.map(([f, label]) => `<text class="hc-tick" x="${(L + f * (W - L - R)).toFixed(1)}" y="${H - 4}" text-anchor="middle">${label}</text>`).join("");
+    const read = {xs, decimals, unit, s: series.map((s) => [s.short || s.name, s.values])};
+    return `<div class="hc-legend">${series.map((s) => `<span class="${s.cls}${s.dashed ? " hc-dashed" : ""}"><i></i>${s.name}</span>`).join("")}` +
+      `<span class="hc-read" aria-live="polite"></span></div>` +
+      `<svg viewBox="0 0 ${W} ${H}" class="hc-svg" role="img" aria-label="${aria.replace(/"/g, "&quot;")}">` +
+      bandSvg + grid + xt +
+      series.map((s) => `<path class="hc-line ${s.cls}${s.dashed ? " hc-dashed" : ""}" d="${path(s.values)}"/>` +
+        (dots ? dotsOf(s.values, s.cls) : "")).join("") +
+      `<line class="hc-cross" x1="0" x2="0" y1="${T}" y2="${H - B}" visibility="hidden"/>` +
+      `<rect class="hc-hit" x="${L}" y="0" width="${W - L - R}" height="${H}" data-read='${JSON.stringify(read).replace(/'/g, "&#39;")}'/></svg>`;
+  }
+  document.addEventListener("pointermove", (e) => {
+    const hit = e.target.closest?.(".hc-hit");
+    for (const other of document.querySelectorAll(".hc-svg")) {
+      if (hit && other === hit.ownerSVGElement) continue;
+      other.querySelector(".hc-cross").setAttribute("visibility", "hidden");
+      other.previousElementSibling.querySelector(".hc-read").textContent = "";
+    }
+    if (!hit) return;
+    const svg = hit.ownerSVGElement, data = JSON.parse(hit.dataset.read), n = data.xs.length;
+    const r = hit.getBoundingClientRect(), sx = svg.viewBox.baseVal.width / svg.getBoundingClientRect().width;
+    const hx = +hit.getAttribute("x"), hw = +hit.getAttribute("width");
+    const i = Math.max(0, Math.min(n - 1, Math.floor((e.clientX - r.left) * sx / hw * n)));
+    const cross = svg.querySelector(".hc-cross"), cx = hx + (i + 0.5) / n * hw;
+    cross.setAttribute("x1", cx); cross.setAttribute("x2", cx); cross.setAttribute("visibility", "visible");
+    const f = (v) => (v == null ? "–" : `${v.toFixed(data.decimals)}${data.unit}`);
+    svg.previousElementSibling.querySelector(".hc-read").textContent =
+      `${data.xs[i]}: ${data.s.map(([name, vals]) => `${f(vals[i])} ${name}`).join(" · ")}`;
+  });
+
   const HOUR_SERIES = [["wd", "Weekdays"], ["we", "Weekends"]];
   function hourChart(dirs) {
     if (!state.hourData[state.window]) {
@@ -1261,56 +1313,92 @@
       return `<div class="hour-chart"><div class="label">Delay by hour</div><p class="dir-stats">Loading…</p></div>`;
     }
     const prof = hourProfile(dirs);
-    const vals = [...prof.wd, ...prof.we].filter((v) => v != null);
-    if (vals.length < 4) return "";
-    const W = 300, H = 110, L = 26, R = 8, T = 8, B = 18;
-    const ymax = Math.max(5, Math.ceil(Math.max(...vals) / 5) * 5);
-    const x = (h) => L + (h + 0.5) / 24 * (W - L - R), y = (v) => T + (1 - v / ymax) * (H - T - B);
-    const path = (arr) => arr.map((v, h) => (v == null ? null : `${x(h).toFixed(1)},${y(v).toFixed(1)}`))
-      .reduce((acc, pt) => { if (pt) acc[acc.length - 1].push(pt); else if (acc[acc.length - 1].length) acc.push([]); return acc; }, [[]])
-      .filter((seg) => seg.length > 1).map((seg) => `M${seg.join("L")}`).join("");
-    const dots = (arr, cls) => arr.map((v, h) => (v == null ? "" : `<circle class="${cls}" cx="${x(h).toFixed(1)}" cy="${y(v).toFixed(1)}" r="1.6"/>`)).join("");
+    if ([...prof.wd, ...prof.we].filter((v) => v != null).length < 4) return "";
     const [a, z] = hourRange();
-    const band = state.time !== "all"
-      ? `<rect class="hc-band" x="${(L + a / 24 * (W - L - R)).toFixed(1)}" y="${T}" width="${((z - a) / 24 * (W - L - R)).toFixed(1)}" height="${H - T - B}"/>` : "";
-    const grid = [0, ymax / 2, ymax].map((v) => `<line class="hc-grid" x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/>` +
-      `<text class="hc-tick" x="${L - 4}" y="${y(v) + 3}" text-anchor="end">${v}</text>`).join("");
-    const xt = [0, 6, 12, 18, 24].map((h) => `<text class="hc-tick" x="${(L + h / 24 * (W - L - R)).toFixed(1)}" y="${H - 4}" text-anchor="middle">${clock(h).replace("midnight", "12am")}</text>`).join("");
     const summary = HOUR_SERIES.map(([k, name]) => {
       const v = prof[k], peak = v.reduce((best, val, h) => (val != null && (best < 0 || val > v[best]) ? h : best), -1);
       return peak < 0 ? "" : `${name}: worst ${clock(peak)}–${clock(peak + 1)}, ${v[peak].toFixed(1)} s per 100 m`;
     }).filter(Boolean).join(". ");
     return `<div class="hour-chart"><div class="label">Delay by hour <span class="label-note">(${WINDOW_LABELS[state.window].toLowerCase()})</span></div>` +
-      `<div class="hc-legend">${HOUR_SERIES.map(([k, n]) => `<span class="hc-${k}"><i></i>${n}</span>`).join("")}` +
-      `<span class="hc-read" aria-live="polite"></span></div>` +
-      `<svg viewBox="0 0 ${W} ${H}" class="hc-svg" role="img" aria-label="Delay by hour of day, seconds per 100 metres. ${summary}">` +
-      band + grid + xt +
-      HOUR_SERIES.map(([k]) => `<path class="hc-line hc-${k}" d="${path(prof[k])}"/>${dots(prof[k], `hc-dot hc-${k}`)}`).join("") +
-      `<line class="hc-cross" x1="0" x2="0" y1="${T}" y2="${H - B}" visibility="hidden"/>` +
-      `<rect class="hc-hit" x="${L}" y="0" width="${W - L - R}" height="${H}" data-prof='${JSON.stringify(prof)}'/></svg>` +
+      lineChart({
+        series: HOUR_SERIES.map(([k, name]) => ({name, short: name.toLowerCase(), cls: `hc-${k}`, values: prof[k]})),
+        xs: Array.from({length: 24}, (_, h) => `${clock(h)}–${clock(h + 1)}`),
+        ticks: [0, 6, 12, 18, 24].map((h) => [h / 24, clock(h).replace("midnight", "12am")]),
+        decimals: 1, unit: " s", dots: true, band: state.time !== "all" ? [a / 24, z / 24] : null,
+        aria: `Delay by hour of day, seconds per 100 metres. ${summary}`,
+      }) +
       `<p class="hc-note">Seconds lost per 100 m, both directions. Shaded: the time of day picked above.</p></div>`;
   }
-  // Hover / touch on the hour chart: a crosshair and the two values in the legend line.
-  document.addEventListener("pointermove", (e) => {
-    const hit = e.target.closest?.(".hc-hit");
-    for (const other of document.querySelectorAll(".hc-svg")) {
-      if (hit && other === hit.ownerSVGElement) continue;
-      other.querySelector(".hc-cross").setAttribute("visibility", "hidden");
-      other.parentElement.querySelector(".hc-read").textContent = "";
-    }
-    if (!hit) return;
-    const svg = hit.ownerSVGElement;
-    const cross = svg.querySelector(".hc-cross"), read = svg.parentElement.querySelector(".hc-read");
-    const r = hit.getBoundingClientRect(), box = svg.viewBox.baseVal;
-    const sx = box.width / svg.getBoundingClientRect().width;
-    const hx = +hit.getAttribute("x"), hw = +hit.getAttribute("width");
-    const h = Math.max(0, Math.min(23, Math.floor((e.clientX - r.left) * sx / hw * 24)));
-    const prof = JSON.parse(hit.dataset.prof);
-    const cx = hx + (h + 0.5) / 24 * hw;
-    cross.setAttribute("x1", cx); cross.setAttribute("x2", cx); cross.setAttribute("visibility", "visible");
-    const f = (v) => (v == null ? "–" : `${v.toFixed(1)} s`);
-    read.textContent = `${clock(h)}–${clock(h + 1)}: ${f(prof.wd[h])} weekdays · ${f(prof.we[h])} weekends`;
+
+  // --- cars in service ------------------------------------------------------------
+  // Streetcars (and buses) running the picked routes through an average day, against the
+  // schedule, and how much of each day's scheduled streetcar time actually ran.
+  const fleetDlg = document.getElementById("fleet");
+  state.fleet = {};
+  let fleetDays = "wd";
+  document.getElementById("fleet-open").addEventListener("click", async () => {
+    if (!state.fleet[state.window]) state.fleet[state.window] = await get(`fleet-${state.window}.json`);
+    renderFleet();
+    fleetDlg.showModal();
   });
+  document.querySelectorAll("[data-fleet-days]").forEach((b) => b.addEventListener("click", () => {
+    fleetDays = b.dataset.fleetDays;
+    document.querySelectorAll("[data-fleet-days]").forEach((x) => x.classList.toggle("on", x === b));
+    renderFleet();
+  }));
+  // 10-minute buckets from 04:00.
+  const bucketClock = (i) => {
+    const m = (240 + i * 10) % 1440, h = Math.floor(m / 60), mm = String(m % 60).padStart(2, "0");
+    return `${h % 12 || 12}:${mm}${h < 12 ? "am" : "pm"}`;
+  };
+  function renderFleet() {
+    const fl = state.fleet[state.window];
+    const routes = Object.keys(routeNames).filter(routeOn);
+    document.getElementById("fleet-routes").textContent = state.routes.length
+      ? state.routes.map((r) => `${r} ${routeNames[r]}`).join(", ") : "All streetcar routes";
+    const prof = fl.profile[fleetDays] || {};
+    const sumOf = (f) => {
+      const out = new Array(144).fill(null);
+      for (const r of routes) {
+        (prof[r]?.[f] || []).forEach((v, i) => { if (v != null) out[i] = (out[i] || 0) + v; });
+      }
+      return out;
+    };
+    const car = sumOf("car"), bus = sumOf("bus"), scar = sumOf("scar");
+    const hasSched = fl.sched_days > 0;
+    const box = document.getElementById("fleet-chart");
+    const series = [{name: "Streetcars in service", short: "streetcars", cls: "hc-wd", values: car}];
+    if (hasSched) series.push({name: "Scheduled", short: "scheduled", cls: "hc-sched", values: scar, dashed: true});
+    if (bus.some((v) => v > 0.5)) series.push({name: "Buses on these routes", short: "buses", cls: "hc-we", values: bus});
+    const used = fl.days_used[fleetDays] || 0;
+    if (!car.some((v) => v != null)) {
+      box.innerHTML = `<p class="compare-note">No ${fleetDays === "wd" ? "weekday" : "weekend"} data in this window yet.</p>`;
+    } else {
+      const peak = car.reduce((b, v, i) => (v != null && (b < 0 || v > car[b]) ? i : b), -1);
+      const total = (arr) => arr.reduce((t, v, i) => t + (car[i] != null && v != null ? v : 0), 0) / 6;
+      const pct = hasSched && total(scar) ? Math.round(100 * total(car) / total(scar)) : null;
+      box.innerHTML =
+        `<p class="fleet-head">Busiest: <b>${Math.round(car[peak])}</b> streetcars at ${bucketClock(peak)}` +
+        (hasSched ? ` (${Math.round(scar[peak])} scheduled)` : "") +
+        (pct != null ? ` · over the day, <b>${pct}%</b> of scheduled streetcar hours ran` : "") + `</p>` +
+        lineChart({series, xs: car.map((_, i) => bucketClock(i)),
+          ticks: [[2 / 24, "6am"], [8 / 24, "noon"], [14 / 24, "6pm"], [20 / 24, "12am"]],
+          aria: `Streetcars in service through an average ${fleetDays === "wd" ? "weekday" : "weekend day"}; busiest ${Math.round(car[peak])} at ${bucketClock(peak)}`}) +
+        `<p class="hc-note">Average ${fleetDays === "wd" ? "weekday" : "weekend day"} over ${used} day${used === 1 ? "" : "s"}, 10-minute steps from 4am.</p>`;
+    }
+    // Per day: share of scheduled streetcar hours that ran.
+    const rows = fl.days.slice(-30).reverse().map((d) => {
+      let c = 0, b = 0, sc = 0;
+      for (const r of routes) { const v = d.routes[r]; if (v) { c += v[0]; b += v[1]; sc += v[2]; } }
+      const p = d.sched && sc ? c / sc : null;
+      return `<div class="fleet-row"><span>${dayFmt(d.day).replace(/, \d{4}$/, "")}${d.logged < 0.95 ? "*" : ""}</span>` +
+        `<span class="compare-bar"><i style="width:${p != null ? (Math.min(p, 1.5) / 1.5 * 80).toFixed(1) : 0}%"></i>` +
+        `<b>${p != null ? `${Math.round(p * 100)}%` : `${Math.round(c)} h`}</b></span>` +
+        `<span class="fleet-sub">${Math.round(c)} streetcar hours${p != null ? ` of ${Math.round(sc)} scheduled` : ""}` +
+        `${b >= 1 ? ` · ${Math.round(b)} bus hours` : ""}</span></div>`;
+    }).join("");
+    document.getElementById("fleet-days-list").innerHTML = rows;
+  }
 
   function flyToRoute() {
     const ps = visiblePieces();

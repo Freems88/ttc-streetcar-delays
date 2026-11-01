@@ -25,6 +25,7 @@ from collections import defaultdict
 from datetime import date, timedelta
 from pathlib import Path
 
+import fleet
 import signals
 import turns
 from common import BIN_M, DATA_DIR, NIGHT_TWIN, SLOT_LABELS, SLOTS, WORK_DIR, service_day
@@ -269,6 +270,45 @@ def headway_stats(days):
     return {"days": n_days, "stops": stops, "off": off}
 
 
+def fleet_stats(days):
+    """Cars in service per route: an average day by 10-minute bucket (weekdays and weekends),
+    and per day the vehicle-hours run against those scheduled. Compared only over buckets
+    that were logged; once any day in the window has a saved schedule, only such days count,
+    so actual and scheduled cover the same days."""
+    with_sched = [d for d in days if d.get("fleet", {}).get("sched")]
+    use = with_sched or [d for d in days if "fleet" in d]
+    nb = fleet.N_BUCKETS
+    prof = {k: defaultdict(lambda: {f: [0.0] * nb for f in ("car", "bus", "scar", "sbus")}) for k in ("wd", "we")}
+    n_days = {k: [0] * nb for k in ("wd", "we")}
+    per_day = []
+    for d in use:
+        act, sch = d["fleet"]["actual"], d["fleet"].get("sched") or {}
+        kind = "we" if date.fromisoformat(d["day"]).weekday() >= 5 else "wd"
+        logged = [any(v["car"][b] is not None for v in act.values()) for b in range(nb)]
+        totals = defaultdict(lambda: [0.0] * 4)
+        for b in range(nb):
+            if not logged[b]:
+                continue
+            n_days[kind][b] += 1
+            for route in set(act) | set(sch):
+                a, sc = act.get(route), sch.get(route)
+                row = prof[kind][route]
+                t = totals[route]
+                for i, (f, src, k) in enumerate((("car", a, "car"), ("bus", a, "bus"), ("scar", sc, "car"), ("sbus", sc, "bus"))):
+                    v = (src[k][b] or 0) if src else 0
+                    row[f][b] += v
+                    t[i] += v * fleet.BUCKET_S / 3600
+        per_day.append({"day": d["day"], "logged": round(sum(logged) / nb, 2), "sched": bool(sch),
+                        "routes": {r: [round(x, 1) for x in t] for r, t in totals.items()}})
+    profile = {}
+    for kind, routes in prof.items():
+        n = n_days[kind]
+        profile[kind] = {r: {f: [round(v / n[b], 1) if n[b] else None for b, v in enumerate(vals)]
+                             for f, vals in row.items()} for r, row in routes.items()}
+    return {"sched_days": len(with_sched), "days_used": {k: max(v) if v else 0 for k, v in n_days.items()},
+            "profile": profile, "days": per_day}
+
+
 def timeline(days, network):
     route_ids = sorted({p["route"] for p in network["patterns"]})
     last = max(days) if days else date.today().isoformat()
@@ -457,6 +497,7 @@ def main():
         heads = headway_stats(ds)
         head_days[w] = heads["days"]
         (data / f"headways-{w}.json").write_text(json.dumps(heads, separators=(",", ":")))
+        (data / f"fleet-{w}.json").write_text(json.dumps(fleet_stats(ds), separators=(",", ":")))
 
     # The last finished service day, measured against the recent window's clean run
     # (one day is too little to set its own). Used by the bot drafts and screenshot mode.

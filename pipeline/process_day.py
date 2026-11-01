@@ -22,7 +22,8 @@ clean run a non-stopping run. Overnight passes still count in the sums and count
 and are compared against the daytime clean run.
 
 Every vehicle on a streetcar route, buses included, also gets the time it left each
-stop on the track, for the headway measures in headways.py.
+stop on the track, for the headway measures in headways.py, and each fetch's count of
+vehicles per route, for the cars-in-service counts in fleet.py.
 
 Standing still longer than LAYOVER_S is treated as a layover (terminal loops,
 change-offs) and cut out of the pass.
@@ -36,6 +37,7 @@ import math
 import sys
 from collections import defaultdict
 
+import fleet
 import headways
 from common import (BIN_M, DATA_DIR, FLEXITY_IDS, NIGHT_TWIN, WORK_DIR, PathGeom,
                     angle_diff, hour_key, slot_of, to_xy)
@@ -220,6 +222,7 @@ def process(day, network=None):
     bus_runs = defaultdict(dict)  # the same for buses on streetcar routes (headways only)
     run_route = {}
     fetches = set()
+    on_road = defaultdict(set)  # fetch -> {(route, kind, vehicle)}
     route_days = defaultdict(lambda: {"flex_on": 0, "flex_off": 0, "bus": 0})
     first_ts = last_ts = None  # how much of the day was logged
     with opener(src, "rt", newline="") as f:
@@ -237,6 +240,7 @@ def process(day, network=None):
             x, y = to_xy(float(r["lon"]), float(r["lat"]))
             brg = float(r["bearing"]) if r["bearing"] else None
             (runs if flexity else bus_runs)[(vid, r["trip_id"])][vts] = (vts, x, y, brg)
+            on_road[ts].add((route, "car" if flexity else "bus", vid))
             run_route[(vid, r["trip_id"])] = route
 
     # Route pattern slices, to count how much of its route each run covered ("trip
@@ -320,6 +324,13 @@ def process(day, network=None):
     }
     if heads is not None:
         out["heads"], out["heads_off"] = heads
+    per_fetch = {}
+    for ts, seen in on_road.items():
+        counts = defaultdict(int)
+        for route, kind, _ in seen:
+            counts[(route, kind)] += 1
+        per_fetch[ts] = counts
+    out["fleet"] = {"actual": fleet.actual(per_fetch, day), "sched": fleet.scheduled(day)}
     dest = WORK_DIR / "agg" / f"{day}.json.gz"
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_suffix(".tmp")
