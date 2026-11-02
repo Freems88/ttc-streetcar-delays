@@ -1,0 +1,10 @@
+[Unit]
+Description=Stuck TO bot: midday posts
+
+[Timer]
+OnCalendar=*-*-* 12:15:00
+Unit=ttc-bot-post@midday.service
+Persistent=false
+
+[Install]
+WantedBy=timers.target

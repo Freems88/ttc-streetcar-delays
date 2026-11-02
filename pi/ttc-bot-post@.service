@@ -1,0 +1,13 @@
+[Unit]
+Description=Stuck TO bot: post the %i part of yesterday's thread to Bluesky
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=alex
+WorkingDirectory=/home/alex/ttc-delays/pipeline
+EnvironmentFile=/home/alex/ttc-streetcars/bot.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/alex/ttc-streetcars/venv/bin/python /home/alex/ttc-delays/pipeline/post.py %i
+Nice=10

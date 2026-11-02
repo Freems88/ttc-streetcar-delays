@@ -1,0 +1,10 @@
+[Unit]
+Description=Stuck TO bot: morning posts
+
+[Timer]
+OnCalendar=*-*-* 07:45:00
+Unit=ttc-bot-post@morning.service
+Persistent=false
+
+[Install]
+WantedBy=timers.target
