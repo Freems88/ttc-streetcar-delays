@@ -34,6 +34,7 @@ from collections import defaultdict
 from datetime import date, timedelta
 from pathlib import Path
 
+import drafts
 import fleet
 import headways
 import signals
@@ -90,6 +91,8 @@ class Acc:
         self.heads = defaultdict(lambda: defaultdict(dict))
         self.heads_off = defaultdict(lambda: defaultdict(int))
         self.head_days = 0
+        self.zones = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))  # "piece|px" -> hour -> bucket -> n
+        self.zone_days = 0
         self.days = []  # each day's small summary (see main)
 
     def add(self, d, light, cut):
@@ -122,6 +125,13 @@ class Acc:
                         continue
                     self.hsums[pid][h][int(b)] += v
                     self.hcnts[pid][h][int(b)] += d["hcnts"][pid][h][b]
+        if "zones" in d:
+            self.zone_days += 1
+            for key, hours in d["zones"].items():
+                for h, buckets in hours.items():
+                    acc = self.zones[key][int(h)]
+                    for b, n in buckets.items():
+                        acc[int(b)] += n
         if "heads" in d:
             self.head_days += 1
             for stop, routes in d["heads"].items():
@@ -398,6 +408,75 @@ def fleet_stats(days):
                              for f, vals in row.items()} for r, row in routes.items()}
     return {"sched_days": len(with_sched), "days_used": {k: max(v) if v else 0 for k, v in n_days.items()},
             "profile": profile, "days": per_day}
+
+
+HELD_S = (60, 90, 120)   # "held": this much longer than the approach's clean run (90 = about a cycle)
+MIN_APPROACH_PASSES = 30
+
+
+def approach_stats(acc, network, sigs, piece_routes):
+    """Per signal approach (one direction of track into one signal): passes, the clean
+    approach time (10th percentile of daytime passes), median and 90th-percentile delay
+    beyond it, the share of passes held for more than HELD_S seconds beyond it (90 s is
+    about one signal cycle: a car held that long missed the first green it could have
+    made), and streetcar-hours a day lost there. Flags approaches with a stop in the zone
+    (boarding mixed in) or the next signal within 120 m (queues may spill back from it)."""
+    by_px = {s["px"]: s for s in sigs}
+    pieces = {p["id"]: (pi, p) for pi, p in enumerate(network["pieces"])}
+    zones = signals.approach_zones(network["pieces"], sigs)
+    days = max(1, acc.zone_days)
+    out = []
+    for key, hours in acc.zones.items():
+        pid, px = key.split("|")
+        if pid not in pieces or px not in by_px:
+            continue
+        pi, p = pieces[pid]
+        zone = next((z for z in zones[pi] if z[0] == px), None)
+        if zone is None:
+            continue
+        _, lo, hi, a = zone
+        allh, day = defaultdict(int), defaultdict(int)
+        for h, buckets in hours.items():
+            for b, n in buckets.items():
+                allh[b] += n
+                if h % 24 >= 6:
+                    day[b] += n
+        n = sum(allh.values())
+        if n < MIN_APPROACH_PASSES or not day:
+            continue
+        cum, target, clean_b = 0, 0.1 * sum(day.values()), 0
+        for b in sorted(day):
+            cum += day[b]
+            if cum >= target:
+                clean_b = b
+                break
+        clean = (clean_b + 0.5) * 10
+        delays = sorted(((max(0.0, (b + 0.5) * 10 - clean), c) for b, c in allh.items()))
+
+        def pct(q):
+            k, run = q * n, 0
+            for dl, c in delays:
+                run += c
+                if run >= k:
+                    return dl
+            return delays[-1][0]
+        b_sig = min(len(p["bins"]) - 1, int(a // BIN_M))
+        b0, b1 = max(0, int(lo // BIN_M)), min(len(p["bins"]) - 1, int(hi // BIN_M))
+        nxt = [z for z in zones[pi] if a < z[3] <= a + 120]
+        out.append({
+            "piece": pid, "px": px, "name": by_px[px]["name"], "tsp": by_px[px]["tsp"],
+            "lonlat": by_px[px]["lonlat"], "routes": sorted(piece_routes.get(pi, [])),
+            "dir": drafts.bound_word(drafts.compass(p["bins"][b0], p["bins"][b1])),
+            "passes": n, "per_day": round(n / days, 1), "clean_s": round(clean),
+            "median_s": round(pct(0.5)), "p90_s": round(pct(0.9)),
+            "held": {str(t): round(sum(c for dl, c in delays if dl > t) / n, 3) for t in HELD_S},
+            "hours_per_day": round(sum(dl * c for dl, c in delays) / days / 3600, 2),
+            "stop_in_zone": any(lo <= st["along"] <= hi for st in p["stops"]),
+            "next_signal_close": bool(nxt),
+            "b": b_sig,
+        })
+    out.sort(key=lambda r: -r["hours_per_day"])
+    return {"days": acc.zone_days, "held_thresholds": HELD_S, "approaches": out}
 
 
 def offtrack_warnings(days, network, day):
@@ -748,6 +827,14 @@ def main():
                      **({"turns": signal_turns[i]} if signal_turns.get(i) else {})} for i in used],
     }
     (data / "network.json").write_text(json.dumps(lite, separators=(",", ":")))
+    ap = approach_stats(accs["recent"], network, sigs, piece_routes)
+    (data / "signal-approaches.json").write_text(json.dumps(ap, separators=(",", ":")))
+    clean_ap = [r for r in ap["approaches"] if not r["stop_in_zone"]]
+    for title, rows in (("priority not delivering", [r for r in clean_ap if r["tsp"]]),
+                        ("no priority, most held", [r for r in clean_ap if not r["tsp"]])):
+        rows = sorted(rows, key=lambda r: -r["held"]["90"] * r["per_day"])[:8]
+        print(f"APPROACHES {title}: " + "; ".join(
+            f"{r['name']} {r['dir']} held {r['held']['90']:.0%} ({r['per_day']:.0f}/day)" for r in rows), file=sys.stderr)
     (data / "timeline.json").write_text(json.dumps({"routes": tl, "alerts": alert_texts}, separators=(",", ":")))
 
     def totals(ds):

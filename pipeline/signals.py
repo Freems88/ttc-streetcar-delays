@@ -75,7 +75,7 @@ def load_signals():
             main, side = _street(r["MAIN_STREET"]), _street(r["SIDE1_STREET"])
             mid = _street(r["MIDBLOCK_ROUTE"])
             name = f"{main} / {side}" if side else (f"{main}, midblock {mid}".strip(", ") if mid else main)
-            out.append({"x": to_xy(lon, lat), "lonlat": [round(lon, 6), round(lat, 6)],
+            out.append({"px": r["PX"], "x": to_xy(lon, lat), "lonlat": [round(lon, 6), round(lat, 6)],
                         "name": name, "tsp": r["TRANSIT_PREEMPT"] == "1",
                         "midblock": bool(mid) and not side,
                         "streets": [s for s in (main, side, _street(r["SIDE2_STREET"])) if s]})
@@ -109,6 +109,30 @@ def tag_pieces(pieces, signals):
             for b in _zone_bins(s["along"], STOP_ZONE, nb):
                 tags[b] |= STOP
         out.append((tags, sig))
+    return out
+
+
+def approach_zones(pieces, signals):
+    """Per piece: [(signal PX, zone start, zone end, signal's along)] in metres along the
+    piece, for every signal on it: the SIGNAL_ZONE approach, clipped to the piece."""
+    grid = {}
+    for i, s in enumerate(signals):
+        grid.setdefault((int(s["x"][0] // 100), int(s["x"][1] // 100)), []).append(i)
+    out = []
+    for p in pieces:
+        g = PathGeom(p["line"])
+        seen = set()
+        for k in range(len(g.x)):
+            cx, cy = int(g.x[k] // 100), int(g.y[k] // 100)
+            for dx in (-1, 0, 1):
+                for dy in (-1, 0, 1):
+                    seen.update(grid.get((cx + dx, cy + dy), ()))
+        zones = []
+        for i in seen:
+            a, d = g.project(*signals[i]["x"])
+            if d <= SIGNAL_OFF_TRACK_M:
+                zones.append((signals[i]["px"], max(0.0, a + SIGNAL_ZONE[0]), min(g.length, a + SIGNAL_ZONE[1]), a))
+        out.append(sorted(zones, key=lambda z: z[3]))
     return out
 
 

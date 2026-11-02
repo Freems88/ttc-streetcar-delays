@@ -43,6 +43,7 @@ from collections import defaultdict
 
 import fleet
 import headways
+import signals
 from common import (BIN_M, DATA_DIR, FLEXITY_IDS, NIGHT_TWIN, WORK_DIR, PathGeom,
                     angle_diff, hour_key, slot_of, to_lonlat, to_xy)
 
@@ -53,6 +54,8 @@ MAX_SPEED = 25      # m/s; faster implied movement means a bad match
 STILL_M = 3         # moved less than this between pings = standing still
 LAYOVER_S = 180     # standing this long in one place = layover, not delay
 JOIN_M = 30         # pieces of track whose ends come this close are joined
+ZONE_BUCKET_S = 10  # signal approach times are kept as a histogram in these steps
+ZONE_MAX_S = 600    # longer than this through one approach: a layover or a breakdown, not a signal
 # Carhouses and yards: cars signed on to a trip often sit or shunt here, off route track.
 # Those positions aren't counted as off track. (lat, lon), radius YARD_M.
 YARDS = {"Russell": (43.6658, -79.3224), "Roncesvalles": (43.6393, -79.4475),
@@ -210,6 +213,23 @@ def interval_times(seq, bounds):
     return {k: (cross[k + 1] - cross[k], cross[k]) for k in cross if k + 1 in cross}
 
 
+def crossing_time(seq, x):
+    """When a pass went through point `x` (metres along), interpolated, or None."""
+    lo, hi = 0, len(seq) - 1
+    if hi < 1 or not seq[0][1] <= x < seq[-1][1]:
+        return None
+    while hi - lo > 1:
+        mid = (lo + hi) // 2
+        if seq[mid][1] <= x:
+            lo = mid
+        else:
+            hi = mid
+    (t1, a1), (t2, a2) = seq[lo], seq[hi]
+    if t2 - t1 > MAX_GAP_S or a2 <= a1:
+        return None
+    return t1 + (t2 - t1) * (x - a1) / (a2 - a1)
+
+
 def departures(seq, targets):
     """[(stop id, time)] for stop departure points [(stop id, along)] the pass went through."""
     out = []
@@ -309,6 +329,11 @@ def process(day, network=None):
         return opts[key]
 
     off_cells = defaultdict(lambda: defaultdict(int))  # route -> "lat,lon" -> off-track pings
+    # Signal approaches: per pass, the time from entering a signal's approach zone (100 m
+    # before it) to leaving it (20 m past). Whole passes, not layover-split: a car held
+    # through two red lights can stand still for over 3 minutes.
+    zones_by_piece = signals.approach_zones(m.pieces, signals.load_signals())
+    zone_hist = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))  # "piece|px" -> hour key -> bucket -> n
     pat_runs = defaultdict(int)                       # pattern -> runs credited to it
     pat_used = defaultdict(lambda: defaultdict(int))  # pattern -> "piece:bin" -> runs through it
     n_pings = n_passes = n_samples = 0
@@ -334,6 +359,10 @@ def process(day, network=None):
         run_slices = set()  # every slice this run went through, on its pattern or not
         for pi, whole in passes:
             pid = m.pieces[pi]["id"]
+            for px, lo, hi, _ in zones_by_piece[pi]:
+                t_in, t_out = crossing_time(whole, lo), crossing_time(whole, hi)
+                if t_in is not None and t_out is not None and 0 < t_out - t_in <= ZONE_MAX_S:
+                    zone_hist[f"{pid}|{px}"][hour_key(t_in, day)][int((t_out - t_in) // ZONE_BUCKET_S)] += 1
             for seq in split_layovers(whole):
                 times = slice_times(seq)
                 if not times:
@@ -399,6 +428,7 @@ def process(day, network=None):
         "hcnts": hcnts,
         "pat_runs": pat_runs,
         "pat_used": pat_used,
+        "zones": zone_hist,
     }
     if heads is not None:
         out["heads"], out["heads_off"] = heads
