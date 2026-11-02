@@ -128,13 +128,18 @@ def duration(secs):
     return f"{secs // 60} min" + (f" {secs % 60} s" if secs % 60 else "")
 
 
-def share_text(x):
-    """'1 in 5' when that's close, else a percentage."""
+def share_text(x, things):
+    """'1 in 5 cars' when that's close, else '23% of cars'."""
     if x >= 0.08:
         n = round(1 / x)
         if n >= 2 and abs(1 / n - x) < 0.015:
-            return f"1 in {n}"
-    return f"{x:.0%}"
+            return f"1 in {n} {things}"
+    return f"{x:.0%} of {things}"
+
+
+def post_len(text):
+    """Length as posted: the bot shows the site link as short text (see post.py)."""
+    return len(re.sub(re.escape(SITE_URL) + r"\S*", "See the map", text))
 
 
 def summary_post(when, net, recent, yest, have_normal):
@@ -283,12 +288,12 @@ def waits_post(when, net, agg):
     worst, best = max(per, key=lambda p: per[p]["ewt"]), min(per, key=lambda p: per[p]["ewt"])
     head = (f"{when}: on frequent routes, bunching and missing cars made the average wait at a stop "
             f"{max(0, avg):.1f} min longer than scheduled.\n\n")
-    worst_line = f"Worst: {label(worst)}, {extra(per[worst]['ewt'])}; {share_text(per[worst]['bunched'])} cars bunched."
+    worst_line = f"Worst: {label(worst)}, {extra(per[worst]['ewt'])}; {share_text(per[worst]['bunched'], 'cars')} bunched."
     best_line = f"\nSteadiest: {label(best)}, {extra(per[best]['ewt'])}."
     link = f"\n\n{SITE_URL}#v=wait"
     # Long route names can push it over the limit; the steadiest route goes first.
     text = head + worst_line + best_line + link
-    if len(text) > POST_LIMIT:
+    if post_len(text) > POST_LIMIT:
         text = head + worst_line + link
     return {"kind": "waits", "text": text}
 
@@ -371,7 +376,7 @@ def make(site, force=False, today=False):
                          fleet_post(when, net, agg, today),
                          service_post(day, when, net, timeline)) if p]
     for p in posts:
-        p["chars"] = len(p["text"])
+        p["chars"] = post_len(p["text"])
         if p.get("shot") and capture_image(site, p["shot"], out_dir / "segment.png"):
             p["image"] = "segment.png"
     draft = {"day": day, "partial": today, "generated": int(time.time()), "normal_days": meta["windows"]["recent"]["days"],
