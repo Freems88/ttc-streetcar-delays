@@ -48,6 +48,11 @@
   // ?shot=1: screenshot mode for bot images (see renderShot).
   const params = new URLSearchParams(location.search);
   const SHOT = params.get("shot") === "1";
+  // ?clean=1: the map, legend and tooltip only, for images (threads, slides). Sets
+  // window.__shotReady once drawn, like screenshot mode. ?tip=<stop id> also opens that
+  // stop's tooltip in the waits view.
+  const CLEAN = params.get("clean") === "1";
+  if (CLEAN) document.body.classList.add("clean");
   const [meta, net, timeline, lastSeen] = await Promise.all([get("meta.json"), get("network.json"), get("timeline.json"),
     get("lastseen.json").catch(() => ({pieces: {}}))]);
   state.stats.recent = await get("stats-recent.json");
@@ -588,7 +593,7 @@
     attributionControl: {compact: true, customAttribution: "Data: TTC GTFS-Realtime via City of Toronto Open Data"},
   });
   map.addControl(new maplibregl.NavigationControl({visualizePitch: true}), "top-right");
-  if (innerWidth > 700 && !SHOT) map.setPadding({left: 360, top: 0, right: 0, bottom: 0});
+  if (innerWidth > 700 && !SHOT && !CLEAN) map.setPadding({left: 360, top: 0, right: 0, bottom: 0});
   const overlay = new MapboxOverlay({interleaved: false, layers: [], pickingRadius: 10});
   map.addControl(overlay);
   map.on("moveend", writeHash);
@@ -865,6 +870,7 @@
   // Waits view: a column at each stop, as tall and as hot as its excess wait.
   const MAX_WAIT = 12; // minutes; taller columns are capped (the tooltip shows the real value)
   const waitHeight = (v) => Math.sqrt(Math.max(0, Math.min(v, MAX_WAIT))) * state.height * 14;
+  let waitCols = [];
   function renderWait() {
     const base = [], cols = [], seen = new Set();
     const heads = state.heads[state.window];
@@ -887,6 +893,7 @@
     }
     // Columns about 10 px across at any zoom (wide enough to spot and hover), never under 15 m.
     const mpp = 40075016 * KX / (512 * 2 ** map.getZoom());
+    waitCols = cols;
     drawn = cols.flatMap((c) => [c.pos[0], c.pos[1], 0, c.pos[0], c.pos[1], waitHeight(c.ewt)]);
     screenPts = null;
     overlay.setProps({layers: [
@@ -1543,4 +1550,15 @@
   }
 
   if (SHOT) renderShot(); else render();
+  if (CLEAN) {
+    map.once("idle", () => {
+      const col = waitCols.find((c) => c.id === params.get("tip"));
+      if (col) {
+        const pt = map.project(col.pos);
+        showWaitTip({object: col, x: pt.x, y: pt.y - 40});
+      }
+      requestAnimationFrame(() => requestAnimationFrame(() => { window.__shotReady = true; }));
+    });
+    setTimeout(() => { window.__shotReady ||= "timeout"; }, 60000);
+  }
 })();
