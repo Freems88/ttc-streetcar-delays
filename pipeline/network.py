@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Build the streetcar track network the delay profile is measured on.
 
-Every streetcar pattern (all routes incl. overnight, all saved schedule snapshots,
-excluding replacement buses) is walked in 5 m steps; stretches not already covered
+Every streetcar pattern (all routes incl. overnight, all saved schedule snapshots) is
+walked in 5 m steps, replacement buses included: the schedule can hand a stretch to
+buses that streetcars still run (in November 2026, Queen East and King West), and
+track no streetcar uses is hidden on the page anyway; stretches not already covered
 by an existing piece in the same direction become new pieces. Pieces are directed,
 cut into BIN_M slices, and never change once created, so slice statistics stay
 comparable forever; new or moved track simply adds pieces.
@@ -149,10 +151,17 @@ def in_effect(zips):
     return started[-1] if started else starts[0][1]
 
 
+TRACK_VERSION = 2  # 2: replacement-bus shapes count as track too
+
+
 def build():
     net = Network(json.loads(NETWORK.read_text()) if NETWORK.exists() else None)
     zips = snapshot_zips()
     current = in_effect(zips)
+    if net.data.get("track_version", 1) < TRACK_VERSION:
+        # Walk every saved snapshot again with the wider rule; existing pieces stay as they are.
+        net.data["snapshots"] = []
+        net.data["track_version"] = TRACK_VERSION
     if (all(z.name in net.data["snapshots"] for z in zips) and net.data["patterns"]
             and net.data.get("patterns_from") == current.name):
         print("network up to date", file=sys.stderr)
@@ -182,11 +191,11 @@ def build():
           f"{len(net.data['patterns'])} route patterns", file=sys.stderr)
 
 
-def load_snapshot(zpath, want_stop_times=True):
+def load_snapshot(zpath, want_stop_times=True, replacement=False):
     z = zipfile.ZipFile(zpath)
     routes = {r["route_id"]: r for r in reader(z, "routes.txt") if r["route_type"] == "0"}
     trips = [t for t in reader(z, "trips.txt")
-             if t["route_id"] in routes and "Replacement Bus" not in t["trip_headsign"]]
+             if t["route_id"] in routes and (replacement or "Replacement Bus" not in t["trip_headsign"])]
     shape_ids = {t["shape_id"] for t in trips}
     pts = defaultdict(list)
     for r in reader(z, "shapes.txt"):
@@ -204,7 +213,7 @@ def load_snapshot(zpath, want_stop_times=True):
 
 
 def add_snapshot(net, zpath):
-    routes, trips, shapes, stop_seq, stops = load_snapshot(zpath)
+    routes, trips, shapes, stop_seq, stops = load_snapshot(zpath, replacement=True)
     by_shape = defaultdict(list)
     for t in trips:
         by_shape[t["shape_id"]].append(t)

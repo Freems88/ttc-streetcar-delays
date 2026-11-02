@@ -775,7 +775,7 @@
   }
 
   function visiblePieces() {
-    return pieces.filter((p) => p.routes.some(routeOn) &&
+    return pieces.filter((p) => p.seen !== false && p.routes.some(routeOn) &&
       (state.dir === "both" || (state.dir === "en") === p.en));
   }
 

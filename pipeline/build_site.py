@@ -592,6 +592,8 @@ def main():
         "bin_m": BIN_M,
         "pieces": [{**{k: p[k] for k in ("id", "bins", "stops", "length")},
                     "routes": sorted(piece_routes[pi]) if pi in piece_routes else p["routes"],
+                    # Track no streetcar has run on (a bus-only routing) isn't drawn.
+                    "seen": any(stats["all"]["pieces"].get(p["id"], {}).get("n", [])),
                     "tags": tags, "sig": [remap.get(i, -1) for i in sig]}
                    for pi, (p, (tags, sig)) in enumerate(zip(network["pieces"], tagged))],
         "patterns": [{k: v for k, v in p.items()} for p in network["patterns"]],
