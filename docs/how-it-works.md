@@ -118,6 +118,15 @@ next car on the same route is the *headway*. From those:
 Only frequent service counts (scheduled every 12 minutes or better). A stop where fewer than a
 third of the scheduled cars showed up that day is treated as diverted and left out.
 
+### Signals: held over a cycle
+For every signal and direction, each streetcar's time through the approach (100 m before the
+signal to 20 m past it) is compared with a clean approach (the quickest 10% of daytime passes).
+More than 90 s longer means it was held about a full signal cycle or more: it missed the first
+green it could have made. The **held-over-a-cycle rate** per approach, and two ranked lists
+(priority that isn't delivering; no priority, held most), show *where* streetcars wait, not *why*.
+Approaches with a stop in them are shown faded and left out of the rankings; a signal within
+~120 m downstream is flagged, since its queue may spill back.
+
 ### Cars in service
 At every feed fetch, count the distinct streetcars (and buses) signed on to each route, and
 average over 10-minute steps. The schedule's vehicle assignments give the scheduled count. Cars

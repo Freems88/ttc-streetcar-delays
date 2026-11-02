@@ -423,6 +423,11 @@ def approach_stats(acc, network, sigs, piece_routes):
     (boarding mixed in) or the next signal within 120 m (queues may spill back from it)."""
     by_px = {s["px"]: s for s in sigs}
     pieces = {p["id"]: (pi, p) for pi, p in enumerate(network["pieces"])}
+    # Routes at each slice (a piece can carry more routes than pass any one signal on it).
+    slice_routes = defaultdict(set)
+    for pat in network["patterns"]:
+        for pi, b in pat["slices"]:
+            slice_routes[(pi, b)].add(pat["route"])
     zones = signals.approach_zones(network["pieces"], sigs)
     days = max(1, acc.zone_days)
     out = []
@@ -465,7 +470,8 @@ def approach_stats(acc, network, sigs, piece_routes):
         nxt = [z for z in zones[pi] if a < z[3] <= a + 120]
         out.append({
             "piece": pid, "px": px, "name": by_px[px]["name"], "tsp": by_px[px]["tsp"],
-            "lonlat": by_px[px]["lonlat"], "routes": sorted(piece_routes.get(pi, [])),
+            "lonlat": by_px[px]["lonlat"],
+            "routes": sorted(slice_routes.get((pi, b_sig)) or slice_routes.get((pi, b0)) or piece_routes.get(pi, [])),
             "dir": drafts.bound_word(drafts.compass(p["bins"][b0], p["bins"][b1])),
             "passes": n, "per_day": round(n / days, 1), "clean_s": round(clean),
             "median_s": round(pct(0.5)), "p90_s": round(pct(0.9)),

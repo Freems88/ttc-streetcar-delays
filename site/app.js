@@ -90,6 +90,7 @@
     eve: [19, 24, "Evening"], night: [0, 6, "Overnight"]};
   const DAYS_LABELS = {all: "All days", wd: "Weekdays", we: "Weekends"};
   state.hourData = {};
+  let approaches = null; // signal-approaches.json, fetched the first time the signals view needs it
   const usesHours = () => !(state.time === "all" && state.days === "all");
   const hourRange = () => (state.time === "custom" ? state.range : PRESETS[state.time].slice(0, 2));
   const clock = (h) => (h % 24 === 0 ? "midnight" : h === 12 ? "noon" : h < 12 ? `${h}am` : `${h - 12}pm`);
@@ -270,6 +271,7 @@
         await loadHours(state.window);
       }
       await loadHeads(state.window);
+      if (state.view === "signals") await loadApproaches();
       render();
     }));
   }
@@ -278,21 +280,26 @@
   segGroup("view", "view");
 
   function updateViewChrome() {
-    const speed = state.view === "speed", wait = state.view === "wait";
+    const speed = state.view === "speed", wait = state.view === "wait", sigv = state.view === "signals";
     document.getElementById("speed-note").hidden = !speed;
     document.getElementById("wait-note").hidden = !wait;
-    // Clean-run speed is all daytime pooled, so time of day doesn't apply.
-    document.getElementById("time-field").classList.toggle("disabled", speed);
-    document.querySelectorAll("#time-field button").forEach((el) => { el.disabled = speed; });
-    document.getElementById("breakdown-box").hidden = speed || wait;
-    document.getElementById("show-signals").disabled = wait;
+    document.getElementById("signals-note").hidden = !sigv;
+    // Clean-run speed is all daytime pooled, and signal approaches are all day, so time of
+    // day doesn't apply to either.
+    document.getElementById("time-field").classList.toggle("disabled", speed || sigv);
+    document.querySelectorAll("#time-field button").forEach((el) => { el.disabled = speed || sigv; });
+    document.getElementById("breakdown-box").hidden = speed || wait || sigv;
+    document.getElementById("show-signals").disabled = wait || sigv;
     document.getElementById("legend-title").textContent = speed ? "Clean-run speed, km/h (stops not counted)"
-      : wait ? "Excess wait at stops, minutes" : "Delay vs. clean run, seconds per 100 m";
+      : wait ? "Excess wait at stops, minutes" : sigv ? "Held longer than a signal cycle, % of streetcars"
+      : "Delay vs. clean run, seconds per 100 m";
     document.getElementById("legend-bar").classList.toggle("speed", speed);
     document.getElementById("legend-ticks").innerHTML = (speed ? ["0", "10", "20", "30", "40", "55+"]
-      : wait ? ["0", "1", "2", "4", "8+"] : ["0", "8", "15", "30", "60+"]).map((t) => `<span>${t}</span>`).join("");
-    document.querySelectorAll(".legend-key .k-sig, .legend-key .k-tsp, .legend-key .k-turn")
-      .forEach((el) => { el.parentElement.hidden = wait; });
+      : wait ? ["0", "1", "2", "4", "8+"] : sigv ? ["0", "5", "10", "20", "40+"]
+      : ["0", "8", "15", "30", "60+"]).map((t) => `<span>${t}</span>`).join("");
+    document.querySelectorAll(".legend-key .k-stop, .legend-key .k-sig, .legend-key .k-tsp, .legend-key .k-turn")
+      .forEach((el) => { el.parentElement.hidden = sigv || (wait && !el.classList.contains("k-stop")); });
+    document.getElementById("legend-sigview").hidden = !sigv;
   }
 
   document.getElementById("height").addEventListener("input", (e) => { state.height = +e.target.value; render(); });
@@ -525,7 +532,7 @@
   const HASH_KEYS = {w: "window", dy: "days", d: "dir", v: "view"};
   const DEFAULTS = {window: "recent", days: "all", dir: "both", view: "delay"};
   const ALLOWED = {window: Object.keys(WINDOW_LABELS), days: Object.keys(DAYS_LABELS),
-    dir: ["both", "en", "ws"], view: ["delay", "speed", "wait"]};
+    dir: ["both", "en", "ws"], view: ["delay", "speed", "wait", "signals"]};
   function readHash() {
     const h = new URLSearchParams(location.hash.slice(1));
     for (const [k, key] of Object.entries(HASH_KEYS)) {
@@ -570,6 +577,7 @@
   await loadWindow(state.window);
   await loadHours(state.window);
   await loadHeads(state.window);
+  if (state.view === "signals") await loadApproaches();
   const copyBtn = document.getElementById("copy-link");
   copyBtn.addEventListener("click", async () => {
     writeHash();
@@ -915,6 +923,7 @@
     document.getElementById("loading").hidden = true;
     if (state.view === "speed") return renderSpeed();
     if (state.view === "wait") return renderWait();
+    if (state.view === "signals") return renderSignals();
     const stats = state.stats[state.window];
     const ridge = [], verticals = [], base = [], stops = [];
     const lostByKind = [0, 0, 0, 0];
@@ -1178,6 +1187,103 @@
       `${Math.round(w.gaps * 100)}% after a big gap (over 1.5×) · ${Math.round(Math.min(w.seen, 9.99) * 100)}% of scheduled cars seen · ` +
       `${fmt(w.n)} headways</div>`;
   }
+  // --- signals view ---------------------------------------------------------------
+  // Each signal approach (one direction of track into one signal) as a dot coloured by how
+  // often streetcars were held there for longer than about a signal cycle: 90 s beyond the
+  // approach's clean run (the quickest 10% of daytime passes). A ring marks signals the
+  // City lists as having transit priority. Approaches with a stop in them are faded:
+  // boarding time is mixed in. From signal-approaches.json (last 90 days, all day).
+  const HELD_BREAKS = [0, 5, 10, 20, 40];
+  for (const pl of Object.values(PALETTES)) pl.held = pl.delay.map(([, c], i) => [HELD_BREAKS[i], c]);
+  async function loadApproaches() {
+    if (!approaches) approaches = await get("signal-approaches.json").catch(() => ({days: 0, approaches: []}));
+  }
+  const pieceById = Object.fromEntries(pieces.map((p) => [p.id, p]));
+  const pct = (x) => `${Math.round(x * 100)}%`;
+  const capFirst = (t) => t.charAt(0).toUpperCase() + t.slice(1);
+  function approachVisible(a) {
+    const p = pieceById[a.piece];
+    return p && (!state.routes.length || a.routes.some(routeOn)) && (state.dir === "both" || (state.dir === "en") === p.en);
+  }
+  function renderSignals() {
+    const base = [];
+    for (const p of visiblePieces()) for (const path of runsOf(p)) base.push({path});
+    const dots = (approaches?.approaches || []).filter(approachVisible).map((a) => {
+      const p = pieceById[a.piece], held = a.held["90"] * 100;
+      return {...a, held90: held, pos: pos(p, Math.min(a.b, p.bins.length - 1)),
+        color: colorFor(held, a.stop_in_zone ? 110 : 235, pal.held)};
+    }).sort((x, y) => (x.stop_in_zone - y.stop_in_zone) * -1 || x.held90 - y.held90); // worst on top
+    drawn = dots.flatMap((d) => [d.pos[0], d.pos[1], 0]);
+    screenPts = null;
+    overlay.setProps({layers: [
+      new PathLayer({id: "base", data: base, getPath: (x) => x.path, getColor: pal.faint, widthUnits: "pixels", getWidth: 2}),
+      new ScatterplotLayer({id: "approaches", data: dots, getPosition: (d) => d.pos, getFillColor: (d) => d.color,
+        radiusUnits: "meters", getRadius: 20, radiusMinPixels: 4, radiusMaxPixels: 11,
+        stroked: true, lineWidthUnits: "pixels", getLineWidth: (d) => (d.tsp ? 2 : 0),
+        getLineColor: isDark() ? [235, 235, 235, 230] : [25, 25, 25, 230],
+        pickable: true, autoHighlight: true, highlightColor: [0, 0, 0, 255], onHover: showApproachTip, onClick: showApproachTip,
+        updateTriggers: {getLineColor: [mapDark]}}),
+    ]});
+    renderRouteCard();
+  }
+  function showApproachTip(info) {
+    if (!info.object) { tip.hidden = true; return; }
+    const a = info.object;
+    tip.innerHTML =
+      `<div class="t-title">${a.name}</div>` +
+      `<div class="t-dim">${capFirst(a.dir)} · ${a.routes.join(", ")} · ${a.tsp ? "has transit priority" : "no transit priority"}</div>` +
+      `<div class="t-big">${pct(a.held["90"])} held over a cycle</div>` +
+      `<div>Streetcars that took more than 90 s longer than a clean approach (about one signal cycle): ` +
+      `<b>${pct(a.held["90"])}</b> of ${fmt(a.passes)} · over 1 min: ${pct(a.held["60"])} · over 2 min: ${pct(a.held["120"])}</div>` +
+      `<div class="t-dim">Clean approach ${a.clean_s} s (100 m before the signal to just past it) · typical extra ` +
+      `${a.median_s} s, 1 in 10 over ${a.p90_s} s<br>About ${Math.round(a.per_day)} streetcars a day · ` +
+      `${a.hours_per_day} streetcar-hours a day lost here</div>` +
+      (a.stop_in_zone ? `<div class="t-stale">A stop is in this approach, so boarding time is mixed in.</div>` : "") +
+      (a.next_signal_close ? `<div class="t-stale">The next signal is close: queues from it may spill back here.</div>` : "") +
+      `<div class="t-routes t-dim">Last ${approaches.days} days, all day. What it can and can't show: “?”.</div>`;
+    placeTip(info);
+  }
+
+  // Ranked lists: priority that isn't delivering, and signals without priority where
+  // streetcars are held most. Approaches with a stop in them are left out (boarding mixed
+  // in). Ranked by streetcars held over a cycle a day, so busy signals count for more.
+  const sigDlg = document.getElementById("signals-rank");
+  document.getElementById("signals-open-2").addEventListener("click", () => document.getElementById("signals-open").click());
+  document.getElementById("signals-open").addEventListener("click", async () => {
+    await loadApproaches();
+    renderSignalRanks();
+    sigDlg.showModal();
+  });
+  function renderSignalRanks() {
+    const rows = (approaches.approaches || []).filter((a) => !a.stop_in_zone && a.routes.some(routeOn));
+    const ranked = (tsp) => rows.filter((a) => a.tsp === tsp)
+      .sort((x, y) => y.held["90"] * y.per_day - x.held["90"] * x.per_day).slice(0, 10);
+    for (const [id, tsp] of [["rank-tsp", true], ["rank-notsp", false]]) {
+      const list = ranked(tsp), max = Math.max(0.01, ...list.map((a) => a.held["90"]));
+      const box = document.getElementById(id);
+      box.textContent = "";
+      for (const a of list) {
+        const row = document.createElement("button");
+        row.className = "compare-row";
+        row.innerHTML = `<span class="compare-name">${a.name}<span>${capFirst(a.dir)} · ${a.routes.join(", ")}</span></span>` +
+          `<span class="compare-bar"><i style="width:${(a.held["90"] / max * 70).toFixed(1)}%"></i><b>${pct(a.held["90"])}</b></span>` +
+          `<span class="compare-sub">held over a cycle · about ${Math.round(a.held["90"] * a.per_day)} of ` +
+          `${Math.round(a.per_day)} streetcars a day${a.next_signal_close ? " · next signal close" : ""}</span>`;
+        row.addEventListener("click", () => {
+          state.view = "signals";
+          syncControls();
+          sigDlg.close();
+          render();
+          map.flyTo({center: a.lonlat, zoom: 16, pitch: 45, bearing: -17, duration: 1200});
+        });
+        box.append(row);
+      }
+      if (!list.length) box.innerHTML = `<p class="compare-note">Not enough passes yet for these routes.</p>`;
+    }
+    document.getElementById("rank-note").textContent =
+      `Last ${approaches.days} days, all day${approaches.days < 14 ? ", preliminary" : ""}. Approaches with a stop in them are left out.`;
+  }
+
   function showWaitTip(info) {
     if (!info.object) { tip.hidden = true; return; }
     const c = info.object;
