@@ -233,6 +233,7 @@ input[type=range] { accent-color: var(--accent); }
 .tooltip .t-routes div { margin-top: 3px; }
 .tooltip .t-spread { display: block; width: 240px; max-width: 100%; height: auto; margin: 2px 0 4px; }
 .tooltip .t-spread rect { fill: rgba(255, 255, 255, 0.72); }
+.tooltip .t-spread rect.held { fill: #f3d36b; }
 .tooltip .t-spread line { stroke: #f3d36b; stroke-width: 1.5; stroke-dasharray: 3 2; }
 .tooltip .t-spread text { fill: #c7c9cc; font-size: 9px; }
 .tooltip .t-key { font-size: 11px; }

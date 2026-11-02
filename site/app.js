@@ -1226,6 +1226,24 @@
     ]});
     renderRouteCard();
   }
+  // Extra time through the approach, as bars: share of streetcars by how much longer than a
+  // clean approach they took. Bars at 90 s and over (held about a cycle) are highlighted.
+  const APPROACH_EDGES = [0, 15, 30, 60, 90, 120, 180];
+  function approachSpreadSvg(a) {
+    if (!a.spread) return "";
+    const W = 240, H = 58, B = 12, bw = W / 7, max = Math.max(...a.spread, 0.01);
+    const bars = a.spread.map((v, i) => {
+      const h = v / max * (H - B - 4);
+      return `<rect class="${i >= 4 ? "held" : ""}" x="${(i * bw + 1).toFixed(1)}" y="${(H - B - h).toFixed(1)}" ` +
+        `width="${(bw - 2).toFixed(1)}" height="${h.toFixed(1)}" rx="1"/>`;
+    }).join("");
+    const labels = APPROACH_EDGES.map((e, i) => `<text x="${(i * bw).toFixed(1)}" y="${H - 2}">${e}</text>`).join("") +
+      `<text x="${W}" y="${H - 2}" text-anchor="end">s</text>`;
+    return `<div class="t-dim">Extra time through the approach <span class="t-key">(gold: 90 s+)</span></div>` +
+      `<svg class="t-spread" viewBox="0 0 ${W} ${H}" role="img" aria-label="Share of streetcars by extra time: ` +
+      `${a.spread.map((v, i) => `${Math.round(v * 100)}% ${i < 6 ? `${APPROACH_EDGES[i]} to ${APPROACH_EDGES[i + 1]}` : "over 180"} s`).join(", ")}">` +
+      `${bars}<line x1="${(4 * bw).toFixed(1)}" x2="${(4 * bw).toFixed(1)}" y1="0" y2="${H - B}"/>${labels}</svg>`;
+  }
   function showApproachTip(info) {
     if (!info.object) { tip.hidden = true; return; }
     const a = info.object;
@@ -1236,6 +1254,7 @@
       `<div>Streetcars that took more than 90 s longer than a clean approach (roughly a typical signal cycle; ` +
       `this signal's own cycle isn't published): `+
       `<b>${pct(a.held["90"])}</b> of ${fmt(a.passes)} · over 1 min: ${pct(a.held["60"])} · over 2 min: ${pct(a.held["120"])}</div>` +
+      approachSpreadSvg(a) +
       `<div class="t-dim">Clean approach ${a.clean_s} s (100 m before the signal to just past it) · typical extra ` +
       `${a.median_s} s, 1 in 10 over ${a.p90_s} s<br>About ${Math.round(a.per_day)} streetcars a day · ` +
       `${a.hours_per_day} streetcar-hours a day lost here</div>` +

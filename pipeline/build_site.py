@@ -410,6 +410,7 @@ def fleet_stats(days):
             "profile": profile, "days": per_day}
 
 
+SPREAD_EDGES_S = (15, 30, 60, 90, 120, 180)  # extra-wait histogram bins for the signal tooltip
 HELD_S = (60, 90, 120)   # "held": this much longer than the approach's clean run (90 = about a cycle)
 MIN_APPROACH_PASSES = 30
 
@@ -476,6 +477,9 @@ def approach_stats(acc, network, sigs, piece_routes):
             "passes": n, "per_day": round(n / days, 1), "clean_s": round(clean),
             "median_s": round(pct(0.5)), "p90_s": round(pct(0.9)),
             "held": {str(t): round(sum(c for dl, c in delays if dl > t) / n, 3) for t in HELD_S},
+            # Share of passes by extra time: under 15 s, 15-30, 30-60, 60-90, 90-120, 120-180, over 180.
+            "spread": [round(sum(c for dl, c in delays if lo_e <= dl < hi_e) / n, 3)
+                       for lo_e, hi_e in zip((0,) + SPREAD_EDGES_S, SPREAD_EDGES_S + (1e9,))],
             "hours_per_day": round(sum(dl * c for dl, c in delays) / days / 3600, 2),
             "stop_in_zone": any(lo <= st["along"] <= hi for st in p["stops"]),
             "next_signal_close": bool(nxt),
