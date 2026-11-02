@@ -44,7 +44,7 @@ from collections import defaultdict
 import fleet
 import headways
 from common import (BIN_M, DATA_DIR, FLEXITY_IDS, NIGHT_TWIN, WORK_DIR, PathGeom,
-                    angle_diff, hour_key, slot_of, to_xy)
+                    angle_diff, hour_key, slot_of, to_lonlat, to_xy)
 
 MATCH_M = 35        # max distance from the track for a ping to count as on it
 BEARING_TOL = 60    # max heading difference from the track direction, degrees
@@ -303,6 +303,7 @@ def process(day, network=None):
             opts[key] = m.candidates(*ping[1:])
         return opts[key]
 
+    off_cells = defaultdict(lambda: defaultdict(int))  # route -> "lat,lon" -> off-track pings
     pat_runs = defaultdict(int)                       # pattern -> runs credited to it
     pat_used = defaultdict(lambda: defaultdict(int))  # pattern -> "piece:bin" -> runs through it
     n_pings = n_passes = n_samples = 0
@@ -313,6 +314,12 @@ def process(day, network=None):
         opts_list = [candidates(key[0], pg) for pg in pings]
         passes, off = split_passes(pings, opts_list)
         route_days[route]["flex_off"] += off
+        # Where streetcars were with no known track under them (~100 m cells), for the
+        # off-track warning: a new routing on track no schedule has ever drawn.
+        for (_, x, y, _), o in zip(pings, opts_list):
+            if not o:
+                lon, lat = to_lonlat(x, y)
+                off_cells[route][f"{lat:.3f},{lon:.3f}"] += 1
         route_days[route]["flex_on"] += len(pings) - off
         run_cover = defaultdict(int)  # pattern -> slices this run covered
         run_slices = set()  # every slice this run went through, on its pattern or not
@@ -352,6 +359,8 @@ def process(day, network=None):
                 pat_used[best][f"{pi}:{b}"] += 1
     for route, pats in cover.items():
         route_days[route]["cover"] = dict(pats)
+    for route, cells in off_cells.items():
+        route_days[route]["off_cells"] = dict(sorted(cells.items(), key=lambda kv: -kv[1])[:30])
     # Stop departures from each vehicle's whole day, credited to the route of the trip it
     # was on just after leaving.
     deps = defaultdict(list)  # (route, stop) -> [(time, vehicle)]

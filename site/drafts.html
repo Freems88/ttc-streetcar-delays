@@ -33,19 +33,43 @@
   details { margin-top: 8px; font-size: 13px; color: var(--muted); }
   summary { cursor: pointer; }
   .empty { color: var(--muted); }
+  .track { border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px; margin: 0 0 20px; font-size: 14px; }
+  .track.warn { border-color: var(--warn); }
+  .track h2 { font-size: 15px; margin: 0 0 6px; }
+  .track ul { margin: 6px 0 0; padding-left: 18px; }
+  .track a { color: var(--accent); }
 </style>
 </head>
 <body>
 <main>
   <h1>Bot drafts</h1>
-  <p class="lede">Dry run: what the Bluesky bot would have posted each morning. Nothing here has been posted.
-    Built nightly on the Pi. <a href="./">Back to the map</a></p>
+  <p class="lede">What the Bluesky bot (@stuckto.bsky.social) posts each day, drafted nightly on the Pi.
+    <a href="./">Back to the map</a></p>
+  <div id="track" class="track" hidden></div>
   <div id="days"><p class="empty">Loading…</p></div>
 </main>
 <script>
 (async function () {
   const root = document.getElementById("days");
   const get = (p) => fetch(p, {cache: "no-cache"}).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); });
+  // Track check: routes whose streetcars ran on track the map doesn't have yet.
+  try {
+    const t = await get("data/offtrack.json");
+    const box = document.getElementById("track");
+    const esc = (x) => String(x).replace(/&/g, "&amp;").replace(/</g, "&lt;");
+    const day = new Date(t.day + "T12:00").toLocaleDateString("en-CA", {weekday: "long", month: "long", day: "numeric"});
+    box.innerHTML = t.warnings.length
+      ? `<h2>Track check, ${day}: streetcars off known track</h2>` +
+        "<p>Probably a diversion onto track no saved schedule has drawn. The map shows nothing there until it's added.</p>" +
+        t.warnings.map((w) => `<p><b>${esc(w.route)}</b> (${w.new ? "new" : "ongoing"}): ${Math.round(w.share * 100)}% of positions` +
+          (w.usual != null ? ` (usually ${Math.round(w.usual * 100)}%)` : "") + `</p><ul>` +
+          w.places.map((p) => `<li><a href="https://www.openstreetmap.org/?mlat=${p.lat}&mlon=${p.lon}#map=17/${p.lat}/${p.lon}" ` +
+            `target="_blank" rel="noopener">${p.lat}, ${p.lon}</a>: ${p.n} positions, ${p.near_m} m from ${esc(p.near)}</li>`).join("") +
+          "</ul>").join("")
+      : `<h2>Track check, ${day}</h2><p>All streetcars stayed on known track.</p>`;
+    box.classList.toggle("warn", t.warnings.length > 0);
+    box.hidden = false;
+  } catch (e) { /* no check yet */ }
   let index;
   try { index = await get("data/drafts/index.json"); } catch (e) {
     root.innerHTML = '<p class="empty">No drafts yet. The first appears after the next nightly run.</p>';

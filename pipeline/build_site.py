@@ -17,6 +17,7 @@ Usage: build_site.py OUT_DIR   (copies site/ into OUT_DIR and writes OUT_DIR/dat
 import gzip
 import hashlib
 import json
+import math
 import re
 import shutil
 import sys
@@ -37,9 +38,12 @@ CLEAN_PCT = 0.10
 MIN_SAMPLES = 3        # slices with fewer passes than this are left out
 MIN_SIGNAL_PASSES = 20  # a signal counts once this many streetcar passes went through it (all time)
 TIMELINE_DAYS = 90
-OBSERVED_DAYS = 14        # route patterns follow where cars actually ran over this many days
+OBSERVED_DAYS = 7         # route patterns follow where cars actually ran over this many days
 OBSERVED_SHARE = 0.3      # a slice is on the route if this share of its runs went through it
 MIN_OBSERVED_RUNS = 30
+OFF_MIN_PINGS = 300       # off-track warning: at least this many positions off known track,
+OFF_MIN_SHARE = 0.03      # and this share of the route's positions
+OFF_JUMP = 2.0            # "new" when this many times its usual share (else ongoing)
 SITE_SRC = Path(__file__).resolve().parent.parent / "site"
 ALERT_NOISE = re.compile(r"elevator|escalator|washroom|accessible entrance", re.I)
 
@@ -352,6 +356,35 @@ def fleet_stats(days):
             "profile": profile, "days": per_day}
 
 
+def offtrack_warnings(days, network, day):
+    """Routes whose streetcars spent a good share of `day` off known track: most likely a
+    diversion onto track no saved schedule has ever drawn, which the map can't show until
+    the track is added. "new" if well above the route's usual share, else ongoing (a gap
+    that has been there all along). Lists where, by ~100 m cell."""
+    ordered = sorted(days)
+    i = ordered.index(day)
+    before = [days[k] for k in ordered[max(0, i - 14):i]]
+    stops = [(s["lonlat"], s["name"]) for p in network["pieces"] for s in p["stops"]]
+    out = []
+    for route, v in sorted(days[day]["routes"].items()):
+        on, off = v.get("flex_on", 0), v.get("flex_off", 0)
+        if off < OFF_MIN_PINGS or off < OFF_MIN_SHARE * (on + off):
+            continue
+        share = off / (on + off)
+        past = sorted(d["routes"][route]["flex_off"] / max(1, d["routes"][route]["flex_off"] + d["routes"][route]["flex_on"])
+                      for d in before if route in d["routes"])
+        usual = past[len(past) // 2] if past else None
+        places = []
+        for cell, n in list(v.get("off_cells", {}).items())[:5]:
+            lat, lon = map(float, cell.split(","))
+            near = min(stops, key=lambda s: (s[0][0] - lon) ** 2 + (s[0][1] - lat) ** 2)
+            dist = math.hypot((near[0][0] - lon) * 80500, (near[0][1] - lat) * 111000)
+            places.append({"lat": lat, "lon": lon, "n": n, "near": near[1], "near_m": round(dist)})
+        out.append({"route": route, "share": round(share, 3), "usual": round(usual, 3) if usual is not None else None,
+                    "new": usual is None or share >= OFF_JUMP * usual, "places": places})
+    return out
+
+
 def timeline(days, network):
     route_ids = sorted({p["route"] for p in network["patterns"]})
     last = max(days) if days else date.today().isoformat()
@@ -553,6 +586,12 @@ def main():
         ys["day"] = yesterday
         ys["stats"] = days[yesterday]["stats"]
         (data / "stats-yesterday.json").write_text(json.dumps(ys, separators=(",", ":")))
+        warnings = offtrack_warnings(days, network, yesterday)
+        (data / "offtrack.json").write_text(json.dumps({"day": yesterday, "warnings": warnings}, separators=(",", ":")))
+        for w in warnings:
+            where = "; ".join(f"{p['n']} near {p['near']}" for p in w["places"][:3])
+            print(f"OFF-TRACK {yesterday} {w['route']}: {w['share']:.0%} of positions off known track "
+                  f"(usually {w['usual'] if w['usual'] is not None else '?'}): {where}", file=sys.stderr)
     # The day still being logged (hourly refreshes process it), for so-far bot drafts.
     today = service_day(time.time())
     if today in days:
