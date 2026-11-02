@@ -51,6 +51,7 @@ FRESH_GAP_DAYS = 14       # no streetcars for this many logged days, then servic
 STALE_DAYS = 3            # the page fades track with no streetcars for this many days
 OBSERVED_SHARE = 0.3      # a slice is on the route if this share of its runs went through it
 MIN_OBSERVED_RUNS = 30
+END_FILL = 8              # route reaches within this many slices (200 m) of a piece end: run to it
 OFF_MIN_PINGS = 300       # off-track warning: at least this many positions off known track,
 OFF_MIN_SHARE = 0.03      # and this share of the route's positions
 OFF_JUMP = 2.0            # "new" when this many times its usual share (else ongoing)
@@ -257,6 +258,20 @@ def observed_patterns(network, days):
         if n < MIN_OBSERVED_RUNS:
             continue
         keep = {k for k, c in used[pat["id"]].items() if c >= OBSERVED_SHARE * n}
+        # A car's pass on a piece of track starts at its first position on it, often 50-100 m
+        # in, so the first and last few slices of each piece are rarely fully crossed and fall
+        # under the threshold (taking stops there with them). Fill holes within each piece and
+        # run to its ends when the route comes within END_FILL slices of them.
+        by_piece = defaultdict(list)
+        for k in keep:
+            pi, b = map(int, k.split(":"))
+            by_piece[pi].append(b)
+        for pi, bins in by_piece.items():
+            nb = len(network["pieces"][pi]["bins"])
+            lo, hi = min(bins), max(bins)
+            lo = 0 if lo <= END_FILL else lo
+            hi = nb - 1 if hi >= nb - 1 - END_FILL else hi
+            keep.update(f"{pi}:{b}" for b in range(lo, hi + 1))
         sched = [tuple(x) for x in pat["slices"]]
         extra = sorted(tuple(map(int, k.split(":"))) for k in keep - {f"{pi}:{b}" for pi, b in sched})
         slices = [list(x) for x in sched if f"{x[0]}:{x[1]}" in keep] + [list(x) for x in extra]
