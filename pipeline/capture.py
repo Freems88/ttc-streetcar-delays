@@ -6,7 +6,7 @@ the DevTools protocol: load the page, poll `window.__shotReady` (set by the map'
 screenshot mode once tiles and layers are drawn), then capture. No GPU is used
 (SwiftShader software rendering); a Pi 4 takes ~30-60 s per image.
 
-Usage: capture.py URL OUT.png [WIDTH HEIGHT]
+Usage: capture.py URL OUT.png [WIDTH HEIGHT [SCALE]]   (SCALE 2 = double-resolution image)
 Needs: websocket-client (installed in ~/ttc-streetcars/venv), chromium.
 """
 import base64
@@ -46,7 +46,7 @@ class DevTools:
                 return msg.get("result", {})
 
 
-def capture(url, out, width=1200, height=900):
+def capture(url, out, width=1200, height=900, scale=1):
     browser = shutil.which("chromium") or shutil.which("chromium-browser")
     port = free_port()
     profile = tempfile.mkdtemp(prefix="ttc-shot-")
@@ -68,7 +68,7 @@ def capture(url, out, width=1200, height=900):
                     raise RuntimeError("chromium did not start")
                 time.sleep(0.5)
         dt = DevTools(page["webSocketDebuggerUrl"])
-        dt.call("Emulation.setDeviceMetricsOverride", width=width, height=height, deviceScaleFactor=1, mobile=False)
+        dt.call("Emulation.setDeviceMetricsOverride", width=width, height=height, deviceScaleFactor=scale, mobile=False)
         dt.call("Page.enable")
         dt.call("Page.navigate", url=url)
         deadline = time.time() + TIMEOUT_S
@@ -97,6 +97,7 @@ def capture(url, out, width=1200, height=900):
 if __name__ == "__main__":
     url, out = sys.argv[1], sys.argv[2]
     w, h = (int(sys.argv[3]), int(sys.argv[4])) if len(sys.argv) > 4 else (1200, 900)
+    scale = float(sys.argv[5]) if len(sys.argv) > 5 else 1
     t = time.time()
-    ready = capture(url, out, w, h)
+    ready = capture(url, out, w, h, scale)
     print(f"captured {out} in {time.time() - t:.0f}s (ready: {ready})", file=sys.stderr)

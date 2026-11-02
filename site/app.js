@@ -1555,7 +1555,11 @@
       const col = waitCols.find((c) => c.id === params.get("tip"));
       if (col) {
         const pt = map.project(col.pos);
-        showWaitTip({object: col, x: pt.x, y: pt.y - 40});
+        showWaitTip({object: col, x: pt.x, y: pt.y});
+        // Beside the column (to the right, or left near the edge), not over it.
+        const right = pt.x + 70 + tip.offsetWidth < innerWidth - 16;
+        tip.style.left = `${right ? pt.x + 70 : pt.x - 70 - tip.offsetWidth}px`;
+        tip.style.top = `${Math.max(16, Math.min(innerHeight - tip.offsetHeight - 16, pt.y - tip.offsetHeight / 2 - 60))}px`;
       }
       requestAnimationFrame(() => requestAnimationFrame(() => { window.__shotReady = true; }));
     });
