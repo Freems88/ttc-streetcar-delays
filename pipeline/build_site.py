@@ -260,18 +260,24 @@ def observed_patterns(network, days):
         keep = {k for k, c in used[pat["id"]].items() if c >= OBSERVED_SHARE * n}
         # A car's pass on a piece of track starts at its first position on it, often 50-100 m
         # in, so the first and last few slices of each piece are rarely fully crossed and fall
-        # under the threshold (taking stops there with them). Fill holes within each piece and
-        # run to its ends when the route comes within END_FILL slices of them.
+        # under the threshold (taking stops there with them). Fill small holes (up to END_FILL
+        # slices) and run to a piece's end when the route comes that close to it. Only small
+        # ones: a route can use both ends of a long piece and not the middle (the 504 uses
+        # the station loops at either end of the piece along Dundas).
         by_piece = defaultdict(list)
         for k in keep:
             pi, b = map(int, k.split(":"))
             by_piece[pi].append(b)
         for pi, bins in by_piece.items():
             nb = len(network["pieces"][pi]["bins"])
-            lo, hi = min(bins), max(bins)
-            lo = 0 if lo <= END_FILL else lo
-            hi = nb - 1 if hi >= nb - 1 - END_FILL else hi
-            keep.update(f"{pi}:{b}" for b in range(lo, hi + 1))
+            bins.sort()
+            fill = set(range(0, bins[0])) if bins[0] <= END_FILL else set()
+            if bins[-1] >= nb - 1 - END_FILL:
+                fill.update(range(bins[-1] + 1, nb))
+            for a, b in zip(bins, bins[1:]):
+                if 1 < b - a <= END_FILL + 1:
+                    fill.update(range(a + 1, b))
+            keep.update(f"{pi}:{b}" for b in fill)
         sched = [tuple(x) for x in pat["slices"]]
         extra = sorted(tuple(map(int, k.split(":"))) for k in keep - {f"{pi}:{b}" for pi, b in sched})
         slices = [list(x) for x in sched if f"{x[0]}:{x[1]}" in keep] + [list(x) for x in extra]
