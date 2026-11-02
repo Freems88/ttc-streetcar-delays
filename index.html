@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Toronto Streetcar Delays</title>
+<meta name="description" content="Stuck: where Toronto streetcars lose time compared with a clean run that only stops at passenger stops. Built from TTC GTFS-Realtime vehicle positions.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%238a1c2b'/%3E%3Cpolyline points='4,24 9,22 12,10 15,21 19,19 22,6 25,20 28,22' fill='none' stroke='%23fff' stroke-width='2.4' stroke-linejoin='round' stroke-linecap='round'/%3E%3Cline x1='4' y1='26.5' x2='28' y2='26.5' stroke='%238cc5ad' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E">
+<meta name="theme-color" content="#f4f4f2" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#121314" media="(prefers-color-scheme: dark)">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
+<link href="style.css?v=e6ba0b9624" rel="stylesheet">
+</head>
+<body>
+<div id="map"></div>
+<div id="loading" class="loading" role="status">Loading streetcar data…</div>
+
+<aside id="panel" class="panel">
+  <button id="panel-toggle" class="panel-toggle" aria-expanded="true" aria-controls="panel-body">
+    <span>Stuck: Toronto's streetcar delays</span><span class="chev" aria-hidden="true"></span>
+  </button>
+  <div id="panel-body" class="panel-body">
+    <h1>Stuck: Toronto's streetcar delays</h1>
+    <p class="lede">Extra time a typical streetcar spends on each 25&nbsp;m of track, compared with a clean run that only stops at passenger stops. <button class="linkish" data-explain>What's a clean run?</button></p>
+    <div id="prelim" class="prelim" hidden></div>
+
+    <div class="field">
+      <span class="label">Data</span>
+      <div class="seg" role="group" aria-label="Time window">
+        <button data-window="d15">15 days</button>
+        <button data-window="d30">30 days</button>
+        <button data-window="recent" class="on">90 days</button>
+        <button data-window="all">All time</button>
+      </div>
+    </div>
+    <div class="field">
+      <span class="label">Map shows</span>
+      <div class="seg" role="group" aria-label="What the map shows">
+        <button data-view="delay" class="on">Delay</button>
+        <button data-view="speed">Clean-run speed</button>
+        <button data-view="wait">Waits</button>
+      </div>
+      <p id="wait-note" class="field-note" hidden>How much longer riders wait at each stop than if cars came as scheduled: bunching and gaps, plus cars that never came. Taller and hotter is worse. <button class="linkish" data-explain="waits">More</button><span id="wait-empty" hidden><br><b>No headway data in this window yet.</b> It starts with the first day a saved TTC schedule covers.</span></p>
+      <p id="speed-note" class="field-note" hidden>How fast a clean run moves, not counting time stopped at stops. Shows slowness every car shares (curves, switches, slow orders) that the delay view can't. <button class="linkish" data-explain>More</button></p>
+    </div>
+    <div class="field" id="time-field">
+      <span class="label">Time of day <span class="label-note" id="time-label"></span></span>
+      <div class="seg seg-sm" role="group" aria-label="Days">
+        <button data-days="all" class="on">All days</button>
+        <button data-days="wd">Weekdays</button>
+        <button data-days="we">Weekends</button>
+      </div>
+      <div class="chips" role="group" aria-label="Time of day">
+        <button data-time="all" class="on">All day</button>
+        <button data-time="am">AM peak</button>
+        <button data-time="mid">Midday</button>
+        <button data-time="pm">PM peak</button>
+        <button data-time="eve">Evening</button>
+        <button data-time="night">Overnight</button>
+      </div>
+      <div class="range" id="hour-range">
+        <div class="range-track"><div class="range-fill" title="Drag to move the hours"></div></div>
+        <button class="range-thumb" data-thumb="a" role="slider" aria-label="From hour" aria-valuemin="0" aria-valuemax="23"></button>
+        <button class="range-thumb" data-thumb="b" role="slider" aria-label="To hour" aria-valuemin="1" aria-valuemax="24"></button>
+      </div>
+      <div class="hour-ticks" aria-hidden="true"><span style="left:0%">12am</span><span style="left:25%">6am</span><span style="left:50%">noon</span><span style="left:75%">6pm</span><span style="left:100%">12am</span></div>
+    </div>
+    <div class="field">
+      <span class="label">Routes <span class="label-note">(pick any)</span></span>
+      <div class="chips route-chips" id="routes" role="group" aria-label="Routes">
+        <button data-route="" class="on" aria-pressed="true">All</button>
+      </div>
+    </div>
+    <div class="field">
+      <span class="label">Direction</span>
+      <div class="seg" role="group" aria-label="Direction">
+        <button data-dir="both" class="on">Both</button>
+        <button data-dir="en">East / North</button>
+        <button data-dir="ws">West / South</button>
+      </div>
+    </div>
+    <label class="check">
+      <input id="show-signals" type="checkbox" checked> Show traffic signals
+    </label>
+    <label class="field">
+      <span class="label">Peak height</span>
+      <input id="height" type="range" min="3" max="40" value="12">
+    </label>
+
+    <div class="breakdown" id="breakdown-box">
+      <div class="label">Where the time is lost <span class="label-note">(this view)</span></div>
+      <div id="breakdown"></div>
+      <p class="breakdown-note">Many stops are at signals, so time there is a mix of boarding and red lights. <button class="linkish" data-explain>More</button></p>
+      <div id="tsp" class="tsp"></div>
+    </div>
+
+    <p class="compare-open"><button class="linkish" id="compare-open">Compare routes</button> · <button class="linkish" id="fleet-open">Cars in service</button></p>
+
+    <div id="route-card" class="route-card" hidden></div>
+
+    <div class="field">
+      <span class="label">Theme</span>
+      <div class="seg" role="group" aria-label="Theme">
+        <button data-theme-pick="auto">Auto</button>
+        <button data-theme-pick="light">Light</button>
+        <button data-theme-pick="dark">Dark</button>
+      </div>
+    </div>
+
+    <details class="method">
+      <summary>How this works</summary>
+      <p>The TTC publishes where every streetcar is, roughly every 30 seconds, but keeps no history. A Raspberry Pi logs that feed every 20 seconds. Each night the day's pings are snapped to the track and turned into the time each car spent on every 25&nbsp;m slice.</p>
+      <p><b>Clean run:</b> for each segment of track around a stop, the fastest 10% of real daytime trips (06:00 to midnight), stop included. <button class="linkish" data-explain>More on the clean run</button></p>
+      <p><b>Delay</b> is the typical (average) time minus the clean run, shown per 100&nbsp;m. Layovers over 3 minutes are left out. Buses on streetcar routes are left out, but counted in the route timeline.</p>
+      <p>Faint lines have few passes so far. The map gets sharper every night as data builds up.</p>
+    </details>
+    <p id="meta" class="meta"></p>
+    <p class="meta"><button class="linkish" id="copy-link">Copy link to this view</button></p>
+  </div>
+</aside>
+
+<div class="legend">
+  <div class="legend-title"><span id="legend-title">Delay vs. clean run, seconds per 100&nbsp;m</span> <button class="help" data-explain aria-label="What's a clean run?">?</button></div>
+  <div class="legend-bar" id="legend-bar"></div>
+  <div class="legend-ticks" id="legend-ticks"><span>0</span><span>8</span><span>15</span><span>30</span><span>60+</span></div>
+  <div class="legend-key">
+    <span><i class="k-stop"></i>Stop</span>
+    <span><i class="k-sig"></i>Signal</span>
+    <span><i class="k-tsp"></i>Signal with transit priority</span>
+    <span><i class="k-turn"></i>Turn ban (zoom in)</span>
+  </div>
+</div>
+
+<div id="tooltip" class="tooltip" hidden></div>
+<div id="callout" class="callout" hidden></div>
+
+<dialog id="compare" class="explain compare" aria-labelledby="compare-title">
+  <button class="close" aria-label="Close" data-close>×</button>
+  <h2 id="compare-title">Routes compared</h2>
+  <div class="seg compare-seg" role="group" aria-label="Measure">
+    <button data-measure="perkm" class="on">Per km of route</button>
+    <button data-measure="total">Total a day</button>
+    <button data-measure="speed">Speed</button>
+    <button data-measure="wait">Excess wait</button>
+  </div>
+  <p class="compare-lede" id="compare-lede"></p>
+  <div id="compare-rows" class="compare-rows" role="list"></div>
+  <p class="compare-note" id="compare-note"></p>
+  <p class="compare-note">This is an observation, not a cost: no trip avoids every delay, and time saved could just as well become more frequent service. <button class="linkish" data-explain>How the clean run works</button></p>
+</dialog>
+
+<dialog id="fleet" class="explain compare" aria-labelledby="fleet-title">
+  <button class="close" aria-label="Close" data-close>×</button>
+  <h2 id="fleet-title">Cars in service</h2>
+  <p class="compare-lede"><span id="fleet-routes"></span>: streetcars carrying passengers through an average day, against the TTC's schedule. Pick routes in the panel to narrow it down.</p>
+  <div class="seg compare-seg" role="group" aria-label="Days">
+    <button data-fleet-days="wd" class="on">Weekdays</button>
+    <button data-fleet-days="we">Weekends</button>
+  </div>
+  <div id="fleet-chart" class="hour-chart"></div>
+  <h3 class="fleet-h">Day by day: scheduled streetcar hours that ran</h3>
+  <div id="fleet-days-list" class="compare-rows"></div>
+  <p class="compare-note">Counted from the live feed every 30 seconds: every streetcar signed on to a trip on these routes, wherever it is (including standing at the end of the line). Cars heading to or from the yard aren't in the feed. Scheduled: the TTC's published vehicle schedules, each car counted from its first trip until its last, unless it goes back to the yard in between. A day marked * was only partly logged; both numbers then cover the logged hours only. Buses on streetcar routes are shown separately; scheduled replacement buses aren't counted as streetcars.</p>
+</dialog>
+
+<dialog id="explain" class="explain" aria-labelledby="explain-title">
+  <button class="close" aria-label="Close" data-close>×</button>
+  <h2 id="explain-title">What's a "clean run"?</h2>
+  <p>A clean run is how a streetcar moves along a segment of track when things go well: the car stops at its passenger stops, but isn't held up by red lights, traffic, turning cars or crowds.</p>
+  <p><b>How it's measured.</b> Each route is split into segments, each centred on one stop and measured in 25&nbsp;m slices. For every segment we take the <b>fastest 10% of real daytime trips</b> (06:00 to midnight). So it's not a theoretical top speed; it's what real cars actually manage there when nothing holds them up, stop included.</p>
+  <p><b>Delay</b> is how much longer the typical (average) trip takes than that clean run, shown as seconds lost per 100&nbsp;m. Tall peaks are where the extra time goes: usually traffic signals, busy stops and turns.</p>
+  <p><b>Smoothing.</b> Positions arrive only every ~30 seconds, so a waiting car's time lands in whichever 25&nbsp;m slice it happened to be reported in. The ridge and the tooltip both average over about 125&nbsp;m (five slices) so the picture isn't just noise.</p>
+  <p><b>Peak height</b> grows with the square root of the delay, so a handful of very bad spots don't drown out everything else and small delays still show. A spot with four times the delay stands twice as tall; the colour and the tooltip give the actual value.</p>
+  <p><b>Whole routes.</b> Adding up every segment's clean run gives a route's <b>clean-run total</b>: a trip no single car actually makes, a bit like adding up the best time on every segment of a ride, a run nobody really did. So route cards don't present it as a trip time; they show how much a typical trip loses against it. Typical time divided by clean-run total is what traffic engineers call the <b>travel time index</b> (1.00 = no delay). <b>Operating speed</b> in the routes chart is route length over typical trip time, stops and delays included, the speed transit agencies usually report.</p>
+  <h3>Stops, signals and everything else</h3>
+  <p>The clean run includes a <i>quick</i> stop, so extra boarding time at a busy stop counts as delay. That's a different problem from red lights or traffic, so every spot is labelled using the City of Toronto's traffic signal list:</p>
+  <ul>
+    <li><b>Signal:</b> up to about 100&nbsp;m before a traffic signal (a streetcar is 30&nbsp;m long and often queues behind another): red lights and queues.</li>
+    <li><b>Stop:</b> around a passenger stop with no signal: mostly boarding.</li>
+    <li><b>Stop and signal:</b> both at once. Most Toronto stops are at intersections, and with positions only every ~30 seconds there's no way to split "doors open" from "waiting for green" there.</li>
+    <li><b>Elsewhere:</b> between stops and signals: traffic, turning cars, slow zones and long queues backing up from a signal.</li>
+  </ul>
+  <p>The tooltip also says whether a signal has transit priority.</p>
+  <p><b>Turn bans.</b> Zoom in and a small icon marks signals where the City's traffic by-law bans turns; hover for which turns, which directions and when, and whether streetcars are exempt. "No turn on red" rules are left out.</p>
+  <h3 id="explain-tsp">Transit signal priority</h3>
+  <p>The panel compares the time a typical streetcar loses approaching signals <b>with</b> and <b>without</b> transit signal priority: the median across signal approaches (the ~100&nbsp;m before each signal, each direction separately, with at least 20 passes). It follows the route, direction and time-of-day filters. Read it with care:</p>
+  <ul>
+    <li><b>Priority wasn't placed at random.</b> It was installed on purpose, likely where streetcars had the most trouble. Similar delay could mean priority is pulling bad spots back to average, or that it does little. This data can't tell those apart.</li>
+    <li><b>"Priority" isn't one thing.</b> The City's open data only says <i>whether</i> a signal has transit priority, not what kind: extending a green, cutting a red short, changing the phase order, a queue jump, or only helping cars running late. Very different strategies are lumped together here, and there's no public data to separate them.</li>
+    <li><b>Stops at the signal.</b> Where a stop sits at the signal, boarding time swamps whatever priority does: a car loading passengers can't use an early green. So signals with and without a stop are compared separately; the no-stop row is the fairer test of priority.</li>
+    <li><b>Early days.</b> With little data, a few bad days at a handful of signals can swing either number.</li>
+  </ul>
+  <h3>Clean-run speed view</h3>
+  <p>The delay view compares each spot with its own clean run, so slowness that every car shares is invisible there. The <b>clean-run speed</b> view shows that instead: how fast a clean run moves through each part of the track (the fastest 10% of daytime passes), leaving out time stopped at stops. Slow spots away from stops point to curves, switches and special trackwork, or slow orders on worn track. Near stops cars are braking and pulling away, so those parts are faded.</p>
+  <h3 id="explain-waits">Waits at stops</h3>
+  <p>Delay is about the car; riders also feel <i>spacing</i>. Two cars arriving together and then a long gap leave far more people waiting than evenly spaced cars, even if every car runs on time between stops. The <b>Waits</b> view measures that the way London and North American transit agencies do:</p>
+  <ul>
+    <li><b>Headway:</b> the time between one car and the next on the same route, leaving the same stop. Every vehicle on the route counts, buses included, since riders board those too.</li>
+    <li><b>Average wait:</b> for someone turning up at a random moment. Long gaps count for more: you're more likely to arrive during one, and you wait longer when you do.</li>
+    <li><b>Excess wait</b> (Transport for London's headline measure for frequent routes): the average wait minus the wait if cars had come exactly as the TTC's schedule says. It splits into <b>uneven spacing</b> (the cars that ran were bunched) and <b>missing cars</b> (fewer ran than scheduled, for example short turns).</li>
+    <li><b>Gaps between cars:</b> each stop's tooltip shows how the gaps were spread, in minutes, with the scheduled gap marked. Evenly run service is one tall bar at the schedule; bunching shows as a pile of very short gaps plus a tail of long ones.</li>
+    <li><b>Bunched:</b> a car leaving less than half the scheduled gap behind the one ahead. <b>Big gap:</b> more than 1.5× the scheduled gap.</li>
+  </ul>
+  <p>Only frequent service counts: hours scheduled every 12 minutes or better. On infrequent service people time their trips to the schedule, so on-time performance matters more there. The schedule is the TTC's published one in effect that day. A stop where fewer than a third of scheduled cars showed up that day is treated as not served (a diversion, or buses off the track) and left out; its tooltip says on how many days. Departure times come from positions about every 30 seconds, so each headway is good to within about 10 to 20 seconds; a car the feed lost track of shows up as a longer gap.</p>
+  <h3>What this doesn't show</h3>
+  <ul>
+    <li><b>Why.</b> It shows where, when and how much time is lost, not the cause. The stop and signal labels and the TTC's alerts are clues, not explanations.</li>
+    <li><b>Slowness every car shares.</b> The clean run comes from real cars at each spot, so anything that slows <i>every</i> car is built into it and doesn't show as delay: slow orders on worn track, switches and special trackwork, tight curves, low speed limits. A spot can be slow for everyone and still look green here.</li>
+    <li><b>Short layovers.</b> Standing still for over 3 minutes is left out, but shorter waits near the ends of a line can still show up as delay at the last few stops.</li>
+  </ul>
+  <h3>Worth knowing</h3>
+  <ul>
+    <li><b>Quiet stops.</b> If more than about 1 in 10 cars skip a stop (nobody waiting, nobody getting off), the clean run doesn't include stopping there, so that stop shows a little more delay than it otherwise would.</li>
+    <li><b>Overnight.</b> Overnight cars are measured against the same daytime clean run. They often beat it, so overnight delay is mostly near zero.</li>
+    <li><b>Left out:</b> cars off their usual track (diversions), buses on streetcar routes, and standing still for more than 3 minutes (layovers at the end of the line).</li>
+    <li><b>Early days.</b> With only a few days of data the clean run moves around. It settles as data builds up; each route's card shows how much its clean-run total moved in the last two weeks.</li>
+  </ul>
+</dialog>
+
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script src="https://unpkg.com/deck.gl@9.1.14/dist.min.js"></script>
+<script src="app.js?v=2183f92d02"></script>
+</body>
+</html>

@@ -1,0 +1,35 @@
+{
+ "day": "2026-10-29",
+ "generated": 1793360881,
+ "normal_days": 2,
+ "have_normal": false,
+ "positions": 90283,
+ "posts": [
+  {
+   "kind": "summary",
+   "text": "Yesterday (Thu Oct 29), Toronto streetcars spent 189 hours held up beyond a clean run.\n\nWorst: 501 Queen westbound, a typical trip lost 30 min.\nSmoothest: 512 St Clair eastbound, 9 min lost.\n\nhttps://freems88.github.io/ttc-streetcar-delays/",
+   "chars": 240
+  },
+  {
+   "kind": "segment",
+   "text": "Slowest segment yesterday: Dundas St West eastbound approaching Yonge St - Dundas Station.\nEach streetcar lost 104 s here on average, over 112 passes: 3.2 hours in all.\nThe signal here has no transit priority.",
+   "alt": "3D map of Dundas St West around Yonge St - Dundas Station, rotated to Toronto's street grid. Delay is drawn as a coloured ridge above the track, rising where streetcars lose time; the eastbound segment at Yonge St - Dundas Station is highlighted, peaking at about 104 seconds lost per streetcar.",
+   "shot": {
+    "shot": "1",
+    "win": "yesterday",
+    "piece": "p0",
+    "b0": 254,
+    "b1": 265,
+    "title": "Dundas St West eastbound, approaching Yonge St - Dundas Station",
+    "sub": "Thu Oct 29: 104 s lost per streetcar \u00b7 112 passes"
+   },
+   "chars": 209,
+   "image": "segment.png"
+  },
+  {
+   "kind": "service",
+   "text": "Service notes, Thu Oct 29:\n\u2022 501 Queen ran partly with buses: Long Branch Loop Streetcar Track Renewal Work\n\u2022 504 King was often off its usual track: Detour westbound via Church St, Richmond St E\u2026\n+3 more on the map",
+   "chars": 215
+  }
+ ]
+}

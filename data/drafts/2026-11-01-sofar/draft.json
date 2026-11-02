@@ -1,0 +1,46 @@
+{
+ "day": "2026-11-01",
+ "partial": true,
+ "generated": 1793578047,
+ "normal_days": 4,
+ "have_normal": false,
+ "positions": 166414,
+ "posts": [
+  {
+   "kind": "summary",
+   "text": "Sunday so far (to 7:06 pm): Toronto's streetcars lost 469 hours to delays, across all routes.\n\nHardest hit: 501 Queen westbound, where the typical trip lost 38 min.\nSmoothest: 507 Long Branch eastbound, 11 min.\n\nhttps://freems88.github.io/ttc-streetcar-delays/",
+   "chars": 260
+  },
+  {
+   "kind": "segment",
+   "text": "Sunday's slowest spot so far: Northbound on Dundas St West, approaching Bloor St West.\nThe average streetcar lost 2 min 17 s here. Across 142 trips, that adds up to 5.4 hours.\nThis signal has transit priority.",
+   "alt": "3D map of Dundas St West around Bloor St West, rotated to Toronto's street grid. Delay is drawn as a coloured ridge above the track, rising where streetcars lose time; the northbound stretch at Bloor St West is highlighted, peaking at about 2 min 17 s lost per streetcar.",
+   "shot": {
+    "shot": "1",
+    "win": "today",
+    "piece": "p1",
+    "b0": 420,
+    "b1": 427,
+    "title": "Dundas St West northbound, approaching Bloor St West",
+    "sub": "Sunday so far (to 7:06 pm): 2 min 17 s lost per streetcar \u00b7 142 trips"
+   },
+   "chars": 209,
+   "image": "segment.png"
+  },
+  {
+   "kind": "waits",
+   "text": "Sunday so far (to 7:06 pm): on frequent routes, bunching and missing cars made the average wait at a stop 1.6 min longer than scheduled.\n\nWorst: 505 Dundas westbound, 2.8 min extra; 23% cars bunched.\n\nhttps://freems88.github.io/ttc-streetcar-delays/#v=wait",
+   "chars": 256
+  },
+  {
+   "kind": "fleet",
+   "text": "Sunday so far (to 7:06 pm): at the busiest moment (5:00 pm), 136 streetcars were in service, against 140 scheduled.\nOverall, 99% of scheduled streetcar service ran, and buses ran 535 hours on streetcar routes.\nFurthest behind: 509 Harbourfront, at 89% of its scheduled service.",
+   "chars": 277
+  },
+  {
+   "kind": "service",
+   "text": "Service changes, Sunday so far (to 7:06 pm):\n\u2022 501 Queen, partly by bus: Long Branch Loop Streetcar Track Renewal Work\n\u2022 504 King, partly by bus: Temporary service change due to City of Toronto work\n+1 more on the map",
+   "chars": 217
+  }
+ ]
+}
