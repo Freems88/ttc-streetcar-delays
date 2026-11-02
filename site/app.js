@@ -629,9 +629,12 @@
       return [{pos: [s.lonlat[0] + o[0], s.lonlat[1] + o[1]], name: s.name, id: s.id, dir: approachAt(p, b)}];
     });
   }
+  // Zoomed out, the two directions get pulled further apart (up to 2.5x by zoom 11): telling
+  // them apart matters more than sitting exactly on the track at that distance.
   function updateOffset() {
-    const px = state.view === "wait" ? WAIT_OFFSET_PX : OFFSET_PX;
-    offsetM = state.dir === "both" ? px * 40075016 * KX / (512 * 2 ** map.getZoom()) : 0;
+    const z = map.getZoom();
+    const px = (state.view === "wait" ? WAIT_OFFSET_PX : OFFSET_PX) * (1 + Math.min(1.5, Math.max(0, (14 - z) / 2)));
+    offsetM = state.dir === "both" ? px * 40075016 * KX / (512 * 2 ** z) : 0;
   }
   // Re-render on zoom: the direction offset is in pixels and turn-ban icons appear close in.
   map.on("zoomend", () => { if (!SHOT) render(); });
