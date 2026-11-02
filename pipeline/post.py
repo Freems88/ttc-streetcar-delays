@@ -14,7 +14,7 @@ Nothing is posted unless WORK_DIR/bot-enabled exists; without it a slot only pri
 what it would post. The site link in a draft is posted as short link text ("See the
 map") so it doesn't eat into the 300-character limit.
 
-Usage: post.py SLOT [--dry-run]   (SLOT: morning, midday or evening)
+Usage: post.py SLOT [--dry-run] [--now] [--draft NAME]   (SLOT: morning, midday, evening or all)
 Needs STUCKTO_HANDLE and STUCKTO_PASSWORD (an app password) in the environment.
 """
 import json
@@ -64,11 +64,13 @@ def shown(text):
 
 def main():
     slot = sys.argv[1] if len(sys.argv) > 1 else ""
-    if slot not in SLOTS:
-        sys.exit(f"usage: post.py {{{','.join(SLOTS)}}} [--dry-run]")
-    dry = "--dry-run" in sys.argv or not ENABLED.exists()
-    # Yesterday's draft, by the service day (the nightly run writes it at 04:20).
-    day = service_day(time.time() - 86400)
+    if slot not in SLOTS and slot != "all":
+        sys.exit(f"usage: post.py {{{','.join(SLOTS)},all}} [--dry-run] [--now] [--draft NAME]")
+    # --now posts even while the bot is switched off (a one-off test thread).
+    dry = "--dry-run" in sys.argv or not (ENABLED.exists() or "--now" in sys.argv)
+    # Yesterday's draft, by the service day (the nightly run writes it at 04:20), or a
+    # named one (e.g. 2026-11-01-sofar).
+    day = sys.argv[sys.argv.index("--draft") + 1] if "--draft" in sys.argv else service_day(time.time() - 86400)
     path = DRAFTS / day / "draft.json"
     if not path.exists():
         print(f"post: no draft for {day}; nothing to post", file=sys.stderr)
@@ -76,7 +78,8 @@ def main():
     draft = json.loads(path.read_text())
     state_path = DRAFTS / day / "posted.json"
     state = json.loads(state_path.read_text()) if state_path.exists() else {"done": []}
-    todo = [p for kind in SLOTS[slot] for p in draft["posts"] if p["kind"] == kind and kind not in state["done"]]
+    kinds = [k for s in SLOTS.values() for k in s] if slot == "all" else SLOTS[slot]
+    todo = [p for kind in kinds for p in draft["posts"] if p["kind"] == kind and kind not in state["done"]]
     if not todo:
         print(f"post: {day} {slot}: nothing to post", file=sys.stderr)
         return
