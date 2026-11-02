@@ -67,8 +67,7 @@ Step by step, for one streetcar position:
 | 5:15 pm | **Bot, evening** | Cars in service. |
 
 The laptop only edits code. Changes go to GitHub; the Pi picks them up at the next nightly run
-(or when a rebuild is started by hand). Also on the same Pi, untouched by this: BikeGone,
-EveryLot, EveryTree, EveryLane.
+(or when a rebuild is started by hand).
 
 ---
 
@@ -97,7 +96,7 @@ the transit-priority comparison use. Tunnel signals (cars pass underneath) are e
 ### Which track belongs to which route
 **Observed, not scheduled** (since 2 Nov 2026). The schedule's route shapes can be wrong for
 weeks: in November 2026 they had the 501 via Gerrard and the 504 via Queen West, diversions not
-yet running (Steve Munro spotted it). So every trip records the track it actually used, and a
+yet running. So every trip records the track it actually used, and a
 route's line is the set of slices at least 30% of that route-direction's trips went through
 in the last 7 days. Route filters, route cards, trip totals and the bot all use this.
 
@@ -223,7 +222,8 @@ systemctl status ttc-streetcars.service
 - **Observational only:** no dollar costs, no one-off traffic counts.
 - **Colour scale:** magma, breaks at 0 / 8 / 15 / 30 / 60+ s per 100 m. Recheck once there are a
   few weeks of data, then keep fixed.
-- **Route patterns observed, not scheduled** (2 Nov 2026, after Steve Munro's catch).
+- **Route patterns observed, not scheduled** (2 Nov 2026, after the schedule's diversions were
+  found to be pulling routes off where cars actually ran).
 - **Bot posts yesterday, not today,** as one thread; no service-change posts.
 - **Turn-ban and transit-priority comparisons** are shown with care: placement isn't random, so
   they describe, they don't prove.
