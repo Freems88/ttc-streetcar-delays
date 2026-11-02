@@ -37,6 +37,9 @@ CLEAN_PCT = 0.10
 MIN_SAMPLES = 3        # slices with fewer passes than this are left out
 MIN_SIGNAL_PASSES = 20  # a signal counts once this many streetcar passes went through it (all time)
 TIMELINE_DAYS = 90
+OBSERVED_DAYS = 14        # route patterns follow where cars actually ran over this many days
+OBSERVED_SHARE = 0.3      # a slice is on the route if this share of its runs went through it
+MIN_OBSERVED_RUNS = 30
 SITE_SRC = Path(__file__).resolve().parent.parent / "site"
 ALERT_NOISE = re.compile(r"elevator|escalator|washroom|accessible entrance", re.I)
 
@@ -184,12 +187,50 @@ def window_stats(network, days, clean_from=None):
     return {"pieces": pieces, "routes": routes}
 
 
+def observed_patterns(network, days):
+    """Route patterns as cars actually ran them. The schedule's main pattern for a route and
+    direction can be a diversion that isn't running yet (in November 2026 it had the 501
+    via Gerrard and the 504 via Queen West), or miss one that is. So each pattern's slices
+    become the ones at least OBSERVED_SHARE of that direction's runs went through over the
+    last OBSERVED_DAYS days. Patterns with too few runs keep the schedule's slices."""
+    recent = sorted((d for d in days if "pat_used" in d), key=lambda d: d["day"])[-OBSERVED_DAYS:]
+    runs, used = defaultdict(int), defaultdict(lambda: defaultdict(int))
+    for d in recent:
+        for pid, n in d["pat_runs"].items():
+            runs[pid] += n
+        for pid, sl in d["pat_used"].items():
+            for k, n in sl.items():
+                used[pid][k] += n
+    for pat in network["patterns"]:
+        n = runs.get(pat["id"], 0)
+        if n < MIN_OBSERVED_RUNS:
+            continue
+        keep = {k for k, c in used[pat["id"]].items() if c >= OBSERVED_SHARE * n}
+        sched = [tuple(x) for x in pat["slices"]]
+        extra = sorted(tuple(map(int, k.split(":"))) for k in keep - {f"{pi}:{b}" for pi, b in sched})
+        slices = [list(x) for x in sched if f"{x[0]}:{x[1]}" in keep] + [list(x) for x in extra]
+        if len(slices) < 0.3 * len(sched):
+            continue  # hardly any of it seen: bus-run or mostly off the track; keep the schedule's
+        dropped = len(sched) - (len(slices) - len(extra))
+        if dropped or extra:
+            print(f"pattern {pat['id']}: observed route differs from the schedule's "
+                  f"({dropped} slices not run, {len(extra)} added)", file=sys.stderr)
+        pat["sched_slices"] = len(sched)
+        pat["slices"] = slices
+        pat["length"] = len(slices) * BIN_M
+        pat["observed"] = True
+
+
 def service_per_day(pat, days, n_slices):
     """Full trips' worth of service a day on a pattern: slices runs covered ÷ pattern length,
     over finished days, counting partly logged days by the hours actually logged."""
     today = service_day(time.time())
     finished = [d for d in days if d["day"] < today]
     logged_days = sum(min(1.0, d["stats"].get("logged_h", 0) / 24) for d in finished)
+    if pat.get("observed") and all("pat_used" in d for d in finished):
+        keys = {f"{pi}:{b}" for pi, b in pat["slices"]}
+        covered = sum(n for d in finished for k, n in d["pat_used"].get(pat["id"], {}).items() if k in keys)
+        return {"trips_per_day": round(covered / n_slices / logged_days, 1) if logged_days >= 0.25 and n_slices else None}
     covered = sum(d["routes"].get(pat["route"], {}).get("cover", {}).get(pat["id"], 0) for d in finished)
     if logged_days < 0.25 or not n_slices or not any("cover" in r for d in finished for r in d["routes"].values()):
         return {"trips_per_day": None}
@@ -463,6 +504,7 @@ def main():
     out = Path(sys.argv[1])
     network = json.loads((WORK_DIR / "network.json").read_text())
     days = load_days()
+    observed_patterns(network, days.values())
     if not days:
         sys.exit("no processed days")
     last = max(days)
@@ -540,11 +582,18 @@ def main():
     used = sorted({i for _, s in tagged for i in s if i >= 0})
     remap = {i: k for k, i in enumerate(used)}
     signal_turns = match_turns(sigs, used)
+    # Each piece's routes are the ones whose patterns (observed where possible) run on it;
+    # pieces no pattern uses keep the routes of the schedule shapes that made them.
+    piece_routes = defaultdict(set)
+    for pat in network["patterns"]:
+        for pi, _ in pat["slices"]:
+            piece_routes[pi].add(pat["route"])
     lite = {
         "bin_m": BIN_M,
-        "pieces": [{**{k: p[k] for k in ("id", "routes", "bins", "stops", "length")},
+        "pieces": [{**{k: p[k] for k in ("id", "bins", "stops", "length")},
+                    "routes": sorted(piece_routes[pi]) if pi in piece_routes else p["routes"],
                     "tags": tags, "sig": [remap.get(i, -1) for i in sig]}
-                   for p, (tags, sig) in zip(network["pieces"], tagged)],
+                   for pi, (p, (tags, sig)) in enumerate(zip(network["pieces"], tagged))],
         "patterns": [{k: v for k, v in p.items()} for p in network["patterns"]],
         "signals": [{**{k: sigs[i][k] for k in ("name", "tsp", "midblock", "lonlat")},
                      **({"turns": signal_turns[i]} if signal_turns.get(i) else {})} for i in used],

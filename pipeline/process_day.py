@@ -303,6 +303,8 @@ def process(day, network=None):
             opts[key] = m.candidates(*ping[1:])
         return opts[key]
 
+    pat_runs = defaultdict(int)                       # pattern -> runs credited to it
+    pat_used = defaultdict(lambda: defaultdict(int))  # pattern -> "piece:bin" -> runs through it
     n_pings = n_passes = n_samples = 0
     for key, by_ts in runs.items():
         route = run_route[key]
@@ -313,6 +315,7 @@ def process(day, network=None):
         route_days[route]["flex_off"] += off
         route_days[route]["flex_on"] += len(pings) - off
         run_cover = defaultdict(int)  # pattern -> slices this run covered
+        run_slices = set()  # every slice this run went through, on its pattern or not
         for pi, whole in passes:
             pid = m.pieces[pi]["id"]
             for seq in split_layovers(whole):
@@ -324,6 +327,7 @@ def process(day, network=None):
                         if pat_id.split("-")[0] == route:
                             run_cover[pat_id] += 1
                 n_passes += 1
+                run_slices.update((pi, b) for b in times)
                 for b, (v, t_in) in times.items():
                     n_samples += 1
                     slot = slot_of(t_in, day)
@@ -341,6 +345,11 @@ def process(day, network=None):
         if run_cover:
             best = max(run_cover, key=run_cover.get)
             cover[route][best] += run_cover[best]
+            # Where cars on this route and direction really went, for observed route
+            # patterns (the schedule can show a diversion that isn't running, or miss one).
+            pat_runs[best] += 1
+            for pi, b in run_slices:
+                pat_used[best][f"{pi}:{b}"] += 1
     for route, pats in cover.items():
         route_days[route]["cover"] = dict(pats)
     # Stop departures from each vehicle's whole day, credited to the route of the trip it
@@ -370,6 +379,8 @@ def process(day, network=None):
         "cnts": cnts,
         "hsums": {p: {h: {b: round(v, 1) for b, v in d.items()} for h, d in hs.items()} for p, hs in hsums.items()},
         "hcnts": hcnts,
+        "pat_runs": pat_runs,
+        "pat_used": pat_used,
     }
     if heads is not None:
         out["heads"], out["heads_off"] = heads
