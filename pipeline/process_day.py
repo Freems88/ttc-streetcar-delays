@@ -53,6 +53,11 @@ MAX_SPEED = 25      # m/s; faster implied movement means a bad match
 STILL_M = 3         # moved less than this between pings = standing still
 LAYOVER_S = 180     # standing this long in one place = layover, not delay
 JOIN_M = 30         # pieces of track whose ends come this close are joined
+# Carhouses and yards: cars signed on to a trip often sit or shunt here, off route track.
+# Those positions aren't counted as off track. (lat, lon), radius YARD_M.
+YARDS = {"Russell": (43.6658, -79.3224), "Roncesvalles": (43.6393, -79.4475),
+         "Leslie Barns": (43.6597, -79.3290), "Hillcrest": (43.6745, -79.4192)}
+YARD_M = 300
 CELL = 100          # spatial index cell, metres
 
 # Log-spaced histogram buckets for seconds-in-slice: 0.25 s .. ~600 s, ~21% wide.
@@ -313,14 +318,18 @@ def process(day, network=None):
         n_pings += len(pings)
         opts_list = [candidates(key[0], pg) for pg in pings]
         passes, off = split_passes(pings, opts_list)
-        route_days[route]["flex_off"] += off
         # Where streetcars were with no known track under them (~100 m cells), for the
         # off-track warning: a new routing on track no schedule has ever drawn.
         for (_, x, y, _), o in zip(pings, opts_list):
             if not o:
                 lon, lat = to_lonlat(x, y)
-                off_cells[route][f"{lat:.3f},{lon:.3f}"] += 1
-        route_days[route]["flex_on"] += len(pings) - off
+                if any(math.hypot((lat - ya) * 111000, (lon - yo) * 80500) < YARD_M for ya, yo in YARDS.values()):
+                    off -= 1
+                    route_days[route]["yard"] = route_days[route].get("yard", 0) + 1
+                else:
+                    off_cells[route][f"{lat:.3f},{lon:.3f}"] += 1
+        route_days[route]["flex_off"] += off
+        route_days[route]["flex_on"] += len(pings) - off  # yard positions count as on track
         run_cover = defaultdict(int)  # pattern -> slices this run covered
         run_slices = set()  # every slice this run went through, on its pattern or not
         for pi, whole in passes:
