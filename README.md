@@ -4,6 +4,8 @@ Where Toronto streetcars lose time compared with a clean run that only stops at 
 
 The TTC publishes live streetcar positions (GTFS-Realtime) but keeps no history, so a Raspberry Pi logs them and rebuilds the map nightly.
 
+**New here, or something looks off?** Start with [docs/how-it-works.md](docs/how-it-works.md): the plain-language guide to how it all fits together, its assumptions, and how to check it's healthy.
+
 ## Layout
 
 - `collector/`: runs on the Pi as systemd services (deployed copies live in `~/ttc-streetcars/`).
