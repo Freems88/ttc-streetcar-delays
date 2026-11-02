@@ -5,7 +5,8 @@ The nightly run writes yesterday's draft (drafts/<day>/draft.json). It goes out 
 each replying to the thread's last post:
   morning  summary, then the slowest spot with its image
   midday   waits at stops
-  evening  cars in service, then service changes
+  evening  cars in service
+(Service-change drafts stay on the drafts page but aren't posted.)
 A post with nothing to say that day is simply missing from the draft and skipped.
 drafts/<day>/posted.json records what went out, so a slot never posts twice.
 
@@ -28,7 +29,7 @@ from common import WORK_DIR, service_day
 DRAFTS = WORK_DIR / "drafts"
 ENABLED = WORK_DIR / "bot-enabled"
 SESSION = WORK_DIR / "bsky-session"
-SLOTS = {"morning": ["summary", "segment"], "midday": ["waits"], "evening": ["fleet", "service"]}
+SLOTS = {"morning": ["summary", "segment"], "midday": ["waits"], "evening": ["fleet"]}
 LINK = re.compile(r"https://freems88\.github\.io/ttc-streetcar-delays/\S*")
 LINK_TEXT = "See the map"
 IMAGE_SIZE = (1200, 900)  # as captured by drafts.py

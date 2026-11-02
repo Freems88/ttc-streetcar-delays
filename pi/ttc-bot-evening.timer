@@ -1,5 +1,5 @@
 [Unit]
-Description=Stuck TO bot: evening posts
+Description=Stuck TO bot: evening posts (cars in service)
 
 [Timer]
 OnCalendar=*-*-* 17:15:00
