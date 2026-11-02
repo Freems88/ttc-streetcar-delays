@@ -50,8 +50,9 @@ Step by step, for one streetcar position:
    the car covered. A pass that fully crosses a slice gives one sample: seconds spent there.
 5. **Summed per day.** Each slice gets that day's samples (as a histogram and as sums by time
    of day). Nothing per car is kept beyond this; days are small and add up.
-6. **Combined.** The site build adds days together into windows (15, 30 and 90 days, and all
-   time) and works out the clean run and the delay for each slice.
+6. **Combined.** The site build adds days together into windows (yesterday, and the last 7,
+   30 and 90 days) and works out the clean run and the delay for each slice. It reads one day
+   at a time into running totals, so it uses the same memory however long the archive gets.
 
 ---
 
@@ -98,7 +99,9 @@ the transit-priority comparison use. Tunnel signals (cars pass underneath) are e
 weeks: in November 2026 they had the 501 via Gerrard and the 504 via Queen West, diversions not
 yet running. So every trip records the track it actually used, and a
 route's line is the set of slices at least 30% of that route-direction's trips went through
-in the last 7 days. Route filters, route cards, trip totals and the bot all use this.
+in the last 3 days. A new routing shows up after about a day and an abandoned one drops off
+after about two; a few cars on a short detour never count. Route filters, route cards, trip
+totals and the bot all use this.
 
 Note that **delay belongs to the track, not the route**. On track shared by two routes (King
 and Queen downtown), both routes' cars feed the same slices.
@@ -124,6 +127,33 @@ going to or from the yard aren't in the feed, so this is cars carrying passenger
 After the nightly build writes yesterday's drafts, the bot posts them as one thread spread over
 the day. It only posts while the switch file `~/ttc-streetcars/delays/bot-enabled` exists.
 Service-change notes are drafted but not posted.
+
+---
+
+## Data rules
+
+How routes, diversions and time are handled. When something new comes up, decide it against
+these rather than case by case.
+
+1. **Delay belongs to the track, not the route.** A stretch's numbers come from whatever
+   streetcars actually ran over it in the chosen window. If nothing ran there, there's nothing
+   to show. Diversions don't change what was measured; they change where measuring happened.
+2. **Routes are a lens, worked out from observation.** A route's line is the track its cars
+   actually used in the last 3 days. Diversions are never maintained by hand; the nightly
+   **track check** flags anything the map can't see.
+3. **Every number carries its time.** Track with no streetcars for 3 or more days is drawn
+   faded, and its tooltip says when a streetcar was last there, with the route's latest TTC
+   alert. Old data isn't wrong, but it's labelled as old.
+4. **A long closure starts a fresh record.** If a stretch has no streetcars for 14 or more
+   logged days and service then resumes, only data from after the reopening counts. Track
+   that's been rebuilt is never averaged with how it was before.
+5. **The window ages everything else out.** The site offers yesterday and the last 7, 30 and
+   90 days (the default). There is deliberately no "all time" view: it would mix seasons,
+   construction and track changes into one number. The raw archive is the long-term record,
+   and anything longer-term can be rebuilt from it when it's actually wanted.
+
+The aim is consistency, not completeness: the site shows what streetcars actually
+experienced on each stretch of track, and when.
 
 ---
 
@@ -171,7 +201,8 @@ systemctl status ttc-streetcars.service
   passenger counters may not be live). Not used.
 - **A few odd stops** with low "cars seen" (e.g. King St East at Sumach on the 504) aren't
   explained yet.
-- **No backup.** The raw archive exists only on the Pi's SD card.
+- **No backup.** The raw archive exists only on the Pi's SD card. It's the one thing that
+  can't be rebuilt (about 1.5 GB a year). Still to be decided: where a copy should go.
 - **Early days.** Clean runs and "usual" comparisons settle after a few weeks of data. The
   bot's "usually" comparisons start after 7 days.
 - **Lines 5 and 6** (Eglinton, Finch West) aren't in the TTC's live feed yet.
@@ -224,6 +255,8 @@ systemctl status ttc-streetcars.service
   few weeks of data, then keep fixed.
 - **Route patterns observed, not scheduled** (2 Nov 2026, after the schedule's diversions were
   found to be pulling routes off where cars actually ran).
+- **The data rules above** (2 Nov 2026): windows of yesterday / 7 / 30 / 90 days, no all-time
+  view, stale track faded, a fresh record after 14+ days closed, routes from the last 3 days.
 - **Bot posts yesterday, not today,** as one thread; no service-change posts.
 - **Turn-ban and transit-priority comparisons** are shown with care: placement isn't random, so
   they describe, they don't prove.

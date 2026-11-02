@@ -12,12 +12,14 @@
       speed: [[0, [59, 15, 98]], [10, [155, 45, 127]], [20, [227, 80, 106]], [30, [252, 162, 102]],
         [40, [247, 227, 161]], [55, [236, 222, 186]]],
       base: [196, 189, 177, 210], faint: [180, 180, 180, 160], stop: [35, 35, 35, 220], vertical: [110, 110, 110, 70],
+      stale: [175, 172, 168, 120],
     },
     dark: {
       delay: [[0, [92, 38, 128]], [8, [150, 52, 130]], [15, [222, 73, 104]], [30, [252, 140, 96]], [60, [252, 236, 174]]],
       speed: [[0, [252, 236, 174]], [10, [252, 140, 96]], [20, [222, 73, 104]], [30, [150, 52, 130]],
         [40, [92, 38, 128]], [55, [70, 32, 100]]],
       base: [92, 87, 82, 230], faint: [110, 110, 110, 170], stop: [215, 215, 215, 220], vertical: [190, 190, 190, 55],
+      stale: [105, 103, 100, 140],
     },
   };
   // Waits view: the delay colours at excess-wait breaks of 0, 1, 2, 4 and 8+ minutes.
@@ -46,7 +48,8 @@
   // ?shot=1: screenshot mode for bot images (see renderShot).
   const params = new URLSearchParams(location.search);
   const SHOT = params.get("shot") === "1";
-  const [meta, net, timeline] = await Promise.all([get("meta.json"), get("network.json"), get("timeline.json")]);
+  const [meta, net, timeline, lastSeen] = await Promise.all([get("meta.json"), get("network.json"), get("timeline.json"),
+    get("lastseen.json").catch(() => ({pieces: {}}))]);
   state.stats.recent = await get("stats-recent.json");
 
   // --- static lookups -------------------------------------------------------------
@@ -68,7 +71,7 @@
   for (const p of net.patterns) routeNames[p.route] = p.name;
 
   // --- controls -------------------------------------------------------------------
-  const WINDOW_LABELS = {d15: "Last 15 days", d30: "Last 30 days", recent: `Last ${meta.window_days} days`, all: "All time"};
+  const WINDOW_LABELS = {d1: "Yesterday", d7: "Last 7 days", d30: "Last 30 days", recent: `Last ${meta.window_days} days`};
   // Each window's stats are a separate file, fetched the first time it's picked.
   async function loadWindow(w) {
     if (!state.stats[w]) state.stats[w] = await get(`stats-${w}.json`);
@@ -469,10 +472,10 @@
     `Based on ${w.days} day${w.days === 1 ? "" : "s"} (${dayFmt(w.from)} – ${dayFmt(meta.last_day)}) · ` +
     `${fmt(w.pings)} positions · ${fmt(w.samples)} slice passes. ` +
     `Updated ${new Date(meta.generated * 1000).toLocaleString("en-CA", {dateStyle: "medium", timeStyle: "short"})}.`;
-  if (meta.windows.all.days < 14) {
+  if (meta.windows.recent.days < 14) {
     const el = document.getElementById("prelim");
     el.hidden = false;
-    el.textContent = `Preliminary: ${meta.windows.all.days} day${meta.windows.all.days === 1 ? "" : "s"} of data so far. ` +
+    el.textContent = `Preliminary: ${meta.windows.recent.days} day${meta.windows.recent.days === 1 ? "" : "s"} of data so far. ` +
       "Numbers will move as more passes come in, and faint lines have very few.";
   }
 
@@ -834,7 +837,7 @@
         // Near stops cars are braking and pulling away: fade so real slow zones stand out.
         const nearStop = p.tags[b] === 1 || p.tags[b] === 3;
         segs.push({path: [pos(p, b), pos(p, b + 1)], piece: p, bin: b, kmh,
-          color: colorFor(kmh, nearStop ? 90 : confidence(st.n[b]), pal.speed)});
+          color: staleAgo(p, b) != null ? pal.stale : colorFor(kmh, nearStop ? 90 : confidence(st.n[b]), pal.speed)});
       }
     }
     drawn = segs.flatMap((s) => [...s.path[0], 0]);
@@ -942,7 +945,8 @@
           const n = Math.min(slot.n[b], slot.n[b + 1]);
           ridge.push({
             from: [...pos(p, b), h], to: [...pos(p, b + 1), h2],
-            color: colorFor((d[b] + d[b + 1]) / 2, confidence(n)), piece: p, bin: b, value: d[b],
+            color: staleAgo(p, b) != null ? pal.stale : colorFor((d[b] + d[b + 1]) / 2, confidence(n)),
+            piece: p, bin: b, value: d[b],
           });
         }
       }
@@ -1016,6 +1020,34 @@
         `<span class="bd-bar"><i style="--c:${KINDS[k].color};width:${pct.toFixed(1)}%"></i></span>` +
         `<span class="bd-pct">${Math.round(pct)}%</span></div>`;
     }).join("") : `<div class="bd-row"><span>No data in this view</span></div>`;
+  }
+
+  // --- stale track ----------------------------------------------------------------
+  // Track with no streetcars for meta.stale_days or more is drawn faded; its numbers are
+  // from before then. Days since the last streetcar, or null when it's current.
+  const STALE_DAYS = meta.stale_days || 3;
+  function staleAgo(p, b) {
+    const a = lastSeen.pieces[p.id]?.[b];
+    return a != null && a >= STALE_DAYS ? a : null;
+  }
+  // Tooltip line for stale track: when a streetcar was last seen, and the latest TTC
+  // alert in the last few days for routes that use this track.
+  function staleText(p, b) {
+    const a = staleAgo(p, b);
+    if (a == null) return "";
+    const when = new Date(lastSeen.ref + "T12:00");
+    when.setDate(when.getDate() - a);
+    const alerts = [];
+    for (const r of p.routes) {
+      const rows = (timeline.routes[r] || []).slice(-4).reverse();
+      const id = rows.flatMap((row) => row.alerts || [])[0];
+      const text = id && timeline.alerts[id]?.text;
+      // Alerts usually lead with the route's own name ("501 Queen: ..."); don't say it twice.
+      if (text) alerts.push(`${r}: ${text.replace(/^\d{3}\s+[^:]{1,30}:\s*/, "").replace(/</g, "&lt;")}`);
+    }
+    return `<div class="t-stale">No streetcars here since ${when.toLocaleDateString("en-CA", {month: "short", day: "numeric"})} ` +
+      `(${a} days). These numbers are from before then.</div>` +
+      (alerts.length ? `<div class="t-dim">${alerts.slice(0, 2).join("<br>")}</div>` : "");
   }
 
   // --- tooltip --------------------------------------------------------------------
@@ -1098,7 +1130,7 @@
     const nearStop = p.tags[b] === 1 || p.tags[b] === 3;
     tip.innerHTML =
       `<div class="t-title">${stop ? `Near ${stop}` : "Streetcar track"}</div>` +
-      `<div class="t-dim">${approachAt(p, b)} · ${p.routes.join(", ")}</div>` +
+      `<div class="t-dim">${approachAt(p, b)} · ${p.routes.join(", ")}</div>` + staleText(p, b) +
       `<div class="t-big">${Math.round(kmh)} km/h clean-run speed</div>` +
       `<div class="t-dim">How fast the quickest 10% of daytime passes move here, not counting time stopped at stops.` +
       `<br>${fmt(st.n[b])} passes</div>` +
@@ -1186,7 +1218,7 @@
     tip.innerHTML =
       `<div class="t-title">${stop ? `Near ${stop}` : "Streetcar track"}</div>` +
       `<div class="t-dim">${approachAt(p, b)} · ${p.routes.join(", ")} · ${timeLabel()}</div>` +
-      `<div class="t-kind">${kindText(p, b)}</div>` +
+      `<div class="t-kind">${kindText(p, b)}</div>` + staleText(p, b) +
       `<div class="t-big">${rate.toFixed(1)} s lost per 100 m</div>` +
       `<div>The ${span} m around here cost a typical car <b>${lostHere < 1 ? "under 1 s" : `${Math.round(lostHere)} s`}</b></div>` +
       `<div class="t-dim">${cleanHere.toFixed(1)} s clean run vs ${typical.toFixed(1)} s typical<br>` +

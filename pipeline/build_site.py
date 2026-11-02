@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Combine daily slice statistics into the data files the map page reads.
 
-For each window (last WINDOW_DAYS days, all time) and each 25 m slice:
+For each window (yesterday, the last 7 / 30 / WINDOW_DAYS days) and each 25 m slice:
   clean  = a clean run's seconds in the slice: the 10th-percentile daytime pass
            through the slice, plus that stop interval's clean stopping time
            (10th-percentile interval time minus its slices' fast-pass times) placed
@@ -11,6 +11,14 @@ For each window (last WINDOW_DAYS days, all time) and each 25 m slice:
 Route summaries add those up along each route's current main pattern. Also writes a
 per-route daily timeline (streetcars / buses / diverted) with the service alerts
 seen that day.
+
+Days are read one at a time, newest first, into running totals for each window, so
+memory stays flat however long the archive gets. Along the way two data rules apply
+(see docs/how-it-works.md, "Data rules"):
+  - a stretch of track that had no streetcars for FRESH_GAP_DAYS logged days and then
+    reopened only counts its data from after the reopening (rebuilt track, a long
+    diversion: before and after never get averaged together)
+  - each slice's last day with streetcars is kept, so the page can fade stale track
 
 Usage: build_site.py OUT_DIR   (copies site/ into OUT_DIR and writes OUT_DIR/data/)
 """
@@ -36,9 +44,11 @@ from process_day import NB, bucket_mid
 WINDOW_DAYS = 90
 CLEAN_PCT = 0.10
 MIN_SAMPLES = 3        # slices with fewer passes than this are left out
-MIN_SIGNAL_PASSES = 20  # a signal counts once this many streetcar passes went through it (all time)
+MIN_SIGNAL_PASSES = 20  # a signal counts once this many streetcar passes went through it (90 days)
 TIMELINE_DAYS = 90
-OBSERVED_DAYS = 7         # route patterns follow where cars actually ran over this many days
+OBSERVED_DAYS = 3         # route patterns follow where cars actually ran over this many days
+FRESH_GAP_DAYS = 14       # no streetcars for this many logged days, then service: a fresh record
+STALE_DAYS = 3            # the page fades track with no streetcars for this many days
 OBSERVED_SHARE = 0.3      # a slice is on the route if this share of its runs went through it
 MIN_OBSERVED_RUNS = 30
 OFF_MIN_PINGS = 300       # off-track warning: at least this many positions off known track,
@@ -60,12 +70,68 @@ def percentile(hist, q):
     return bucket_mid(NB - 1)
 
 
-def load_days():
-    days = {}
-    for p in sorted((WORK_DIR / "agg").glob("*.json.gz")):
-        with gzip.open(p, "rt") as f:
-            days[p.name[:10]] = json.load(f)
-    return days
+def load_day(path):
+    with gzip.open(path, "rt") as f:
+        return json.load(f)
+
+
+class Acc:
+    """Running totals for one window, filled one day at a time."""
+
+    def __init__(self):
+        self.hist = defaultdict(lambda: defaultdict(lambda: [0] * NB))
+        self.ihist = defaultdict(lambda: defaultdict(lambda: [0] * NB))
+        self.sums = defaultdict(lambda: defaultdict(lambda: defaultdict(float)))
+        self.cnts = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
+        self.seen_days = defaultdict(lambda: defaultdict(int))
+        self.hsums = defaultdict(lambda: defaultdict(lambda: defaultdict(float)))
+        self.hcnts = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
+        self.heads = defaultdict(lambda: defaultdict(dict))
+        self.heads_off = defaultdict(lambda: defaultdict(int))
+        self.head_days = 0
+        self.days = []  # each day's small summary (see main)
+
+    def add(self, d, light, cut):
+        """Add one day. `cut`: (piece, bin) slices whose data this day predates a long closure."""
+        self.days.append(light)
+        for pid, bins in d["hist"].items():
+            for b, h in bins.items():
+                if (pid, int(b)) in cut:
+                    continue
+                hb = self.hist[pid][int(b)]
+                for k, n in h.items():
+                    hb[int(k)] += n
+                self.seen_days[pid][int(b)] += 1
+        for pid, ints in d.get("ihist", {}).items():
+            for i, h in ints.items():
+                hi = self.ihist[pid][int(i)]
+                for k, n in h.items():
+                    hi[int(k)] += n
+        for pid, slots in d["sums"].items():
+            for sl, bins in slots.items():
+                for b, v in bins.items():
+                    if (pid, int(b)) in cut:
+                        continue
+                    self.sums[pid][sl][int(b)] += v
+                    self.cnts[pid][sl][int(b)] += d["cnts"][pid][sl][b]
+        for pid, hours in d.get("hsums", {}).items():
+            for h, bins in hours.items():
+                for b, v in bins.items():
+                    if (pid, int(b)) in cut:
+                        continue
+                    self.hsums[pid][h][int(b)] += v
+                    self.hcnts[pid][h][int(b)] += d["hcnts"][pid][h][b]
+        if "heads" in d:
+            self.head_days += 1
+            for stop, routes in d["heads"].items():
+                for route, hours in routes.items():
+                    acc = self.heads[stop][route]
+                    for h, row in hours.items():
+                        row = list(row) + [0] * (len(headways.FIELDS) - len(row))  # days from before the spread was kept
+                        acc[h] = [x + y for x, y in zip(acc[h], row)] if h in acc else row
+            for stop, routes in d.get("heads_off", {}).items():
+                for route in routes:
+                    self.heads_off[stop][route] += 1
 
 
 SPREAD = [1, 2, 3, 2, 1]  # how a stop's clean stopping time is spread over slices around it
@@ -98,31 +164,12 @@ def stop_allowance(piece, fast, ihist):
     return out
 
 
-def window_stats(network, days, clean_from=None):
-    """Slice and route stats over `days`. With `clean_from` ({piece: clean list}), measure
-    against that clean run instead of one computed from these days (for single days)."""
-    hist = defaultdict(lambda: defaultdict(lambda: [0] * NB))
-    sums = defaultdict(lambda: defaultdict(lambda: defaultdict(float)))
-    cnts = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
-    ihist = defaultdict(lambda: defaultdict(lambda: [0] * NB))
-    seen_days = defaultdict(lambda: defaultdict(int))
-    for d in days:
-        for pid, bins in d["hist"].items():
-            for b, h in bins.items():
-                hb = hist[pid][int(b)]
-                for k, n in h.items():
-                    hb[int(k)] += n
-                seen_days[pid][int(b)] += 1
-        for pid, ints in d.get("ihist", {}).items():
-            for i, h in ints.items():
-                hi = ihist[pid][int(i)]
-                for k, n in h.items():
-                    hi[int(k)] += n
-        for pid, slots in d["sums"].items():
-            for s, bins in slots.items():
-                for b, v in bins.items():
-                    sums[pid][s][int(b)] += v
-                    cnts[pid][s][int(b)] += d["cnts"][pid][s][b]
+def window_stats(network, acc, clean_from=None):
+    """Slice and route stats over a window's running totals. With `clean_from` ({piece:
+    clean list}), measure against that clean run instead of one computed from these days
+    (for single days)."""
+    hist, sums, cnts, ihist, seen_days = acc.hist, acc.sums, acc.cnts, acc.ihist, acc.seen_days
+    days = acc.days
 
     pieces, clean_of, mean_of = {}, {}, {}
     for p in network["pieces"]:
@@ -231,9 +278,8 @@ def service_per_day(pat, days, n_slices):
     today = service_day(time.time())
     finished = [d for d in days if d["day"] < today]
     logged_days = sum(min(1.0, d["stats"].get("logged_h", 0) / 24) for d in finished)
-    if pat.get("observed") and all("pat_used" in d for d in finished):
-        keys = {f"{pi}:{b}" for pi, b in pat["slices"]}
-        covered = sum(n for d in finished for k, n in d["pat_used"].get(pat["id"], {}).items() if k in keys)
+    if pat.get("observed") and all("pat_cover" in d for d in finished):
+        covered = sum(d["pat_cover"].get(pat["id"], 0) for d in finished)
         return {"trips_per_day": round(covered / n_slices / logged_days, 1) if logged_days >= 0.25 and n_slices else None}
     covered = sum(d["routes"].get(pat["route"], {}).get("cover", {}).get(pat["id"], 0) for d in finished)
     if logged_days < 0.25 or not n_slices or not any("cover" in r for d in finished for r in d["routes"].values()):
@@ -265,17 +311,10 @@ def match_turns(sigs, used):
     return out
 
 
-def hour_stats(network, days):
+def hour_stats(network, acc):
     """Per piece and hour key (0-23 weekday, 24-47 weekend): [passes per slice, mean seconds
     per slice]. The page sums whichever hours the time-of-day controls select."""
-    sums = defaultdict(lambda: defaultdict(lambda: defaultdict(float)))
-    cnts = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
-    for d in days:
-        for pid, hours in d.get("hsums", {}).items():
-            for h, bins in hours.items():
-                for b, v in bins.items():
-                    sums[pid][h][b] += v
-                    cnts[pid][h][b] += d["hcnts"][pid][h][b]
+    sums, cnts = acc.hsums, acc.hcnts
     out = {}
     for p in network["pieces"]:
         pid, nb = p["id"], len(p["bins"])
@@ -294,27 +333,11 @@ def hour_stats(network, days):
     return {"pieces": out}
 
 
-def headway_stats(days):
+def headway_stats(acc):
     """Per stop, route and hour key: the headway sums from headways.py added up over the
-    days (only days a saved schedule covered have them), plus how many of those days each
-    stop wasn't served on its route (diverted, or buses off the track)."""
-    stops = defaultdict(lambda: defaultdict(dict))
-    off = defaultdict(lambda: defaultdict(int))
-    n_days = 0
-    for d in days:
-        if "heads" not in d:
-            continue
-        n_days += 1
-        for stop, routes in d["heads"].items():
-            for route, hours in routes.items():
-                acc = stops[stop][route]
-                for h, row in hours.items():
-                    row = list(row) + [0] * (len(headways.FIELDS) - len(row))  # days from before the spread was kept
-                    acc[h] = [x + y for x, y in zip(acc[h], row)] if h in acc else row
-        for stop, routes in d.get("heads_off", {}).items():
-            for route in routes:
-                off[stop][route] += 1
-    return {"days": n_days, "stops": stops, "off": off}
+    window's days (only days a saved schedule covered have them), plus how many of those
+    days each stop wasn't served on its route (diverted, or buses off the track)."""
+    return {"days": acc.head_days, "stops": acc.heads, "off": acc.heads_off}
 
 
 def fleet_stats(days):
@@ -536,11 +559,25 @@ def moved(hist, last_day, pid, back=14):
 def main():
     out = Path(sys.argv[1])
     network = json.loads((WORK_DIR / "network.json").read_text())
-    days = load_days()
-    observed_patterns(network, days.values())
-    if not days:
+    paths = {p.name[:10]: p for p in sorted((WORK_DIR / "agg").glob("*.json.gz"))}
+    if not paths:
         sys.exit("no processed days")
-    last = max(days)
+    last = max(paths)
+    today = service_day(time.time())
+    finished = [k for k in paths if k < today]
+    yesterday = max(finished) if finished else None
+
+    # Route patterns from the newest days first: day summaries below need them.
+    newest = []
+    for k in sorted(paths, reverse=True):
+        d = load_day(paths[k])
+        if "pat_used" in d:
+            newest.append(d)
+        if len(newest) == OBSERVED_DAYS:
+            break
+    observed_patterns(network, newest)
+    del newest
+    pat_keys = {pat["id"]: {f"{pi}:{b}" for pi, b in pat["slices"]} for pat in network["patterns"]}
 
     if out.exists():
         shutil.rmtree(out)
@@ -556,51 +593,101 @@ def main():
     data = out / "data"
     data.mkdir(exist_ok=True)
 
-    # Windows offered on the page: last 15 / 30 / WINDOW_DAYS days ("recent", the default,
-    # which also feeds history, drafts and screenshots) and all time.
-    def since(n):
-        start = (date.fromisoformat(last) - timedelta(days=n - 1)).isoformat()
-        return [d for k, d in days.items() if k >= start]
-    windows = {"d15": since(15), "d30": since(30), "recent": since(WINDOW_DAYS), "all": list(days.values())}
-    stats = {w: window_stats(network, ds) for w, ds in windows.items()}
-    head_days = {}
+    # Windows offered on the page: yesterday (d1, measured against the 90-day clean run, as
+    # one day is too little to set its own), the last 7 and 30 days, and the last
+    # WINDOW_DAYS days ("recent", the default, which also feeds history, drafts and
+    # screenshots). The 7/30/90-day windows include today while it's being logged.
+    def start(n):
+        return (date.fromisoformat(last) - timedelta(days=n - 1)).isoformat()
+    starts = {"d7": start(7), "d30": start(30), "recent": start(WINDOW_DAYS)}
+    accs = {w: Acc() for w in ("d1", "d7", "d30", "recent")}
+    acc_today = Acc()
+    logged = sorted(paths)
+    index_of = {k: i for i, k in enumerate(logged)}
+    last_active, cut, last_seen = {}, set(), {}
+    light = {}  # day -> small summary kept for the whole build
+    for k in sorted((k for k in paths if k >= starts["recent"]), reverse=True):
+        d = load_day(paths[k])
+        lt = {"day": k, "stats": d["stats"], "routes": d["routes"]}
+        if "fleet" in d:
+            lt["fleet"] = d["fleet"]
+        if "pat_used" in d:
+            lt["pat_cover"] = {pid: sum(n for s, n in d["pat_used"].get(pid, {}).items() if s in keys)
+                               for pid, keys in pat_keys.items()}
+        light[k] = lt
+        # Fresh record: going back in time, a slice whose next newer day with streetcars is
+        # FRESH_GAP_DAYS or more logged days away had a long closure; drop it from here back.
+        day_cut = set()
+        i = index_of[k]
+        for pid, slots in d["cnts"].items():
+            for b in {b for bins in slots.values() for b in bins}:
+                sl = (pid, int(b))
+                if sl in cut:
+                    day_cut.add(sl)
+                    continue
+                newer = last_active.get(sl)
+                if newer is not None and newer - i - 1 >= FRESH_GAP_DAYS:
+                    cut.add(sl)
+                    day_cut.add(sl)
+                    continue
+                last_active[sl] = i
+                last_seen.setdefault(sl, k)
+        for w, st in starts.items():
+            if k >= st:
+                accs[w].add(d, lt, day_cut)
+        if k == yesterday:
+            accs["d1"].add(d, lt, day_cut)
+        if k == today:
+            acc_today.add(d, lt, day_cut)
+        del d
+    if cut:
+        print(f"fresh record: {len(cut)} slices count only data since reopening after a "
+              f"{FRESH_GAP_DAYS}+ day closure", file=sys.stderr)
+    if not accs["d1"].days:
+        del accs["d1"]
+    for acc in accs.values():
+        acc.days.sort(key=lambda x: x["day"])
+
+    stats = {w: window_stats(network, accs[w]) for w in ("d7", "d30", "recent")}
+    clean_recent = {pid: p["clean"] for pid, p in stats["recent"]["pieces"].items()}
+    if "d1" in accs:
+        stats["d1"] = window_stats(network, accs["d1"], clean_from=clean_recent)
     hist = update_history(stats["recent"], last, network)
     for pid, r in stats["recent"]["routes"].items():
         r["moved"] = moved(hist, last, pid)
     for w, s in stats.items():
         (data / f"stats-{w}.json").write_text(json.dumps(s, separators=(",", ":")))
-    for w, ds in windows.items():
-        (data / f"hours-{w}.json").write_text(json.dumps(hour_stats(network, ds), separators=(",", ":")))
-        heads = headway_stats(ds)
-        head_days[w] = heads["days"]
-        (data / f"headways-{w}.json").write_text(json.dumps(heads, separators=(",", ":")))
-        (data / f"fleet-{w}.json").write_text(json.dumps(fleet_stats(ds), separators=(",", ":")))
+        (data / f"hours-{w}.json").write_text(json.dumps(hour_stats(network, accs[w]), separators=(",", ":")))
+        (data / f"headways-{w}.json").write_text(json.dumps(headway_stats(accs[w]), separators=(",", ":")))
+        (data / f"fleet-{w}.json").write_text(json.dumps(fleet_stats(accs[w].days), separators=(",", ":")))
 
-    # The last finished service day, measured against the recent window's clean run
-    # (one day is too little to set its own). Used by the bot drafts and screenshot mode.
-    finished = [k for k in days if k < service_day(time.time())]
-    yesterday = max(finished) if finished else None
-    clean_recent = {pid: p["clean"] for pid, p in stats["recent"]["pieces"].items()}
+    # The last finished service day, for the bot drafts and screenshot mode.
     if yesterday:
-        ys = window_stats(network, [days[yesterday]], clean_from=clean_recent)
-        ys["day"] = yesterday
-        ys["stats"] = days[yesterday]["stats"]
+        ys = dict(stats["d1"], day=yesterday, stats=light[yesterday]["stats"])
         (data / "stats-yesterday.json").write_text(json.dumps(ys, separators=(",", ":")))
-        warnings = offtrack_warnings(days, network, yesterday)
+        warnings = offtrack_warnings(light, network, yesterday)
         (data / "offtrack.json").write_text(json.dumps({"day": yesterday, "warnings": warnings}, separators=(",", ":")))
         for w in warnings:
             where = "; ".join(f"{p['n']} near {p['near']}" for p in w["places"][:3])
             print(f"OFF-TRACK {yesterday} {w['route']}: {w['share']:.0%} of positions off known track "
                   f"(usually {w['usual'] if w['usual'] is not None else '?'}): {where}", file=sys.stderr)
     # The day still being logged (hourly refreshes process it), for so-far bot drafts.
-    today = service_day(time.time())
-    if today in days:
-        ts = window_stats(network, [days[today]], clean_from=clean_recent)
-        ts["day"] = today
-        ts["stats"] = days[today]["stats"]
+    if acc_today.days:
+        ts = dict(window_stats(network, acc_today, clean_from=clean_recent), day=today, stats=light[today]["stats"])
         (data / "stats-today.json").write_text(json.dumps(ts, separators=(",", ":")))
 
-    tl, alert_texts = timeline(days, network)
+    # Days since streetcars last ran on each slice, for fading stale track on the page.
+    ref = date.fromisoformat(last)
+    ago = defaultdict(dict)
+    for (pid, b), k in last_seen.items():
+        ago[pid][b] = (ref - date.fromisoformat(k)).days
+    lastseen = {"ref": last, "pieces": {}}
+    for p in network["pieces"]:
+        if p["id"] in ago:
+            lastseen["pieces"][p["id"]] = [ago[p["id"]].get(b) for b in range(len(p["bins"]))]
+    (data / "lastseen.json").write_text(json.dumps(lastseen, separators=(",", ":")))
+
+    tl, alert_texts = timeline(light, network)
     # Label each slice stop / signal / both / elsewhere, keeping only signals that touch track.
     sigs = signals.load_signals()
     tagged = signals.tag_pieces(network["pieces"], sigs)
@@ -609,7 +696,7 @@ def main():
     # buses; they come back once streetcars do.
     busiest = defaultdict(int)
     for p, (_, sig) in zip(network["pieces"], tagged):
-        n = stats["all"]["pieces"].get(p["id"], {}).get("slots", {}).get("all", {}).get("n", [])
+        n = stats["recent"]["pieces"].get(p["id"], {}).get("slots", {}).get("all", {}).get("n", [])
         for b, i in enumerate(sig):
             if i >= 0:
                 busiest[i] = max(busiest[i], n[b] if b < len(n) else 0)
@@ -631,8 +718,8 @@ def main():
         "bin_m": BIN_M,
         "pieces": [{**{k: p[k] for k in ("id", "bins", "stops", "length")},
                     "routes": sorted(piece_routes[pi]) if pi in piece_routes else p["routes"],
-                    # Track no streetcar has run on (a bus-only routing) isn't drawn.
-                    "seen": any(stats["all"]["pieces"].get(p["id"], {}).get("n", [])),
+                    # Track no streetcar has run on in the window (a bus-only routing) isn't drawn.
+                    "seen": p["id"] in ago,
                     "tags": tags, "sig": [remap.get(i, -1) for i in sig]}
                    for pi, (p, (tags, sig)) in enumerate(zip(network["pieces"], tagged))],
         "patterns": [{k: v for k, v in p.items()} for p in network["patterns"]],
@@ -647,16 +734,17 @@ def main():
 
     meta = {
         "generated": int(time.time()),
-        "first_day": min(days), "last_day": last,
-        "windows": {w: {"days": len(ds), "from": min(d["day"] for d in ds), "headway_days": head_days[w], **totals(ds)}
-                    for w, ds in windows.items()},
+        "first_day": min(paths), "last_day": last,
+        "windows": {w: {"days": len(a.days), "from": a.days[0]["day"], "headway_days": a.head_days, **totals(a.days)}
+                    for w, a in accs.items()},
         "window_days": WINDOW_DAYS, "clean_pct": CLEAN_PCT, "min_samples": MIN_SAMPLES,
         "slots": SLOT_LABELS,
         "yesterday": yesterday,
+        "stale_days": STALE_DAYS,
     }
     (data / "meta.json").write_text(json.dumps(meta, separators=(",", ":")))
     size = sum(f.stat().st_size for f in data.iterdir())
-    print(f"site built in {out}: {len(days)} days ({min(days)}..{last}), data {size / 1e6:.1f} MB", file=sys.stderr)
+    print(f"site built in {out}: {len(light)} days ({min(light)}..{last}), data {size / 1e6:.1f} MB", file=sys.stderr)
 
 
 if __name__ == "__main__":
