@@ -20,8 +20,8 @@
   --prelim-ink: #6b4a12;
   --tip-bg: rgba(29, 31, 34, 0.94);
   --k-stop: #232323;
-  --legend-delay: linear-gradient(90deg, #8cc5ad 0%, #f3d36b 13.3%, #f08b3a 25%, #c62f2f 50%, #5c0a1e 100%);
-  --legend-speed: linear-gradient(90deg, #5c0a1e 0%, #c62f2f 18%, #f08b3a 36%, #f3d36b 55%, #8cc5ad 73%, #3c8c78 100%);
+  --legend-delay: linear-gradient(90deg, #d9d3c7 0%, #f0b49a 13.3%, #e8604a 25%, #c41e1e 50%, #5e0a0e 100%);
+  --legend-speed: linear-gradient(90deg, #5e0a0e 0%, #c41e1e 18%, #e8604a 36%, #f0b49a 55%, #d9d3c7 73%, #bcb5a8 100%);
   color-scheme: light;
 }
 
@@ -33,8 +33,8 @@
     --muted: #a3a6aa; --line: #34363a; --accent: #ff7a8c; --shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
     --s-normal: #5f9e86; --s-diverted: #e07b2e; --s-mixed: #d9b24a; --s-bus: #d0506a; --s-none: #3a3c40; --s-nodata: #26282b;
     --series-1: #3987e5; --series-2: #d95926; --prelim-bg: #3a2f17; --prelim-ink: #f1d9a6; --tip-bg: rgba(44, 46, 50, 0.97); --k-stop: #d0d0d0; --ctrl-icon-filter: invert(0.9);
-    --legend-delay: linear-gradient(90deg, #6ebea0 0%, #f3d36b 13.3%, #f08b3a 25%, #e64646 50%, #ff5aa0 100%);
-    --legend-speed: linear-gradient(90deg, #ff5aa0 0%, #e64646 18%, #f08b3a 36%, #f3d36b 55%, #6ebea0 73%, #3c9c86 100%);
+    --legend-delay: linear-gradient(90deg, #645e58 0%, #964e40 13.3%, #d85440 25%, #ff4034 50%, #ffb8ac 100%);
+    --legend-speed: linear-gradient(90deg, #ffb8ac 0%, #ff4034 18%, #d85440 36%, #964e40 55%, #645e58 73%, #524d48 100%);
     color-scheme: dark;
   }
 }
@@ -43,8 +43,8 @@
   --muted: #a3a6aa; --line: #34363a; --accent: #ff7a8c; --shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
   --s-normal: #5f9e86; --s-diverted: #e07b2e; --s-mixed: #d9b24a; --s-bus: #d0506a; --s-none: #3a3c40; --s-nodata: #26282b;
   --series-1: #3987e5; --series-2: #d95926; --prelim-bg: #3a2f17; --prelim-ink: #f1d9a6; --tip-bg: rgba(44, 46, 50, 0.97); --k-stop: #d0d0d0; --ctrl-icon-filter: invert(0.9);
-  --legend-delay: linear-gradient(90deg, #6ebea0 0%, #f3d36b 13.3%, #f08b3a 25%, #e64646 50%, #ff5aa0 100%);
-  --legend-speed: linear-gradient(90deg, #ff5aa0 0%, #e64646 18%, #f08b3a 36%, #f3d36b 55%, #6ebea0 73%, #3c9c86 100%);
+  --legend-delay: linear-gradient(90deg, #645e58 0%, #964e40 13.3%, #d85440 25%, #ff4034 50%, #ffb8ac 100%);
+  --legend-speed: linear-gradient(90deg, #ffb8ac 0%, #ff4034 18%, #d85440 36%, #964e40 55%, #645e58 73%, #524d48 100%);
   color-scheme: dark;
 }
 

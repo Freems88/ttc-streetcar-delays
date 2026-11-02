@@ -2,20 +2,21 @@
 (async function () {
   const {MapboxOverlay, LineLayer, PathLayer, ScatterplotLayer, IconLayer, ColumnLayer} = deck;
 
-  // Map colours per theme. On a dark map the top of the delay scale is bright magenta
-  // instead of dark maroon, which would disappear; the clean-run speed scale mirrors it.
+  // Map colours per theme: one hue, warm grey through TTC red. Small delays stay quiet
+  // and red means trouble. On a dark map the scale runs dim to bright instead (the top is
+  // a pale pink, since deep maroon would vanish); the clean-run speed scale mirrors it.
   const PALETTES = {
     light: {
-      delay: [[0, [140, 197, 173]], [8, [243, 211, 107]], [15, [240, 139, 58]], [30, [198, 47, 47]], [60, [92, 10, 30]]],
-      speed: [[0, [92, 10, 30]], [10, [198, 47, 47]], [20, [240, 139, 58]], [30, [243, 211, 107]],
-        [40, [140, 197, 173]], [55, [60, 140, 120]]],
-      base: [140, 197, 173, 200], faint: [180, 180, 180, 160], stop: [35, 35, 35, 220], vertical: [110, 110, 110, 70],
+      delay: [[0, [217, 211, 199]], [8, [240, 180, 154]], [15, [232, 96, 74]], [30, [196, 30, 30]], [60, [94, 10, 14]]],
+      speed: [[0, [94, 10, 14]], [10, [196, 30, 30]], [20, [232, 96, 74]], [30, [240, 180, 154]],
+        [40, [217, 211, 199]], [55, [188, 181, 168]]],
+      base: [196, 189, 177, 210], faint: [180, 180, 180, 160], stop: [35, 35, 35, 220], vertical: [110, 110, 110, 70],
     },
     dark: {
-      delay: [[0, [110, 190, 160]], [8, [243, 211, 107]], [15, [240, 139, 58]], [30, [230, 70, 70]], [60, [255, 90, 160]]],
-      speed: [[0, [255, 90, 160]], [10, [230, 70, 70]], [20, [240, 139, 58]], [30, [243, 211, 107]],
-        [40, [110, 190, 160]], [55, [60, 156, 134]]],
-      base: [95, 160, 135, 220], faint: [110, 110, 110, 170], stop: [215, 215, 215, 220], vertical: [190, 190, 190, 55],
+      delay: [[0, [100, 94, 88]], [8, [150, 78, 64]], [15, [216, 84, 64]], [30, [255, 64, 52]], [60, [255, 184, 172]]],
+      speed: [[0, [255, 184, 172]], [10, [255, 64, 52]], [20, [216, 84, 64]], [30, [150, 78, 64]],
+        [40, [100, 94, 88]], [55, [82, 77, 72]]],
+      base: [92, 87, 82, 230], faint: [110, 110, 110, 170], stop: [215, 215, 215, 220], vertical: [190, 190, 190, 55],
     },
   };
   // Waits view: the delay colours at excess-wait breaks of 0, 1, 2, 4 and 8+ minutes.
