@@ -2,20 +2,21 @@
 (async function () {
   const {MapboxOverlay, LineLayer, PathLayer, ScatterplotLayer, IconLayer, ColumnLayer} = deck;
 
-  // Map colours per theme: one hue, warm grey through TTC red. Small delays stay quiet
-  // and red means trouble. On a dark map the scale runs dim to bright instead (the top is
-  // a pale pink, since deep maroon would vanish); the clean-run speed scale mirrors it.
+  // Map colours per theme, from the magma scale (even steps, colour-blind safe): pale gold
+  // through coral to deep purple on the light map. On a dark map it runs the other way,
+  // dim purple to pale gold, so the worst spots are the brightest; the clean-run speed
+  // scale mirrors it.
   const PALETTES = {
     light: {
-      delay: [[0, [217, 211, 199]], [8, [240, 180, 154]], [15, [232, 96, 74]], [30, [196, 30, 30]], [60, [94, 10, 14]]],
-      speed: [[0, [94, 10, 14]], [10, [196, 30, 30]], [20, [232, 96, 74]], [30, [240, 180, 154]],
-        [40, [217, 211, 199]], [55, [188, 181, 168]]],
+      delay: [[0, [247, 227, 161]], [8, [252, 162, 102]], [15, [227, 80, 106]], [30, [155, 45, 127]], [60, [59, 15, 98]]],
+      speed: [[0, [59, 15, 98]], [10, [155, 45, 127]], [20, [227, 80, 106]], [30, [252, 162, 102]],
+        [40, [247, 227, 161]], [55, [236, 222, 186]]],
       base: [196, 189, 177, 210], faint: [180, 180, 180, 160], stop: [35, 35, 35, 220], vertical: [110, 110, 110, 70],
     },
     dark: {
-      delay: [[0, [100, 94, 88]], [8, [150, 78, 64]], [15, [216, 84, 64]], [30, [255, 64, 52]], [60, [255, 184, 172]]],
-      speed: [[0, [255, 184, 172]], [10, [255, 64, 52]], [20, [216, 84, 64]], [30, [150, 78, 64]],
-        [40, [100, 94, 88]], [55, [82, 77, 72]]],
+      delay: [[0, [92, 38, 128]], [8, [150, 52, 130]], [15, [222, 73, 104]], [30, [252, 140, 96]], [60, [252, 236, 174]]],
+      speed: [[0, [252, 236, 174]], [10, [252, 140, 96]], [20, [222, 73, 104]], [30, [150, 52, 130]],
+        [40, [92, 38, 128]], [55, [70, 32, 100]]],
       base: [92, 87, 82, 230], faint: [110, 110, 110, 170], stop: [215, 215, 215, 220], vertical: [190, 190, 190, 55],
     },
   };
