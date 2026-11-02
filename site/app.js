@@ -1205,24 +1205,44 @@
     const p = pieceById[a.piece];
     return p && (!state.routes.length || a.routes.some(routeOn)) && (state.dir === "both" || (state.dir === "en") === p.en);
   }
+  // Each approach is drawn as a flat arrow pointing the way streetcars travel, set back
+  // about APPROACH_BACK_M along its own approach (the middle of the measured stretch), so
+  // the directions at one intersection don't sit on top of each other. A ring under the
+  // arrow marks transit priority; a dark (or, on the dark map, light) halo keeps pale
+  // arrows visible.
+  const APPROACH_BACK_M = 45;
+  const ARROW_ICON = {id: "approach-arrow", width: 64, height: 64, mask: true,
+    url: "data:image/svg+xml;charset=utf-8," + encodeURIComponent(
+      "<svg xmlns='http://www.w3.org/2000/svg' width='64' height='64' viewBox='0 0 32 32'>" +
+      "<polygon points='16,3 27,28 16,21.5 5,28' fill='white'/></svg>")};
+  function headingAt(p, b) {
+    const a = p.bins[Math.max(0, b - 1)], z = p.bins[Math.min(p.bins.length - 1, b + 1)];
+    return (Math.atan2((z[0] - a[0]) * KX, z[1] - a[1]) * 180 / Math.PI + 360) % 360;
+  }
   function renderSignals() {
     const base = [];
     for (const p of visiblePieces()) for (const path of runsOf(p)) base.push({path});
-    const dots = (approaches?.approaches || []).filter(approachVisible).map((a) => {
+    const marks = (approaches?.approaches || []).filter(approachVisible).map((a) => {
       const p = pieceById[a.piece], held = a.held["90"] * 100;
-      return {...a, held90: held, pos: pos(p, Math.min(a.b, p.bins.length - 1)),
-        color: colorFor(held, a.stop_in_zone ? 110 : 235, pal.held)};
-    }).sort((x, y) => (x.stop_in_zone - y.stop_in_zone) * -1 || x.held90 - y.held90); // worst on top
-    drawn = dots.flatMap((d) => [d.pos[0], d.pos[1], 0]);
+      const b = Math.max(0, Math.min(p.bins.length - 1, a.b - Math.round(APPROACH_BACK_M / net.bin_m)));
+      return {...a, held90: held, pos: pos(p, b), angle: -headingAt(p, b),
+        color: colorFor(held, a.stop_in_zone ? 110 : 245, pal.held)};
+    }).sort((x, y) => (y.stop_in_zone - x.stop_in_zone) || x.held90 - y.held90); // worst on top
+    drawn = marks.flatMap((d) => [d.pos[0], d.pos[1], 0]);
     screenPts = null;
+    const halo = isDark() ? [235, 235, 235, 200] : [30, 30, 30, 200];
+    const arrows = (id, extra) => new IconLayer({id, data: marks, getPosition: (d) => d.pos, getIcon: () => ARROW_ICON,
+      getAngle: (d) => d.angle, billboard: false, sizeUnits: "meters", ...extra});
     overlay.setProps({layers: [
       new PathLayer({id: "base", data: base, getPath: (x) => x.path, getColor: pal.faint, widthUnits: "pixels", getWidth: 2}),
-      new ScatterplotLayer({id: "approaches", data: dots, getPosition: (d) => d.pos, getFillColor: (d) => d.color,
-        radiusUnits: "meters", getRadius: 20, radiusMinPixels: 4, radiusMaxPixels: 11,
-        stroked: true, lineWidthUnits: "pixels", getLineWidth: (d) => (d.tsp ? 2 : 0),
-        getLineColor: isDark() ? [235, 235, 235, 230] : [25, 25, 25, 230],
-        pickable: true, autoHighlight: true, highlightColor: [0, 0, 0, 255], onHover: showApproachTip, onClick: showApproachTip,
+      new ScatterplotLayer({id: "approach-tsp", data: marks.filter((d) => d.tsp), getPosition: (d) => d.pos,
+        radiusUnits: "meters", getRadius: 19, radiusMinPixels: 8, radiusMaxPixels: 15, filled: false, stroked: true,
+        lineWidthUnits: "pixels", getLineWidth: 1.25, getLineColor: [halo[0], halo[1], halo[2], 150],
         updateTriggers: {getLineColor: [mapDark]}}),
+      arrows("approach-halo", {getSize: 40, sizeMinPixels: 17, sizeMaxPixels: 34, getColor: (d) => (d.stop_in_zone ? [halo[0], halo[1], halo[2], 90] : halo),
+        updateTriggers: {getColor: [mapDark]}}),
+      arrows("approaches", {getSize: 32, sizeMinPixels: 13, sizeMaxPixels: 27, getColor: (d) => d.color,
+        pickable: true, autoHighlight: true, highlightColor: [0, 0, 0, 255], onHover: showApproachTip, onClick: showApproachTip}),
     ]});
     renderRouteCard();
   }

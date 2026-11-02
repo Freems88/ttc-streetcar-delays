@@ -45,7 +45,7 @@
         <button data-view="signals">Signals</button>
       </div>
       <p id="wait-note" class="field-note" hidden>How much longer riders wait at each stop than if cars came as scheduled: bunching and gaps, plus cars that never came. Taller and hotter is worse. <button class="linkish" data-explain="waits">More</button><span id="wait-empty" hidden><br><b>No headway data in this window yet.</b> It starts with the first day a saved TTC schedule covers.</span></p>
-      <p id="signals-note" class="field-note" hidden>How often streetcars are held at each signal 90 s or more beyond a clean approach, about one typical signal cycle. One dot per direction; a ring means the signal has transit priority; faded dots have a stop in the approach. <button class="linkish" data-explain="signals">More</button> · <button class="linkish" id="signals-open-2">Ranked lists</button></p>
+      <p id="signals-note" class="field-note" hidden>How often streetcars are held at each signal 90 s or more beyond a clean approach, about one typical signal cycle. Each arrow is one direction into a signal, pointing the way streetcars travel; a ring means the signal has transit priority; faded arrows have a stop in the approach. <button class="linkish" data-explain="signals">More</button> · <button class="linkish" id="signals-open-2">Ranked lists</button></p>
       <p id="speed-note" class="field-note" hidden>How fast a clean run moves, not counting time stopped at stops. Shows slowness every car shares (curves, switches, slow orders) that the delay view can't. <button class="linkish" data-explain>More</button></p>
     </div>
     <div class="field" id="time-field">
@@ -133,7 +133,7 @@
     <span><i class="k-sig"></i>Signal</span>
     <span><i class="k-tsp"></i>Signal with transit priority</span>
     <span><i class="k-turn"></i>Turn ban (zoom in)</span>
-    <span id="legend-sigview" hidden>Ring: transit priority · faded: stop in the approach</span>
+    <span id="legend-sigview" hidden>Arrow: direction of travel · ring: transit priority · faded: stop in the approach</span>
   </div>
 </div>
 
