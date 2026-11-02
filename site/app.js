@@ -291,7 +291,7 @@
     document.getElementById("breakdown-box").hidden = speed || wait || sigv;
     document.getElementById("show-signals").disabled = wait || sigv;
     document.getElementById("legend-title").textContent = speed ? "Clean-run speed, km/h (stops not counted)"
-      : wait ? "Excess wait at stops, minutes" : sigv ? "Held longer than a signal cycle, % of streetcars"
+      : wait ? "Excess wait at stops, minutes" : sigv ? "Held 90 s+ at the signal (about a cycle), % of streetcars"
       : "Delay vs. clean run, seconds per 100 m";
     document.getElementById("legend-bar").classList.toggle("speed", speed);
     document.getElementById("legend-ticks").innerHTML = (speed ? ["0", "10", "20", "30", "40", "55+"]
@@ -1232,8 +1232,9 @@
     tip.innerHTML =
       `<div class="t-title">${a.name}</div>` +
       `<div class="t-dim">${capFirst(a.dir)} · ${a.routes.join(", ")} · ${a.tsp ? "has transit priority" : "no transit priority"}</div>` +
-      `<div class="t-big">${pct(a.held["90"])} held over a cycle</div>` +
-      `<div>Streetcars that took more than 90 s longer than a clean approach (about one signal cycle): ` +
+      `<div class="t-big">${pct(a.held["90"])} held 90 s+</div>` +
+      `<div>Streetcars that took more than 90 s longer than a clean approach (roughly a typical signal cycle; ` +
+      `this signal's own cycle isn't published): `+
       `<b>${pct(a.held["90"])}</b> of ${fmt(a.passes)} · over 1 min: ${pct(a.held["60"])} · over 2 min: ${pct(a.held["120"])}</div>` +
       `<div class="t-dim">Clean approach ${a.clean_s} s (100 m before the signal to just past it) · typical extra ` +
       `${a.median_s} s, 1 in 10 over ${a.p90_s} s<br>About ${Math.round(a.per_day)} streetcars a day · ` +
@@ -1246,7 +1247,7 @@
 
   // Ranked lists: priority that isn't delivering, and signals without priority where
   // streetcars are held most. Approaches with a stop in them are left out (boarding mixed
-  // in). Ranked by streetcars held over a cycle a day, so busy signals count for more.
+  // in). Ranked by streetcars held 90 s+ a day, so busy signals count for more.
   const sigDlg = document.getElementById("signals-rank");
   document.getElementById("signals-open-2").addEventListener("click", () => document.getElementById("signals-open").click());
   document.getElementById("signals-open").addEventListener("click", async () => {
@@ -1267,7 +1268,7 @@
         row.className = "compare-row";
         row.innerHTML = `<span class="compare-name">${a.name}<span>${capFirst(a.dir)} · ${a.routes.join(", ")}</span></span>` +
           `<span class="compare-bar"><i style="width:${(a.held["90"] / max * 70).toFixed(1)}%"></i><b>${pct(a.held["90"])}</b></span>` +
-          `<span class="compare-sub">held over a cycle · about ${Math.round(a.held["90"] * a.per_day)} of ` +
+          `<span class="compare-sub">held 90 s+ · about ${Math.round(a.held["90"] * a.per_day)} of ` +
           `${Math.round(a.per_day)} streetcars a day${a.next_signal_close ? " · next signal close" : ""}</span>`;
         row.addEventListener("click", () => {
           state.view = "signals";

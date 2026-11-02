@@ -45,7 +45,7 @@
         <button data-view="signals">Signals</button>
       </div>
       <p id="wait-note" class="field-note" hidden>How much longer riders wait at each stop than if cars came as scheduled: bunching and gaps, plus cars that never came. Taller and hotter is worse. <button class="linkish" data-explain="waits">More</button><span id="wait-empty" hidden><br><b>No headway data in this window yet.</b> It starts with the first day a saved TTC schedule covers.</span></p>
-      <p id="signals-note" class="field-note" hidden>How often streetcars wait at each signal for longer than a whole cycle (90 s more than a clean approach). One dot per direction; a ring means the signal has transit priority; faded dots have a stop in the approach. <button class="linkish" data-explain="signals">More</button> · <button class="linkish" id="signals-open-2">Ranked lists</button></p>
+      <p id="signals-note" class="field-note" hidden>How often streetcars are held at each signal 90 s or more beyond a clean approach, about one typical signal cycle. One dot per direction; a ring means the signal has transit priority; faded dots have a stop in the approach. <button class="linkish" data-explain="signals">More</button> · <button class="linkish" id="signals-open-2">Ranked lists</button></p>
       <p id="speed-note" class="field-note" hidden>How fast a clean run moves, not counting time stopped at stops. Shows slowness every car shares (curves, switches, slow orders) that the delay view can't. <button class="linkish" data-explain>More</button></p>
     </div>
     <div class="field" id="time-field">
@@ -158,7 +158,7 @@
 <dialog id="signals-rank" class="explain compare" aria-labelledby="signals-rank-title">
   <button class="close" aria-label="Close" data-close>×</button>
   <h2 id="signals-rank-title">Signals ranked</h2>
-  <p class="compare-lede">Where streetcars most often wait longer than a whole signal cycle, counting busier signals for more. Follows the route chips. Tap a signal to see it on the map.</p>
+  <p class="compare-lede">Where streetcars are most often held 90 s or more (about a typical signal cycle), counting busier signals for more. Follows the route chips. Tap a signal to see it on the map.</p>
   <h3 class="fleet-h">Transit priority, but streetcars still held</h3>
   <div id="rank-tsp" class="compare-rows" role="list"></div>
   <h3 class="fleet-h">No transit priority, streetcars held most</h3>
@@ -221,8 +221,8 @@
   </ul>
   <p>Only frequent service counts: hours scheduled every 12 minutes or better. On infrequent service people time their trips to the schedule, so on-time performance matters more there. The schedule is the TTC's published one in effect that day. A stop where fewer than a third of scheduled cars showed up that day is treated as not served (a diversion, or buses off the track) and left out; its tooltip says on how many days. Departure times come from positions about every 30 seconds, so each headway is good to within about 10 to 20 seconds; a car the feed lost track of shows up as a longer gap.</p>
   <h3 id="explain-signals">Signals view</h3>
-  <p>For every signal on the streetcar network, and each direction separately, this times how long streetcars take through the last 100&nbsp;m before it (to just past the stop line), and compares that with a clean approach: the quickest 10% of daytime passes. A streetcar that takes more than <b>90 seconds</b> longer than that was held for about a full signal cycle or more: it didn't get through on the first green it could have.</p>
-  <p>The <b>held over a cycle</b> rate is the share of streetcars that happened to. On most approaches it's around 1%; a few stand out. Two ranked lists pick those out: signals with transit priority where streetcars are still often held (priority may not be suited, may fire too late, or queues may block it), and signals without priority where it might be worth having. Busier signals count for more.</p>
+  <p>For every signal on the streetcar network, and each direction separately, this times how long streetcars take through the last 100&nbsp;m before it (to just past the stop line), and compares that with a clean approach: the quickest 10% of daytime passes. A streetcar that takes more than <b>90 seconds</b> longer than that has most likely missed the first green it could have made: 90 s is about a typical Toronto signal cycle. Each signal's real cycle isn't published in usable form, and it varies by intersection and time of day (some adjust it constantly), so 90 s is a stand-in, not that signal's cycle. The tooltip also gives the share held over 1 minute and over 2 minutes, so a finding doesn't hang on the exact number.</p>
+  <p>The <b>held 90 s+</b> rate is the share of streetcars that were held that long. On most approaches it's around 1%; a few stand out. Two ranked lists pick those out: signals with transit priority where streetcars are still often held (priority may not be suited, may fire too late, or queues may block it), and signals without priority where it might be worth having. Busier signals count for more.</p>
   <ul>
     <li><b>Where, not why.</b> A long wait can be a red light, a queue spilling back from the next signal (flagged when one is within about 120&nbsp;m), or traffic. The City's data only says whether a signal has priority, not what kind or whether it fired.</li>
     <li><b>Stops in the approach.</b> About two-thirds of approaches have a stop in them, so boarding time is mixed in. They're shown faded and left out of the rankings.</li>

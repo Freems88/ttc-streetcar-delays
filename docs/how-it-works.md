@@ -118,11 +118,12 @@ next car on the same route is the *headway*. From those:
 Only frequent service counts (scheduled every 12 minutes or better). A stop where fewer than a
 third of the scheduled cars showed up that day is treated as diverted and left out.
 
-### Signals: held over a cycle
+### Signals: held 90 s+
 For every signal and direction, each streetcar's time through the approach (100 m before the
 signal to 20 m past it) is compared with a clean approach (the quickest 10% of daytime passes).
-More than 90 s longer means it was held about a full signal cycle or more: it missed the first
-green it could have made. The **held-over-a-cycle rate** per approach, and two ranked lists
+More than 90 s longer means it most likely missed the first green it could have made: 90 s is
+about a typical Toronto cycle, a stand-in, since each signal's real cycle isn't published in
+usable form (shares over 60 s and 120 s are shown too). The **held 90 s+ rate** per approach, and two ranked lists
 (priority that isn't delivering; no priority, held most), show *where* streetcars wait, not *why*.
 Approaches with a stop in them are shown faded and left out of the rankings; a signal within
 ~120 m downstream is flagged, since its queue may spill back.

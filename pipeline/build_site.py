@@ -418,7 +418,7 @@ def approach_stats(acc, network, sigs, piece_routes):
     """Per signal approach (one direction of track into one signal): passes, the clean
     approach time (10th percentile of daytime passes), median and 90th-percentile delay
     beyond it, the share of passes held for more than HELD_S seconds beyond it (90 s is
-    about one signal cycle: a car held that long missed the first green it could have
+    about a typical signal cycle, a stand-in for each signal's unpublished one: a car held that long missed the first green it could have
     made), and streetcar-hours a day lost there. Flags approaches with a stop in the zone
     (boarding mixed in) or the next signal within 120 m (queues may spill back from it)."""
     by_px = {s["px"]: s for s in sigs}
