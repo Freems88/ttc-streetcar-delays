@@ -62,7 +62,7 @@ Step by step, for one streetcar position:
 |---|---|---|
 | Always | **Logger** (`ttc-streetcars.service`) | Positions every 20 s, alerts every 2 min. A new file each service day at 4:00 am. |
 | Daily ~3:40 am | **Schedule snapshot** (`ttc-gtfs-snapshot.timer`) | Saves a new TTC schedule only when one is published. |
-| Daily 4:20 am | **Nightly build** (`ttc-delays-nightly.timer`) | Pulls the latest code from GitHub, processes yesterday, rebuilds and publishes the site, writes the bot drafts and the track check. |
+| Daily 4:20 am | **Nightly build** (`ttc-delays-nightly.timer`) | Pulls the latest code from GitHub, processes yesterday, rebuilds and publishes the site, writes the bot drafts and the track check, and redraws the link-preview card (`data/card.png`). |
 | 7:45 am | **Bot, morning** | Summary, then slowest spot with image (starts the day's thread). |
 | 12:15 pm | **Bot, midday** | Waits at stops. |
 | 5:15 pm | **Bot, evening** | Cars in service. |
