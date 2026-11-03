@@ -291,6 +291,9 @@ input[type=range] { accent-color: var(--accent); }
 body.shot .panel, body.shot .tooltip, body.shot .maplibregl-ctrl-top-right { display: none !important; }
 body.clean .panel, body.clean #prelim, body.clean .maplibregl-ctrl-top-right { display: none !important; }
 body.card .legend, body.card .maplibregl-ctrl-bottom-right { display: none !important; }
+body.card .callout { top: 12px; left: 12px; padding: 7px 11px; border-radius: 8px; }
+body.card .callout .c-title { font-size: 14px; }
+body.card .callout .c-sub { font-size: 10px; margin-top: 2px; }
 body.shot .legend { bottom: 20px; right: 20px; }
 
 @media (max-width: 700px) {
