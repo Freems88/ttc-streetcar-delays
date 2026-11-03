@@ -53,6 +53,14 @@
   // stop's tooltip in the waits view.
   const CLEAN = params.get("clean") === "1";
   if (CLEAN) document.body.classList.add("clean");
+  // ?card=1 (with clean=1): the link-preview image, with the site's title over the map.
+  if (CLEAN && params.get("card") === "1") {
+    document.body.classList.add("card");
+    const callout = document.getElementById("callout");
+    callout.innerHTML = `<div class="c-title">Stuck: Toronto's streetcar delays</div>` +
+      `<div class="c-sub">Where streetcars lose time, updated daily</div>`;
+    callout.hidden = false;
+  }
   const [meta, net, timeline, lastSeen] = await Promise.all([get("meta.json"), get("network.json"), get("timeline.json"),
     get("lastseen.json").catch(() => ({pieces: {}}))]);
   state.stats.recent = await get("stats-recent.json");

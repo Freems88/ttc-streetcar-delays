@@ -8,6 +8,7 @@ Usage: nightly.py [--rebuild] [--no-publish] [--include-today] [--drafts-today]
   --rebuild        reprocess every day (after a method change)
   --include-today  also process the service day still being logged (for a first publish)
   --drafts-today   also draft bot posts for the day so far (hourly refreshes)
+  --no-card        skip redrawing the link-preview card (data/card.png)
 """
 import shutil
 import subprocess
@@ -69,6 +70,17 @@ def main():
             drafts.make(SITE_OUT, today=True)
     except Exception as e:
         print(f"drafts failed: {type(e).__name__}: {e}", file=sys.stderr)
+    # The link-preview card (og:image): downtown delay map, redrawn each night. Kept from the
+    # last good night if drawing fails.
+    card = SITE_OUT / "data" / "card.png"
+    if "--no-card" not in args:
+        if not drafts.capture_image(SITE_OUT, {"clean": "1", "card": "1", "theme": "light"}, card,
+                                    size=(600, 315), scale=2, hash_="c=-79.3925,43.6520,12.75,-17,52"):
+            old = WORK_DIR / "card.png"
+            if old.exists():
+                shutil.copy(old, card)
+        elif card.exists():
+            shutil.copy(card, WORK_DIR / "card.png")
     if drafts.DRAFTS.exists():
         shutil.copytree(drafts.DRAFTS, SITE_OUT / "data" / "drafts", dirs_exist_ok=True)
     if "--no-publish" not in args:

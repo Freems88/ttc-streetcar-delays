@@ -333,8 +333,8 @@ def fleet_post(when, net, agg, partial=False):
     return {"kind": "fleet", "text": "\n".join(lines)}
 
 
-def capture_image(site, shot, out):
-    """Serve the built site locally and screenshot the framed segment."""
+def capture_image(site, shot, out, size=(1200, 900), scale=1, hash_=""):
+    """Serve the built site locally and screenshot it with the given query (and hash)."""
     class Quiet(http.server.SimpleHTTPRequestHandler):
         def log_message(self, *args):
             pass
@@ -342,8 +342,9 @@ def capture_image(site, shot, out):
     srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(Quiet, directory=str(site)))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     try:
-        url = f"http://127.0.0.1:{srv.server_address[1]}/?" + urllib.parse.urlencode(shot)
-        subprocess.run([str(VENV_PY), str(CAPTURE), url, str(out), "1200", "900"], check=True, timeout=300)
+        url = f"http://127.0.0.1:{srv.server_address[1]}/?" + urllib.parse.urlencode(shot) + (f"#{hash_}" if hash_ else "")
+        subprocess.run([str(VENV_PY), str(CAPTURE), url, str(out), str(size[0]), str(size[1]), str(scale)],
+                       check=True, timeout=300)
         return True
     except Exception as e:
         print(f"drafts: image capture failed: {type(e).__name__}: {e}", file=sys.stderr)

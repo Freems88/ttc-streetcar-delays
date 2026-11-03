@@ -290,6 +290,7 @@ input[type=range] { accent-color: var(--accent); }
 .callout .c-site { font-size: 12px; color: var(--muted); margin-top: 8px; }
 body.shot .panel, body.shot .tooltip, body.shot .maplibregl-ctrl-top-right { display: none !important; }
 body.clean .panel, body.clean #prelim, body.clean .maplibregl-ctrl-top-right { display: none !important; }
+body.card .legend, body.card .maplibregl-ctrl-bottom-right { display: none !important; }
 body.shot .legend { bottom: 20px; right: 20px; }
 
 @media (max-width: 700px) {
