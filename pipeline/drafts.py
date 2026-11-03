@@ -334,7 +334,7 @@ def signal_post(when, day_name, sig):
            f"{sig['dir']} approach reads {round(sig['held']['90'] * 100)}% held 90 s+, with a histogram of "
            f"extra time through the approach.")
     return {"kind": "signal", "text": text, "alt": alt, "shot": shot,
-            "hash": f"w=d1&v=signals&c={lon:.5f},{lat:.5f},16.2,-17,40", "size": [600, 450], "scale": 2}
+            "hash": f"w=d1&v=signals&c={lon:.5f},{lat:.5f},16.2,-17,40", "size": [960, 720], "scale": 1.25}
 
 
 def fleet_post(when, net, agg, partial=False):
