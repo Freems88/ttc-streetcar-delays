@@ -49,6 +49,9 @@ MIN_HEADWAYS = 20        # per stop and route, as on the page
 MIN_WAIT_STOPS = 5       # a route direction needs this many measured stops to be named
 MIN_LOGGED = 0.9         # fleet post only for days logged at least this fully
 MIN_SIGNAL_PASSES = 40   # a signal approach needs this many passes yesterday to be named
+# Terminal loops and station platforms: the queue to get in and short layovers there make
+# them "slow" every day; the slowest-spot post leaves them out.
+TERMINAL = re.compile(r"\b(Station|Loop)\b|\bBay \d", re.I)
 STATUS_TEXT = {"bus": "mostly by bus", "mixed": "partly by bus", "diverted": "often off its usual route"}
 
 
@@ -178,6 +181,8 @@ def summary_post(when, net, recent, yest, have_normal):
 def segment_post(when, day_name, net, recent, yest, have_normal, partial=False):
     best = None
     for p, b0, b1, stop in segments(net):
+        if TERMINAL.search(stop["name"]):
+            continue
         y = seg_loss(yest, p["id"], b0, b1)
         if not y or y[1] < MIN_PASSES:
             continue
@@ -298,18 +303,18 @@ def waits_post(when, net, agg, sig=None):
     label = lambda pid: f"{pats[pid]['route']} {pats[pid]['name']} {pats[pid]['direction'].lower()}"
     extra = lambda m: f"{m:.1f} min extra" if m >= 0.05 else "no extra wait"
     worst, best = max(per, key=lambda p: per[p]["ewt"]), min(per, key=lambda p: per[p]["ewt"])
-    head = (f"{when}: on frequent routes, bunching and missing cars made the average wait at a stop "
-            f"{max(0, avg):.1f} min longer than scheduled.\n\n")
+    head = (f"{when}: bunching and missing cars added {max(0, avg):.1f} min to the average wait "
+            f"at a stop on frequent routes.\n\n")
     worst_line = f"Worst: {label(worst)}, {extra(per[worst]['ewt'])}; {share_text(per[worst]['bunched'], 'cars')} bunched."
     best_line = f"\nSteadiest: {label(best)}, {extra(per[best]['ewt'])}."
     sig_line = ""
     if sig:
-        sig_line = (f"\nLongest signal holds: {sig['name'].replace(' / ', ' & ')} {sig['dir']}, where "
+        sig_line = (f"\nMost held at a signal: {sig['name'].replace(' / ', ' & ')} {sig['dir']}, "
                     f"{share_text(sig['held']['90'], 'streetcars')} waited 90 s+"
-                    + (", despite transit priority." if sig["tsp"] else " (no transit priority)."))
+                    + (" despite transit priority." if sig["tsp"] else " (no transit priority)."))
     link = f"\n\n{SITE_URL}#v=wait"
     # Long names can push it over the limit: the steadiest route goes first, then the signal.
-    for parts in ((worst_line, sig_line, best_line), (worst_line, sig_line), (worst_line,)):
+    for parts in ((worst_line, sig_line, best_line), (worst_line, sig_line), (worst_line, best_line), (worst_line,)):
         text = head + "".join(parts) + link
         if post_len(text) <= POST_LIMIT:
             break
