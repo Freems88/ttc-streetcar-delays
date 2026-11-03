@@ -291,7 +291,7 @@
     document.getElementById("breakdown-box").hidden = speed || wait || sigv;
     document.getElementById("show-signals").disabled = wait || sigv;
     document.getElementById("legend-title").textContent = speed ? "Clean-run speed, km/h (stops not counted)"
-      : wait ? "Excess wait at stops, minutes" : sigv ? "Held 90 s+ at the signal (about a cycle), % of streetcars"
+      : wait ? "Excess wait at stops, minutes" : sigv ? "Held 90 s+ at signals, % of streetcars"
       : "Delay vs. clean run, seconds per 100 m";
     document.getElementById("legend-bar").classList.toggle("speed", speed);
     document.getElementById("legend-ticks").innerHTML = (speed ? ["0", "10", "20", "30", "40", "55+"]
@@ -299,7 +299,7 @@
       : ["0", "8", "15", "30", "60+"]).map((t) => `<span>${t}</span>`).join("");
     document.querySelectorAll(".legend-key .k-stop, .legend-key .k-sig, .legend-key .k-tsp, .legend-key .k-turn")
       .forEach((el) => { el.parentElement.hidden = sigv || (wait && !el.classList.contains("k-stop")); });
-    document.getElementById("legend-sigview").hidden = !sigv;
+    document.querySelectorAll(".sigv-key").forEach((el) => { el.hidden = !sigv; });
   }
 
   document.getElementById("height").addEventListener("input", (e) => { state.height = +e.target.value; render(); });
