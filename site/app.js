@@ -1272,7 +1272,7 @@
     }).join("");
     const labels = APPROACH_EDGES.map((e, i) => `<text x="${(i * bw).toFixed(1)}" y="${H - 2}">${e}</text>`).join("") +
       `<text x="${W}" y="${H - 2}" text-anchor="end">s</text>`;
-    return `<div class="t-dim">Extra time through the approach <span class="t-key">(gold: 90 s+)</span></div>` +
+    return `<div class="t-dim">Extra time at this signal <span class="t-key">(gold: 90 s+)</span></div>` +
       `<svg class="t-spread" viewBox="0 0 ${W} ${H}" role="img" aria-label="Share of streetcars by extra time: ` +
       `${a.spread.map((v, i) => `${Math.round(v * 100)}% ${i < 6 ? `${APPROACH_EDGES[i]} to ${APPROACH_EDGES[i + 1]}` : "over 180"} s`).join(", ")}">` +
       `${bars}<line x1="${(4 * bw).toFixed(1)}" x2="${(4 * bw).toFixed(1)}" y1="0" y2="${H - B}"/>${labels}</svg>`;
@@ -1282,18 +1282,17 @@
     const a = info.object;
     tip.innerHTML =
       `<div class="t-title">${a.name}</div>` +
-      `<div class="t-dim">${capFirst(a.dir)} · ${a.routes.join(", ")} · ${a.tsp ? "has transit priority" : "no transit priority"}</div>` +
+      `<div class="t-dim">${capFirst(a.dir)} · ${a.routes.join(", ")} · ${a.tsp ? "transit priority" : "no transit priority"}</div>` +
       `<div class="t-big">${pct(a.held["90"])} held 90 s+</div>` +
-      `<div>Streetcars that took more than 90 s longer than a clean approach (roughly a typical signal cycle; ` +
-      `this signal's own cycle isn't published): `+
-      `<b>${pct(a.held["90"])}</b> of ${fmt(a.passes)} · over 1 min: ${pct(a.held["60"])} · over 2 min: ${pct(a.held["120"])}</div>` +
+      `<div>${pct(a.held["90"])} of ${fmt(a.passes)} streetcars took 90 s or more longer than a smooth run here, ` +
+      `about one signal cycle. Over 1 min: ${pct(a.held["60"])} · over 2 min: ${pct(a.held["120"])}</div>` +
       approachSpreadSvg(a) +
-      `<div class="t-dim">Clean approach ${a.clean_s} s (100 m before the signal to just past it) · typical extra ` +
-      `${a.median_s} s, 1 in 10 over ${a.p90_s} s<br>About ${Math.round(a.per_day)} streetcars a day · ` +
-      `${a.hours_per_day} streetcar-hours a day lost here</div>` +
-      (a.stop_in_zone ? `<div class="t-stale">A stop is in this approach, so boarding time is mixed in.</div>` : "") +
-      (a.next_signal_close ? `<div class="t-stale">The next signal is close: queues from it may spill back here.</div>` : "") +
-      `<div class="t-routes t-dim">${WINDOW_LABELS[state.window]}, all day. What it can and can't show: “?”.</div>`;
+      `<div class="t-dim">Smooth run through the last 100 m: ${a.clean_s} s. Typical extra: ${a.median_s} s; ` +
+      `1 in 10 over ${a.p90_s} s.<br>About ${Math.round(a.per_day)} streetcars a day, losing ` +
+      `${a.hours_per_day.toFixed(1)} streetcar-hours between them.</div>` +
+      (a.stop_in_zone ? `<div class="t-stale">There's a stop here, so boarding time is included.</div>` : "") +
+      (a.next_signal_close ? `<div class="t-stale">The next signal is close, so its queue may reach back here.</div>` : "") +
+      `<div class="t-routes t-dim">${WINDOW_LABELS[state.window]}, all day.</div>`;
     placeTip(info);
   }
 
@@ -1352,7 +1351,7 @@
         : `<div class="t-big">${ewtTxt(c.ewt)} (routes averaged)</div>` + c.per.map(([r, w]) =>
           `<div class="t-routes"><div class="t-head">${r} ${routeNames[r] || ""}: ${ewtTxt(w.ewt)}</div>${waitLines(w)}</div>`).join("")) +
       (offTxt.length ? `<div class="t-routes t-dim">${offTxt.join("<br>")}</div>` : "") +
-      `<div class="t-routes t-dim">Frequent service only (scheduled every 12 min or better). Buses on the route count. More under “?”.</div>`;
+      `<div class="t-routes t-dim">Frequent service only (every 12 min or better). Buses on the route count.</div>`;
     placeTip(info);
   }
 
@@ -1392,7 +1391,7 @@
       `Based on ${fmt(slot.n[b])} pass${slot.n[b] === 1 ? "" : "es"}</div>` +
       (routes.length ? `<div class="t-routes"><div class="t-head">Whole route${routes.length > 1 ? "s" : ""} through here</div>` +
         `${routes.map(routeLine).join("")}</div>` : "") +
-      `<div class="t-routes t-dim">Clean run: each segment's fastest 10% of real daytime passes, stops included. More under “?” on the legend.</div>`;
+      `<div class="t-routes t-dim">Clean run: the quickest 10% of daytime trips here, stops included.</div>`;
     placeTip(info);
   }
   map.getCanvas().addEventListener("mouseleave", () => { tip.hidden = true; });

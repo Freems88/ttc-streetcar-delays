@@ -112,6 +112,31 @@ class Matcher:
                 self.joins[(pa, pb)] = (ga.length, b) if d <= JOIN_M else None
         return self.joins[(pa, pb)]
 
+    def stitch(self, passes):
+        """Carry passes across joins between pieces of track: where a car's last position on
+        one piece and its first on the next are within MAX_GAP_S, add the point where it
+        crossed the join (interpolated) to both, so the slices either side of the join get
+        timed too. Otherwise a pass starts at the car's first position on a piece, often
+        50-100 m in, and the ends of every piece are rarely measured."""
+        for (pa, sa), (pb, sb) in zip(passes, passes[1:]):
+            if pa == pb:
+                continue
+            (t1, a1), (t2, b1) = sa[-1], sb[0]
+            dt = t2 - t1
+            j = self.junction(pa, pb)
+            if j is None or not 0 < dt <= MAX_GAP_S:
+                continue
+            ja, jb = j
+            da, db = ja - a1, b1 - jb
+            if da < -STILL_M or db < -STILL_M or not 0 < da + db <= MAX_SPEED * dt:
+                continue
+            da, db = max(0.0, da), max(0.0, db)
+            tj = t1 + dt * da / (da + db)
+            if da > 0.5:
+                sa.append((tj, ja))
+            if db > 0.5:
+                sb.insert(0, (tj, jb))
+
     def bridge(self, pa, seq_a, pb, seq_b):
         """Departures between a car's last position on piece pa and its first on pb."""
         (t1, a1), (t2, b1) = seq_a[-1], seq_b[0]
@@ -343,6 +368,7 @@ def process(day, network=None):
         n_pings += len(pings)
         opts_list = [candidates(key[0], pg) for pg in pings]
         passes, off = split_passes(pings, opts_list)
+        m.stitch(passes)
         # Where streetcars were with no known track under them (~100 m cells), for the
         # off-track warning: a new routing on track no schedule has ever drawn.
         for (_, x, y, _), o in zip(pings, opts_list):
