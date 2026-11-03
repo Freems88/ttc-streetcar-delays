@@ -1200,11 +1200,14 @@
   // often streetcars were held there for longer than about a signal cycle: 90 s beyond the
   // approach's clean run (the quickest 10% of daytime passes). A ring marks signals the
   // City lists as having transit priority. Approaches with a stop in them are faded:
-  // boarding time is mixed in. From signal-approaches.json (last 90 days, all day).
+  // boarding time is mixed in. From signal-approaches-<window>.json (all day).
   const HELD_BREAKS = [0, 5, 10, 20, 40];
   for (const pl of Object.values(PALETTES)) pl.held = pl.delay.map(([, c], i) => [HELD_BREAKS[i], c]);
+  const approachCache = {};
   async function loadApproaches() {
-    if (!approaches) approaches = await get("signal-approaches.json").catch(() => ({days: 0, approaches: []}));
+    const w = state.window;
+    approachCache[w] ||= await get(`signal-approaches-${w}.json`).catch(() => ({days: 0, approaches: []}));
+    approaches = approachCache[w];
   }
   const pieceById = Object.fromEntries(pieces.map((p) => [p.id, p]));
   const pct = (x) => `${Math.round(x * 100)}%`;
@@ -1227,6 +1230,7 @@
     const a = p.bins[Math.max(0, b - 1)], z = p.bins[Math.min(p.bins.length - 1, b + 1)];
     return (Math.atan2((z[0] - a[0]) * KX, z[1] - a[1]) * 180 / Math.PI + 360) % 360;
   }
+  let signalMarks = [];
   function renderSignals() {
     const base = [];
     for (const p of visiblePieces()) for (const path of runsOf(p)) base.push({path});
@@ -1236,6 +1240,7 @@
       return {...a, held90: held, pos: pos(p, b), angle: -headingAt(p, b),
         color: colorFor(held, a.stop_in_zone ? 110 : 245, pal.held)};
     }).sort((x, y) => (y.stop_in_zone - x.stop_in_zone) || x.held90 - y.held90); // worst on top
+    signalMarks = marks;
     drawn = marks.flatMap((d) => [d.pos[0], d.pos[1], 0]);
     screenPts = null;
     const halo = isDark() ? [235, 235, 235, 200] : [30, 30, 30, 200];
@@ -1288,7 +1293,7 @@
       `${a.hours_per_day} streetcar-hours a day lost here</div>` +
       (a.stop_in_zone ? `<div class="t-stale">A stop is in this approach, so boarding time is mixed in.</div>` : "") +
       (a.next_signal_close ? `<div class="t-stale">The next signal is close: queues from it may spill back here.</div>` : "") +
-      `<div class="t-routes t-dim">Last ${approaches.days} days, all day. What it can and can't show: “?”.</div>`;
+      `<div class="t-routes t-dim">${WINDOW_LABELS[state.window]}, all day. What it can and can't show: “?”.</div>`;
     placeTip(info);
   }
 
@@ -1329,7 +1334,8 @@
       if (!list.length) box.innerHTML = `<p class="compare-note">Not enough passes yet for these routes.</p>`;
     }
     document.getElementById("rank-note").textContent =
-      `Last ${approaches.days} days, all day${approaches.days < 14 ? ", preliminary" : ""}. Approaches with a stop in them are left out.`;
+      `${WINDOW_LABELS[state.window]} (${approaches.days} day${approaches.days === 1 ? "" : "s"} of data), all day` +
+      `${approaches.days < 14 ? ", preliminary" : ""}. Approaches with a stop in them are left out.`;
   }
 
   function showWaitTip(info) {
@@ -1707,9 +1713,11 @@
   if (CLEAN) {
     map.once("idle", () => {
       const col = waitCols.find((c) => c.id === params.get("tip"));
-      if (col) {
-        const pt = map.project(col.pos);
-        showWaitTip({object: col, x: pt.x, y: pt.y});
+      const mark = signalMarks.find((m) => `${m.piece}|${m.px}` === params.get("tipa"));
+      if (col || mark) {
+        const pt = map.project((col || mark).pos);
+        if (col) showWaitTip({object: col, x: pt.x, y: pt.y});
+        else showApproachTip({object: mark, x: pt.x, y: pt.y});
         // Beside the column (to the right, or left near the edge), not over it.
         const right = pt.x + 70 + tip.offsetWidth < innerWidth - 16;
         tip.style.left = `${right ? pt.x + 70 : pt.x - 70 - tip.offsetWidth}px`;

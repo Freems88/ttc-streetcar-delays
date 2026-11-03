@@ -837,11 +837,13 @@ def main():
                      **({"turns": signal_turns[i]} if signal_turns.get(i) else {})} for i in used],
     }
     (data / "network.json").write_text(json.dumps(lite, separators=(",", ":")))
-    ap = approach_stats(accs["recent"], network, sigs, piece_routes)
-    (data / "signal-approaches.json").write_text(json.dumps(ap, separators=(",", ":")))
-    if "d1" in accs:  # yesterday alone, for the bot's midday post
-        (data / "signal-approaches-d1.json").write_text(
-            json.dumps(approach_stats(accs["d1"], network, sigs, piece_routes), separators=(",", ":")))
+    # Signal approaches for every window (the signals view follows the data buttons; the
+    # bot's midday signal post uses yesterday's, d1).
+    for w, acc in accs.items():
+        out_ap = approach_stats(acc, network, sigs, piece_routes)
+        (data / f"signal-approaches-{w}.json").write_text(json.dumps(out_ap, separators=(",", ":")))
+        if w == "recent":
+            ap = out_ap
     clean_ap = [r for r in ap["approaches"] if not r["stop_in_zone"]]
     for title, rows in (("priority not delivering", [r for r in clean_ap if r["tsp"]]),
                         ("no priority, most held", [r for r in clean_ap if not r["tsp"]])):

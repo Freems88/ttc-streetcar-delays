@@ -5,6 +5,7 @@ Up to five posts, each skipped when there's nothing worth saying:
   summary     hours streetcars lost to delay, worst and smoothest route
   segment     the slowest stop-centred segment (min passes), with a framed 3D image
   waits       excess wait at stops: network average, worst and steadiest route direction
+  signal      the signal approach where most streetcars were held 90 s+, with a map image
   fleet       streetcars in service against the schedule: busiest moment, share of
               scheduled streetcar hours that ran, the route furthest short
   service     routes running buses or off their usual track, with the TTC's reason
@@ -149,7 +150,7 @@ def post_len(text):
 def worst_signal(site):
     """Yesterday's signal approach where the most streetcars were held 90 s+ (no stop in the
     approach, at least MIN_SIGNAL_PASSES passes), from the site build, or None."""
-    path = Path(site) / "data" / "signal-approaches-d1.json"
+    path = Path(site) / "data" / "signal-approaches-d1.json"  # yesterday
     if not path.exists():
         return None
     rows = [a for a in json.loads(path.read_text())["approaches"]
@@ -283,7 +284,7 @@ def stop_wait(hours):
     return {"n": n, "ns": ns, "nb": nb, "ewt": (sh2 / (2 * sh) - shs2 / (2 * shs)) / 60}
 
 
-def waits_post(when, net, agg, sig=None):
+def waits_post(when, net, agg):
     heads = agg.get("heads")
     if not heads:
         return None
@@ -307,18 +308,33 @@ def waits_post(when, net, agg, sig=None):
             f"at a stop on frequent routes.\n\n")
     worst_line = f"Worst: {label(worst)}, {extra(per[worst]['ewt'])}; {share_text(per[worst]['bunched'], 'cars')} bunched."
     best_line = f"\nSteadiest: {label(best)}, {extra(per[best]['ewt'])}."
-    sig_line = ""
-    if sig:
-        sig_line = (f"\nMost held at a signal: {sig['name'].replace(' / ', ' & ')} {sig['dir']}, "
-                    f"{share_text(sig['held']['90'], 'streetcars')} waited 90 s+"
-                    + (" despite transit priority." if sig["tsp"] else " (no transit priority)."))
     link = f"\n\n{SITE_URL}#v=wait"
-    # Long names can push it over the limit: the steadiest route goes first, then the signal.
-    for parts in ((worst_line, sig_line, best_line), (worst_line, sig_line), (worst_line, best_line), (worst_line,)):
-        text = head + "".join(parts) + link
-        if post_len(text) <= POST_LIMIT:
-            break
+    # Long route names can push it over the limit; the steadiest route goes first.
+    text = head + worst_line + best_line + link
+    if post_len(text) > POST_LIMIT:
+        text = head + worst_line + link
     return {"kind": "waits", "text": text}
+
+
+def signal_post(when, day_name, sig):
+    """Yesterday's signal approach where the most streetcars were held 90 s+, with a map
+    image of it and its tooltip (the site's clean mode, yesterday's window)."""
+    if not sig:
+        return None
+    name = sig["name"].replace(" / ", " & ")
+    held = share_text(sig["held"]["90"], "streetcars")
+    text = (f"Most held at a signal, {when}: {sig['dir']} at {name}.\n\n"
+            f"{held[0].upper() + held[1:]} waited 90 s or more beyond a clean approach, about a full signal cycle"
+            + (", despite transit priority." if sig["tsp"] else ". This signal has no transit priority.")
+            + f"\nAbout {sig['passes']} streetcars came through.")
+    lon, lat = sig["lonlat"]
+    shot = {"clean": "1", "theme": "light", "tipa": f"{sig['piece']}|{sig['px']}"}
+    alt = (f"Map of the streets around {name}, with arrows for each direction of streetcar travel into each "
+           f"signal, coloured by how often streetcars were held 90 seconds or more. A tooltip for the "
+           f"{sig['dir']} approach reads {round(sig['held']['90'] * 100)}% held 90 s+, with a histogram of "
+           f"extra time through the approach.")
+    return {"kind": "signal", "text": text, "alt": alt, "shot": shot,
+            "hash": f"w=d1&v=signals&c={lon:.5f},{lat:.5f},16.2,-17,40", "size": [600, 450], "scale": 2}
 
 
 def fleet_post(when, net, agg, partial=False):
@@ -396,13 +412,16 @@ def make(site, force=False, today=False):
     agg = load_agg(day)
     posts = [p for p in (summary_post(when, net, recent, yest, have_normal),
                          segment_post(when, day_name, net, recent, yest, have_normal, today),
-                         waits_post(when, net, agg, None if today else worst_signal(site)),
+                         waits_post(when, net, agg),
+                         None if today else signal_post(when, day_name, worst_signal(site)),
                          fleet_post(when, net, agg, today),
                          service_post(day, when, net, timeline)) if p]
     for p in posts:
         p["chars"] = post_len(p["text"])
-        if p.get("shot") and capture_image(site, p["shot"], out_dir / "segment.png"):
-            p["image"] = "segment.png"
+        if p.get("shot") and capture_image(site, p["shot"], out_dir / f"{p['kind']}.png",
+                                           size=tuple(p.get("size", (1200, 900))), scale=p.get("scale", 1),
+                                           hash_=p.get("hash", "")):
+            p["image"] = f"{p['kind']}.png"
     draft = {"day": day, "partial": today, "generated": int(time.time()), "normal_days": meta["windows"]["recent"]["days"],
              "have_normal": have_normal, "positions": yest["stats"]["pings"], "posts": posts}
     (out_dir / "draft.json").write_text(json.dumps(draft, indent=1))
