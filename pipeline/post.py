@@ -11,8 +11,9 @@ A post with nothing to say that day is simply missing from the draft and skipped
 drafts/<day>/posted.json records what went out, so a slot never posts twice.
 
 Nothing is posted unless WORK_DIR/bot-enabled exists; without it a slot only prints
-what it would post. The site link in a draft is posted as short link text ("See the
-map") so it doesn't eat into the 300-character limit.
+what it would post. The site link in a draft is taken out of the text and posted as a
+link card instead (the site's own title, description and nightly card image), so it
+takes none of the 300 characters. Posts with an image can't also carry a card.
 
 Usage: post.py SLOT [--dry-run] [--now] [--draft NAME]   (SLOT: morning, midday, evening or all)
 Needs STUCKTO_HANDLE and STUCKTO_PASSWORD (an app password) in the environment.
@@ -30,8 +31,12 @@ DRAFTS = WORK_DIR / "drafts"
 ENABLED = WORK_DIR / "bot-enabled"
 SESSION = WORK_DIR / "bsky-session"
 SLOTS = {"morning": ["summary", "segment"], "midday": ["waits"], "evening": ["fleet"]}
-LINK = re.compile(r"https://freems88\.github\.io/ttc-streetcar-delays/\S*")
-LINK_TEXT = "See the map"
+LINK = re.compile(r"\s*(https://freems88\.github\.io/ttc-streetcar-delays/\S*)")
+# Same as the page's Open Graph tags (site/index.html).
+CARD_TITLE = "Stuck: Toronto's streetcar delays"
+CARD_DESC = ("Where Toronto streetcars lose time, how long riders wait, and how often they're held at "
+             "signals. Updated daily from TTC vehicle positions.")
+CARD_IMAGE = WORK_DIR / "site" / "data" / "card.png"
 IMAGE_SIZE = (1200, 900)  # as captured by drafts.py
 
 
@@ -48,18 +53,17 @@ def login():
     return client
 
 
-def rich_text(text):
-    """The post text with the site link as short link text."""
-    from atproto import client_utils
-    tb, pos = client_utils.TextBuilder(), 0
-    for m in LINK.finditer(text):
-        tb.text(text[pos:m.start()]).link(LINK_TEXT, m.group(0))
-        pos = m.end()
-    return tb.text(text[pos:])
+def split_link(text):
+    """(text without the site link, the link or None)."""
+    m = LINK.search(text)
+    return (LINK.sub("", text).rstrip(), m.group(1)) if m else (text, None)
 
 
-def shown(text):
-    return LINK.sub(LINK_TEXT, text)
+def link_card(client, url):
+    from atproto import models
+    thumb = client.upload_blob(CARD_IMAGE.read_bytes()).blob if CARD_IMAGE.exists() else None
+    return models.AppBskyEmbedExternal.Main(external=models.AppBskyEmbedExternal.External(
+        uri=url, title=CARD_TITLE, description=CARD_DESC, thumb=thumb))
 
 
 def main():
@@ -85,9 +89,10 @@ def main():
         return
     client = None if dry else login()
     for p in todo:
+        text, url = split_link(p["text"])
         if dry:
-            print(f"[dry run] {day} {slot} {p['kind']} ({len(shown(p['text']))} chars"
-                  f"{', image' if p.get('image') else ''}):\n{shown(p['text'])}\n")
+            print(f"[dry run] {day} {slot} {p['kind']} ({len(text)} chars"
+                  f"{', image' if p.get('image') else ''}{f', link card {url}' if url else ''}):\n{text}\n")
             continue
         from atproto import models
         reply = None
@@ -96,12 +101,13 @@ def main():
             reply = models.AppBskyFeedPost.ReplyRef(root=ref(state["root"]), parent=ref(state["last"]))
         image = DRAFTS / day / p["image"] if p.get("image") else None
         if image and image.exists():
-            res = client.send_image(text=rich_text(p["text"]), image=image.read_bytes(), image_alt=p.get("alt", ""),
+            res = client.send_image(text=text, image=image.read_bytes(), image_alt=p.get("alt", ""),
                                     image_aspect_ratio=models.AppBskyEmbedDefs.AspectRatio(
                                         width=IMAGE_SIZE[0], height=IMAGE_SIZE[1]),
                                     reply_to=reply, langs=["en-CA"])
         else:
-            res = client.send_post(text=rich_text(p["text"]), reply_to=reply, langs=["en-CA"])
+            res = client.send_post(text=text, reply_to=reply, langs=["en-CA"],
+                                   embed=link_card(client, url) if url else None)
         ref = {"uri": res.uri, "cid": res.cid}
         state.setdefault("root", ref)
         state["last"] = ref

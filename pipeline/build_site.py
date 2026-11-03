@@ -839,6 +839,9 @@ def main():
     (data / "network.json").write_text(json.dumps(lite, separators=(",", ":")))
     ap = approach_stats(accs["recent"], network, sigs, piece_routes)
     (data / "signal-approaches.json").write_text(json.dumps(ap, separators=(",", ":")))
+    if "d1" in accs:  # yesterday alone, for the bot's midday post
+        (data / "signal-approaches-d1.json").write_text(
+            json.dumps(approach_stats(accs["d1"], network, sigs, piece_routes), separators=(",", ":")))
     clean_ap = [r for r in ap["approaches"] if not r["stop_in_zone"]]
     for title, rows in (("priority not delivering", [r for r in clean_ap if r["tsp"]]),
                         ("no priority, most held", [r for r in clean_ap if not r["tsp"]])):

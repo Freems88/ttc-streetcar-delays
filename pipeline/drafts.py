@@ -48,6 +48,7 @@ KEEP_DAYS = 30
 MIN_HEADWAYS = 20        # per stop and route, as on the page
 MIN_WAIT_STOPS = 5       # a route direction needs this many measured stops to be named
 MIN_LOGGED = 0.9         # fleet post only for days logged at least this fully
+MIN_SIGNAL_PASSES = 40   # a signal approach needs this many passes yesterday to be named
 STATUS_TEXT = {"bus": "mostly by bus", "mixed": "partly by bus", "diverted": "often off its usual route"}
 
 
@@ -138,8 +139,19 @@ def share_text(x, things):
 
 
 def post_len(text):
-    """Length as posted: the bot shows the site link as short text (see post.py)."""
-    return len(re.sub(re.escape(SITE_URL) + r"\S*", "See the map", text))
+    """Length as posted: the bot takes the site link out of the text and posts it as a link card (see post.py)."""
+    return len(re.sub(r"\s*" + re.escape(SITE_URL) + r"\S*", "", text))
+
+
+def worst_signal(site):
+    """Yesterday's signal approach where the most streetcars were held 90 s+ (no stop in the
+    approach, at least MIN_SIGNAL_PASSES passes), from the site build, or None."""
+    path = Path(site) / "data" / "signal-approaches-d1.json"
+    if not path.exists():
+        return None
+    rows = [a for a in json.loads(path.read_text())["approaches"]
+            if not a["stop_in_zone"] and a["passes"] >= MIN_SIGNAL_PASSES and a["held"]["90"] > 0]
+    return max(rows, key=lambda a: a["held"]["90"] * a["passes"], default=None)
 
 
 def summary_post(when, net, recent, yest, have_normal):
@@ -266,7 +278,7 @@ def stop_wait(hours):
     return {"n": n, "ns": ns, "nb": nb, "ewt": (sh2 / (2 * sh) - shs2 / (2 * shs)) / 60}
 
 
-def waits_post(when, net, agg):
+def waits_post(when, net, agg, sig=None):
     heads = agg.get("heads")
     if not heads:
         return None
@@ -290,11 +302,17 @@ def waits_post(when, net, agg):
             f"{max(0, avg):.1f} min longer than scheduled.\n\n")
     worst_line = f"Worst: {label(worst)}, {extra(per[worst]['ewt'])}; {share_text(per[worst]['bunched'], 'cars')} bunched."
     best_line = f"\nSteadiest: {label(best)}, {extra(per[best]['ewt'])}."
+    sig_line = ""
+    if sig:
+        sig_line = (f"\nLongest signal holds: {sig['name'].replace(' / ', ' & ')} {sig['dir']}, where "
+                    f"{share_text(sig['held']['90'], 'streetcars')} waited 90 s+"
+                    + (", despite transit priority." if sig["tsp"] else " (no transit priority)."))
     link = f"\n\n{SITE_URL}#v=wait"
-    # Long route names can push it over the limit; the steadiest route goes first.
-    text = head + worst_line + best_line + link
-    if post_len(text) > POST_LIMIT:
-        text = head + worst_line + link
+    # Long names can push it over the limit: the steadiest route goes first, then the signal.
+    for parts in ((worst_line, sig_line, best_line), (worst_line, sig_line), (worst_line,)):
+        text = head + "".join(parts) + link
+        if post_len(text) <= POST_LIMIT:
+            break
     return {"kind": "waits", "text": text}
 
 
@@ -373,7 +391,7 @@ def make(site, force=False, today=False):
     agg = load_agg(day)
     posts = [p for p in (summary_post(when, net, recent, yest, have_normal),
                          segment_post(when, day_name, net, recent, yest, have_normal, today),
-                         waits_post(when, net, agg),
+                         waits_post(when, net, agg, None if today else worst_signal(site)),
                          fleet_post(when, net, agg, today),
                          service_post(day, when, net, timeline)) if p]
     for p in posts:
