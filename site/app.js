@@ -98,7 +98,8 @@
     eve: [19, 24, "Evening"], night: [0, 6, "Overnight"]};
   const DAYS_LABELS = {all: "All days", wd: "Weekdays", we: "Weekends"};
   state.hourData = {};
-  let approaches = null; // signal-approaches.json, fetched the first time the signals view needs it
+  let approaches = null; // signal-approaches-<window>.json, fetched the first time the signals view needs it
+  const approachCache = {};
   const usesHours = () => !(state.time === "all" && state.days === "all");
   const hourRange = () => (state.time === "custom" ? state.range : PRESETS[state.time].slice(0, 2));
   const clock = (h) => (h % 24 === 0 ? "midnight" : h === 12 ? "noon" : h < 12 ? `${h}am` : `${h - 12}pm`);
@@ -1203,7 +1204,6 @@
   // boarding time is mixed in. From signal-approaches-<window>.json (all day).
   const HELD_BREAKS = [0, 5, 10, 20, 40];
   for (const pl of Object.values(PALETTES)) pl.held = pl.delay.map(([, c], i) => [HELD_BREAKS[i], c]);
-  const approachCache = {};
   async function loadApproaches() {
     const w = state.window;
     approachCache[w] ||= await get(`signal-approaches-${w}.json`).catch(() => ({days: 0, approaches: []}));
