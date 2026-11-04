@@ -62,6 +62,7 @@ Step by step, for one streetcar position:
 |---|---|---|
 | Always | **Logger** (`ttc-streetcars.service`) | Positions every 20 s, alerts every 2 min. A new file each service day at 4:00 am. |
 | Daily ~3:40 am | **Schedule snapshot** (`ttc-gtfs-snapshot.timer`) | Saves a new TTC schedule only when one is published. |
+| Hourly at :35 | **Backup** (`ttc-backup.timer`) | Copies `~/ttc-streetcars` to the SSD (`/mnt/strada/ttc-backup/current`), and once a day keeps a dated snapshot (90 days). See *Backups* below. |
 | Daily 4:20 am | **Nightly build** (`ttc-delays-nightly.timer`) | Pulls the latest code from GitHub, processes yesterday, rebuilds and publishes the site, writes the bot drafts and the track check, and redraws the link-preview card (`data/card.png`). |
 | 7:45 am | **Bot, morning** | Summary, then slowest spot with image (starts the day's thread). |
 | 12:15 pm | **Bot, midday** | Waits at stops. |
@@ -200,6 +201,7 @@ On the Pi (SSH), the quick looks:
 systemctl list-timers --all | grep -E "ttc|bot"
 journalctl -u ttc-delays-nightly.service -n 30
 systemctl status ttc-streetcars.service
+cat /mnt/strada/ttc-backup/last-backup.txt   # should be within the hour
 ```
 
 ---
@@ -211,8 +213,8 @@ systemctl status ttc-streetcars.service
   passenger counters may not be live). Not used.
 - **A few odd stops** with low "cars seen" (e.g. King St East at Sumach on the 504) aren't
   explained yet.
-- **No backup.** The raw archive exists only on the Pi's SD card. It's the one thing that
-  can't be rebuilt (about 1.5 GB a year). Still to be decided: where a copy should go.
+- **No off-site copy.** The archive is backed up to an SSD on the same Pi (see *Backups*),
+  but a fire or theft would take both. An off-site copy is still to do.
 - **Early days.** Clean runs and "usual" comparisons settle after a few weeks of data. The
   bot's "usually" comparisons start after 7 days.
 - **Lines 5 and 6** (Eglinton, Finch West) aren't in the TTC's live feed yet.
@@ -228,6 +230,7 @@ systemctl status ttc-streetcars.service
 | Fix a stalled GitHub Pages deploy | `gh api -X POST repos/Freems88/ttc-streetcar-delays/pages/builds` |
 | See what the bot would post | `python post.py morning --dry-run` on the Pi |
 | Add a yard to ignore in the track check | `YARDS` in `pipeline/process_day.py` |
+| Get a file back from the backup | Copy it from `/mnt/strada/ttc-backup/snapshots/<date>/…` (or `current/` for the latest) |
 
 ---
 
@@ -240,7 +243,24 @@ systemctl status ttc-streetcars.service
 | Pi `~/ttc-streetcars/static/` | Saved TTC schedules |
 | Pi `~/ttc-streetcars/delays/` | Working files: track map (`network.json`), per-day results (`agg/`), drafts, the built site |
 | Pi `~/ttc-delays/` | The Pi's copy of the code, updated each night |
-| Pi `~/ttc-streetcars/bot.env` | Bot login (owner-only; never in the repo) |
+| Pi `~/ttc-streetcars/bot.env` | Bot login (owner-only; never in the repo or the backup) |
+| Pi `/mnt/strada/ttc-backup/` | The backup on the 1 TB SSD: `current/` plus dated `snapshots/` |
+
+### Backups
+
+The logger writes to the SD card; the SSD (1 TB, ext4, label `strada`, mounted at
+`/mnt/strada` by UUID with `nofail`, so the Pi still boots without it) holds the backup.
+`pi/ttc-backup.sh` runs hourly:
+
+- `current/` mirrors `~/ttc-streetcars`, minus the venv, the built site and the Bluesky secrets.
+- The first run after 5 am makes `snapshots/YYYY-MM-DD`. Unchanged files are hard links to the
+  previous snapshot, so each costs only what changed. Kept 90 days.
+- The mirror follows deletions; the snapshots are what protect against a deleted or corrupted
+  file. If the SSD is missing the run fails and logging carries on regardless.
+
+Why this way round (SD primary, SSD backup): the archive is only about 2 GB a year, so space
+isn't the issue, and a USB drive that drops out would stop the logger. Revisit if the archive
+grows a lot (more systems), when the SSD becoming primary starts to make sense.
 
 ---
 
