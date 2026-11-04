@@ -19,6 +19,7 @@ The TTC publishes live streetcar positions (GTFS-Realtime) but keeps no history,
   - `build_site.py`: combines days (one at a time) into yesterday / 7 / 30 / 90-day stats, observed route patterns, route summaries, a per-route bus/diversion timeline with alerts, faded stale track and the nightly track check. See the data rules in docs/how-it-works.md.
   - `signals.py`: fetches the City of Toronto traffic signal list (monthly) and labels each slice stop / signal / both / elsewhere, since stop delay is mostly boarding and signal delay mostly red lights.
   - `turns.py`: turn prohibitions from the traffic by-law (Chapter 950, Schedule 23), streamed from the City's ~800 MB by-law file every 90 days and matched to signals by street name.
+  - `replay.py`: yesterday's streetcars as timed paths, snapped to the track, for the animated replay page (`replay.html`). Built once a day.
   - `drafts.py` + `capture.py`: bot dry run. Drafts the day's would-be Bluesky posts (summary, slowest segment with a framed 3D image, waits at stops, cars in service vs scheduled, service notes) to `drafts.html`. Images come from the map's screenshot mode (`?shot=1`), rendered by headless Chromium on the Pi.
   - `nightly.py`: runs the above and force-pushes the built site to `gh-pages`.
 - `site/`: the static map page (MapLibre + deck.gl, OpenFreeMap tiles).

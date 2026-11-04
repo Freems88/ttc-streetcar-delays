@@ -20,6 +20,7 @@ import build_site
 import drafts
 import network
 import process_day
+import replay
 import signals
 import turns
 from common import DATA_DIR, WORK_DIR, service_day
@@ -63,6 +64,21 @@ def main():
         process_day.process(day, net)
     sys.argv = ["build_site.py", str(SITE_OUT)]
     build_site.main()
+    # Replay page: yesterday's cars, animated. Built once per day and kept in WORK_DIR.
+    try:
+        today = service_day(time.time())
+        done = sorted(p.name[:10] for p in (WORK_DIR / "agg").glob("*.json.gz") if p.name[:10] < today)
+        if done:
+            cached = WORK_DIR / "replay" / f"{done[-1]}.json"
+            if not cached.exists() or "--rebuild" in args:
+                cached.parent.mkdir(exist_ok=True)
+                replay.write(done[-1], cached, net)
+                for old in cached.parent.glob("*.json"):
+                    if old.name < cached.name:
+                        old.unlink()
+            shutil.copy(cached, SITE_OUT / "data" / "replay.json")
+    except Exception as e:
+        print(f"replay failed: {type(e).__name__}: {e}", file=sys.stderr)
     # Bot dry run: draft yesterday's posts (once per day) and ship them with the site.
     try:
         drafts.make(SITE_OUT)
