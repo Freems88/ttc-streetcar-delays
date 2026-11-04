@@ -1,6 +1,6 @@
 // Replay: every streetcar's day, animated from data/replay.json (see pipeline/replay.py).
 (async function () {
-  const {MapboxOverlay, ScatterplotLayer, TripsLayer} = deck;
+  const {MapboxOverlay, ScatterplotLayer, TripsLayer, PathLayer, IconLayer} = deck;
   const $ = (id) => document.getElementById(id);
 
   const ROUTES = {
@@ -42,16 +42,18 @@
   const pos = new Float64Array(nPts * 2), ts = new Float32Array(nPts);
   const colRoute = new Uint8Array(nPts * 4), colSpeed = new Uint8Array(nPts * 4);
   const kmh = new Float32Array(nPts), cumKm = new Float64Array(nPts), cumStill = new Float64Array(nPts);
+  const gclk = new Float32Array(nPts);  // ghost clock: clean-run seconds from the trip's first point
   const starts = new Uint32Array(data.cars.length + 1);
   const paths = [];  // {v, r, i0, i1 (exclusive), t0, t1}
   let k = 0;
   data.cars.forEach((c, ci) => {
     starts[ci] = k;
-    let lon = 0, lat = 0, t = 0;
+    let lon = 0, lat = 0, t = 0, g = 0;
     const i0 = k, rc = routeColor(c.r);
     for (let j = 0; j < c.p.length; j += 3, k++) {
       lon += c.p[j]; lat += c.p[j + 1]; t += c.p[j + 2];
-      pos[2 * k] = lon / 1e5; pos[2 * k + 1] = lat / 1e5; ts[k] = t;
+      g += c.g ? c.g[j / 3] : 0;
+      pos[2 * k] = lon / 1e5; pos[2 * k + 1] = lat / 1e5; ts[k] = t; gclk[k] = g;
       if (k > i0) {
         const d = Math.hypot((pos[2 * k] - pos[2 * k - 2]) * KX, (pos[2 * k + 1] - pos[2 * k - 1]) * KY);
         const dt = ts[k] - ts[k - 1];
@@ -66,7 +68,7 @@
       // Colour each vertex by the speed of the stretch leading up to it.
       colSpeed.set([...speedColor(kmh[i]), 255], 4 * i);
     }
-    paths.push({v: c.v, r: c.r, i0, i1: k, t0: ts[i0], t1: ts[k - 1]});
+    paths.push({v: c.v, r: c.r, i0, i1: k, t0: ts[i0], t1: ts[k - 1], ghost: !!c.g});
   });
   starts[data.cars.length] = k;
   const byCar = new Map();
@@ -101,7 +103,7 @@
   };
 
   // --- state + hash -------------------------------------------------------------------
-  const state = {t: 3 * 3600, speed: 600, playing: true, color: "route", follow: null, routes: new Set()};
+  const state = {t: 3 * 3600, speed: 600, playing: true, color: "route", follow: null, routes: new Set(), race: null};
   const routeOn = (r) => !state.routes.size || state.routes.has(r);
   const h = new URLSearchParams(location.hash.slice(1));
   if (h.has("t")) {
@@ -120,6 +122,7 @@
     if (state.color !== "route") q.set("c", state.color);
     if (state.routes.size) q.set("r", [...state.routes].sort().join(","));
     if (state.follow) q.set("car", state.follow);
+    if (state.race) q.set("race", "1");
     history.replaceState(null, "", "#" + q.toString());
   }
 
@@ -241,6 +244,7 @@
         filled: false, stroked: true, getLineColor: [255, 255, 255, 255],
         lineWidthUnits: "pixels", getLineWidth: 2, radiusUnits: "pixels", getRadius: 13,
       }),
+      ...raceLayers(),
     ]});
     $("clock").textContent = clockText(state.t);
     $("scrub").value = state.t;
@@ -249,6 +253,7 @@
 
   // --- following a car ------------------------------------------------------------------
   function follow(v) {
+    if (v !== state.follow) state.race = null;
     state.follow = v;
     followTrips = v ? followData(v) : null;
     $("follow").hidden = !v;
@@ -298,13 +303,152 @@
         $("f-now").textContent = `${Math.round(speed)} km/h`;
       }
     }
+    if (!state.race) $("race").hidden = true;
     $("f-stats").innerHTML =
       `<span>Since ${clockText(legs[0].t0)}</span><b>${km.toFixed(1)} km</b>` +
       `<span>Moving</span><b>${dur(moving)}</b>` +
       `<span>Standing still</span><b>${dur(still)}</b>`;
-    if (d && !dragging && !easing) map.jumpTo({center: [d.lon, d.lat]});
+    const trip = d ? d.p : legs.find((p) => p.t0 > state.t);
+    $("race-btn").hidden = !!state.race || !raceable(trip);
+    if (state.race) updateRace(d);
+    else if (d && !dragging && !easing) map.jumpTo({center: [d.lon, d.lat]});
   }
   let easing = false;
+
+  // --- racing the ghost ------------------------------------------------------------------
+  // The ghost drives the same trip, along the same track, at the clean-run pace (the delay
+  // map's baseline: the quickest 10% of daytime trips on each stretch, stops included). It
+  // leaves when the real car pulls away and the race ends when the real car stops at the end.
+  const GHOST_ICON = {
+    url: "data:image/svg+xml;charset=utf-8," + encodeURIComponent(
+      "<svg xmlns='http://www.w3.org/2000/svg' width='64' height='72' viewBox='0 0 64 72'>" +
+      "<path d='M6 34a26 26 0 0 1 52 0v34l-8.7-7-8.6 7-8.7-7-8.7 7-8.6-7L6 68z' fill='#f4f1ff' " +
+      "fill-opacity='.93' stroke='#b9a8ff' stroke-width='3' stroke-linejoin='round'/>" +
+      "<circle cx='23' cy='32' r='5' fill='#1b1530'/><circle cx='41' cy='32' r='5' fill='#1b1530'/>" +
+      "<ellipse cx='32' cy='46' rx='4' ry='5' fill='#1b1530'/></svg>"),
+    width: 64, height: 72, anchorY: 60,
+  };
+  const MIN_RACE_KM = 1;
+  function raceBounds(p) {
+    // Pulling away: the last point before the car first moves 20 m. Arriving: the first
+    // point within 20 m of where it finally stops.
+    let s = p.i0, e = p.i1 - 1;
+    while (s < e && cumKm[s + 1] - cumKm[p.i0] < 0.02) s++;
+    while (e > s && cumKm[p.i1 - 1] - cumKm[e - 1] < 0.02) e--;
+    return [s, e];
+  }
+  function raceable(p) {
+    if (!p || !p.ghost) return false;
+    const [s, e] = raceBounds(p);
+    return cumKm[e] - cumKm[s] >= MIN_RACE_KM && gclk[e] > gclk[s];
+  }
+  function startRace(rewind, after = null) {
+    const legs = byCar.get(state.follow).filter((q) => !after || q.t0 > after.t0);
+    const p = after ? legs.find(raceable) :
+      legs.find((q) => q.t0 <= state.t && state.t <= q.t1 && raceable(q)) || legs.find((q) => q.t0 > state.t && raceable(q));
+    if (!p) return;
+    const [s, e] = raceBounds(p);
+    state.race = {p, s, e};
+    if (rewind || state.t < ts[s] || state.t > ts[e]) state.t = ts[s] - 5;
+    if (state.speed === 600) setSpeed(120);
+    setPlaying(true);
+    writeHash();
+    draw();
+  }
+  function stopRace() {
+    state.race = null;
+    writeHash();
+    draw();
+  }
+  // Index and fraction along [lo, hi] where arr (non-decreasing) reaches v.
+  function findIn(arr, lo, hi, v) {
+    if (v <= arr[lo]) return [lo, 0];
+    if (v >= arr[hi]) return [hi, 0];
+    while (hi - lo > 1) {
+      const mid = (lo + hi) >> 1;
+      if (arr[mid] <= v) lo = mid; else hi = mid;
+    }
+    const span = arr[hi] - arr[lo];
+    return [lo, span > 0 ? (v - arr[lo]) / span : 0];
+  }
+  const lerpAt = (arr, i, f, stride = 1, o = 0) =>
+    arr[stride * i + o] + f * ((arr[stride * (i + 1) + o] ?? arr[stride * i + o]) - arr[stride * i + o]);
+  // Where things stand at time t: ghost and car positions, and the time lost so far.
+  function raceState(t) {
+    const {p, s, e} = state.race;
+    const t0 = ts[s], tEnd = ts[e], g0 = gclk[s], gEnd = gclk[e];
+    const [gi, gf] = findIn(gclk, s, e, g0 + Math.max(0, t - t0));
+    const tc = Math.min(Math.max(t, t0), tEnd);
+    const [ci, cf] = findIn(ts, s, e, tc);
+    const carG = lerpAt(gclk, ci, cf), ghostKm = lerpAt(cumKm, gi, gf), carKm = lerpAt(cumKm, ci, cf);
+    return {
+      ghost: [lerpAt(pos, gi, gf, 2, 0), lerpAt(pos, gi, gf, 2, 1)], gi, ci,
+      car: [lerpAt(pos, ci, cf, 2, 0), lerpAt(pos, ci, cf, 2, 1)],
+      lost: (tc - t0) - (carG - g0), aheadKm: Math.max(0, ghostKm - carKm),
+      ghostDone: t - t0 >= gEnd - g0, carDone: t >= tEnd, started: t >= t0,
+      real: tEnd - t0, clean: gEnd - g0, km: cumKm[e] - cumKm[s],
+    };
+  }
+  function raceLayers() {
+    if (!state.race) return [];
+    const r = raceState(state.t);
+    // The stretch of track between the car and the ghost: the gap it has opened up.
+    const gap = [];
+    if (r.gi > r.ci) {
+      gap.push(r.car);
+      for (let i = r.ci + 1; i <= r.gi; i++) gap.push([pos[2 * i], pos[2 * i + 1]]);
+      gap.push(r.ghost);
+    }
+    return [
+      new PathLayer({
+        id: "ghost-gap", data: gap.length ? [gap] : [], getPath: (d) => d,
+        getColor: [185, 168, 255, 130], widthUnits: "pixels", getWidth: 5, capRounded: true, jointRounded: true,
+      }),
+      new ScatterplotLayer({
+        id: "ghost-glow", data: [r.ghost], getPosition: (d) => d,
+        getFillColor: [200, 190, 255, 60], radiusUnits: "pixels", getRadius: 18,
+      }),
+      new IconLayer({
+        id: "ghost", data: [r.ghost], getPosition: (d) => d, getIcon: () => GHOST_ICON,
+        getSize: 34, sizeUnits: "pixels",
+      }),
+    ];
+  }
+  const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
+  const mins = (s) => `${Math.round(s / 60)} min`;
+  function updateRace(d) {
+    const r = raceState(state.t);
+    let html;
+    if (!r.started) {
+      html = `<div class="r-big">Ready…</div><div class="r-sub">The ghost leaves when car ${state.follow} pulls away.</div>`;
+    } else if (!r.carDone) {
+      html = r.lost < 5 ? `<div class="r-big">Neck and neck</div>` :
+        `<div class="r-big">Ghost ahead by ${mmss(r.lost)}</div>` +
+        `<div class="r-sub">${r.ghostDone ? "The ghost has already finished the trip." :
+          `${r.aheadKm.toFixed(1)} km up the line.`}</div>`;
+    } else {
+      const pct = Math.round((r.real / r.clean - 1) * 100);
+      html = `<div class="r-big">Ghost wins by ${mins(r.real - r.clean)}</div>` +
+        `<div class="r-sub">This ${r.km.toFixed(1)} km trip took ${mins(r.real)}. ` +
+        `A clean run: ${mins(r.clean)} (${pct}% longer for real).</div>` +
+        `<button class="linkish" id="race-next">Race the next trip</button>`;
+    }
+    $("race-body").innerHTML = html;
+    $("race").hidden = false;
+    const nx = $("race-next");
+    if (nx) nx.onclick = () => { const prev = state.race.p; state.race = null; startRace(true, prev); };
+    // Chase camera: keep both the car and the ghost in view.
+    if (dragging || easing) return;
+    const lons = [r.car[0], r.ghost[0]], lats = [r.car[1], r.ghost[1]];
+    const pad = wide ? {top: 80, bottom: 120, left: 340, right: 320} : {top: 140, bottom: 300, left: 40, right: 40};
+    const cam = map.cameraForBounds([[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]],
+      {padding: pad, bearing: map.getBearing()});
+    if (!cam) { map.jumpTo({center: r.car}); return; }
+    const z = map.getZoom(), tz = Math.min(15.5, cam.zoom);
+    map.jumpTo({center: cam.center, zoom: z + (tz - z) * 0.08});
+  }
+  $("race-btn").addEventListener("click", () => startRace(true));
+  $("race-stop").addEventListener("click", stopRace);
   $("f-close").addEventListener("click", () => follow(null));
   $("random").addEventListener("click", () => {
     const hs = heads(state.t);
@@ -387,7 +531,10 @@
   buildChunks();
   setSpeed(state.speed);
   setColor(state.color);
-  if (state.follow) follow(state.follow);
+  if (state.follow) {
+    follow(state.follow);
+    if (h.get("race") === "1") startRace(false);
+  }
   $("loading").hidden = true;
   let lastFrame = performance.now(), lastHash = 0;
   function frame(now) {
