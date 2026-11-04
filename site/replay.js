@@ -493,7 +493,8 @@
         `<div class="r-sub">${r.ghostDone ? "The ghost has already finished the trip." :
           `${r.aheadKm.toFixed(1)} km up the line.`}</div>`) +
         (r.best ? `<div class="r-row">${bestLine(r.best.lost)}</div><div class="r-sub">That's ${bestWho}.</div>` :
-          r.bestIsThis ? `<div class="r-row"><span class="r-star">★</span> This is the day's fastest trip on this stretch.</div>` : "");
+          r.bestIsThis ? `<div class="r-row"><span class="r-star">★</span> This is the day's fastest trip on this stretch.</div>` :
+          `<div class="r-sub"><span class="r-star">★</span> No other trip covered exactly this stretch today, so there's no best real trip to race.</div>`);
     } else {
       const pct = Math.round((r.real / r.clean - 1) * 100);
       html = `<div class="r-big">Ghost wins by ${mins(r.real - r.clean)}</div>` +
