@@ -101,7 +101,8 @@
   };
 
   // --- state + hash -------------------------------------------------------------------
-  const state = {t: 3 * 3600, speed: 600, playing: true, color: "route", follow: null};
+  const state = {t: 3 * 3600, speed: 600, playing: true, color: "route", follow: null, routes: new Set()};
+  const routeOn = (r) => !state.routes.size || state.routes.has(r);
   const h = new URLSearchParams(location.hash.slice(1));
   if (h.has("t")) {
     const [hh, mm] = h.get("t").split(":").map(Number);
@@ -109,6 +110,7 @@
   }
   if (["30", "120", "600"].includes(h.get("s"))) state.speed = +h.get("s");
   if (h.get("c") === "speed") state.color = "speed";
+  for (const r of (h.get("r") || "").split(",")) if (paths.some((p) => p.r === r)) state.routes.add(r);
   if (h.has("car") && byCar.has(h.get("car"))) state.follow = h.get("car");
   state.t = Math.max(tMin, Math.min(tMax, state.t));
   function writeHash() {
@@ -116,6 +118,7 @@
     const q = new URLSearchParams({t: `${hh}:${String(mm).padStart(2, "0")}`});
     if (state.speed !== 600) q.set("s", state.speed);
     if (state.color !== "route") q.set("c", state.color);
+    if (state.routes.size) q.set("r", [...state.routes].sort().join(","));
     if (state.follow) q.set("car", state.follow);
     history.replaceState(null, "", "#" + q.toString());
   }
@@ -130,7 +133,9 @@
     attributionControl: {compact: true, customAttribution: "Data: TTC GTFS-Realtime via City of Toronto Open Data"},
   });
   map.addControl(new maplibregl.NavigationControl({visualizePitch: true}), "top-right");
-  const overlay = new MapboxOverlay({interleaved: false, layers: [], pickingRadius: 14});
+  // Phones have very dense screens; drawing the trails at full density is most of the work.
+  const overlay = new MapboxOverlay({interleaved: false, layers: [], pickingRadius: 14,
+    useDevicePixels: Math.min(devicePixelRatio || 1, wide ? 2 : 1.5)});
   map.addControl(overlay);
   await new Promise((res) => (map.loaded() ? res() : map.once("load", res)));
   // Quieter basemap: the cars are the show.
@@ -138,15 +143,56 @@
     if (l.type === "symbol" && /poi|housenum/.test(l.id)) map.setLayoutProperty(l.id, "visibility", "none");
   }
 
-  const tripData = (colors) => ({
-    length: paths.length, startIndices: starts,
-    attributes: {getPath: {value: pos, size: 2}, getTimestamps: {value: ts, size: 1}, getColor: {value: colors, size: 4}},
-  });
-  const tripsByColor = {route: tripData(colRoute), speed: tripData(colSpeed)};
+  // Pack vertex ranges [[i0, i1), ...] into TripsLayer binary data, in both colourings.
+  function pack(ranges) {
+    const n = ranges.reduce((s, [a, b]) => s + b - a, 0);
+    const out = {pos: new Float64Array(2 * n), ts: new Float32Array(n), route: new Uint8Array(4 * n), speed: new Uint8Array(4 * n)};
+    const st = new Uint32Array(ranges.length + 1);
+    let o = 0;
+    ranges.forEach(([a, b], li) => {
+      st[li] = o;
+      out.pos.set(pos.subarray(2 * a, 2 * b), 2 * o);
+      out.ts.set(ts.subarray(a, b), o);
+      out.route.set(colRoute.subarray(4 * a, 4 * b), 4 * o);
+      out.speed.set(colSpeed.subarray(4 * a, 4 * b), 4 * o);
+      o += b - a;
+    });
+    st[ranges.length] = o;
+    const mk = (colors) => ({length: ranges.length, startIndices: st,
+      attributes: {getPath: {value: out.pos, size: 2}, getTimestamps: {value: out.ts, size: 1}, getColor: {value: colors, size: 4}}});
+    return {route: mk(out.route), speed: mk(out.speed)};
+  }
 
-  function heads(t) {
+  // Trails are split into hour-long chunks and only the chunks in view are drawn: one or two
+  // hours of track instead of the whole day's half-million points every frame (phones choke).
+  const CHUNK_S = 3600;
+  let chunks = [];
+  let shown = paths;  // paths on the routes picked
+  function lastAtOrBefore(p, t) {
+    let lo = p.i0, hi = p.i1 - 1;
+    if (ts[lo] > t) return lo;
+    while (hi - lo > 1) {
+      const mid = (lo + hi) >> 1;
+      if (ts[mid] <= t) lo = mid; else hi = mid;
+    }
+    return ts[hi] <= t ? hi : lo;
+  }
+  function buildChunks() {
+    shown = paths.filter((p) => routeOn(p.r));
+    const ranges = [];
+    for (const p of shown) {
+      for (let hr = Math.floor(p.t0 / CHUNK_S); hr <= Math.floor(p.t1 / CHUNK_S); hr++) {
+        // From the last vertex at or before the hour starts to the first one after it ends.
+        const a = lastAtOrBefore(p, hr * CHUNK_S), b = Math.min(p.i1, lastAtOrBefore(p, (hr + 1) * CHUNK_S) + 2);
+        if (b - a >= 2) (ranges[hr] = ranges[hr] || []).push([a, b]);
+      }
+    }
+    chunks = ranges.map((r) => r && pack(r));
+  }
+
+  function heads(t, list = shown) {
     const out = [];
-    for (const p of paths) {
+    for (const p of list) {
       const a = at(p, t);
       if (a) out.push({p, lon: a[0], lat: a[1], i: a[3]});
     }
@@ -156,36 +202,23 @@
 
   // The followed car's own paths, drawn on top with a long bright trail.
   let followTrips = null;
-  function followData(v) {
-    const legs = byCar.get(v), n = legs.reduce((s, p) => s + p.i1 - p.i0, 0);
-    const out = {pos: new Float64Array(2 * n), ts: new Float32Array(n), route: new Uint8Array(4 * n), speed: new Uint8Array(4 * n)};
-    const st = new Uint32Array(legs.length + 1);
-    let o = 0;
-    legs.forEach((p, li) => {
-      st[li] = o;
-      out.pos.set(pos.subarray(2 * p.i0, 2 * p.i1), 2 * o);
-      out.ts.set(ts.subarray(p.i0, p.i1), o);
-      out.route.set(colRoute.subarray(4 * p.i0, 4 * p.i1), 4 * o);
-      out.speed.set(colSpeed.subarray(4 * p.i0, 4 * p.i1), 4 * o);
-      o += p.i1 - p.i0;
-    });
-    st[legs.length] = o;
-    const mk = (colors) => ({length: legs.length, startIndices: st,
-      attributes: {getPath: {value: out.pos, size: 2}, getTimestamps: {value: out.ts, size: 1}, getColor: {value: colors, size: 4}}});
-    return {route: mk(out.route), speed: mk(out.speed)};
-  }
+  const followData = (v) => pack(byCar.get(v).map((p) => [p.i0, p.i1]));
 
   function draw() {
     const hs = heads(state.t);
-    const followed = state.follow ? hs.filter((d) => d.p.v === state.follow) : [];
-    overlay.setProps({layers: [
-      new TripsLayer({
-        id: "trails", data: tripsByColor[state.color], _pathType: "open",
+    const followed = state.follow ? heads(state.t, byCar.get(state.follow)) : [];
+    const trails = [];
+    for (let hr = Math.floor((state.t - TRAIL_S) / CHUNK_S); hr <= Math.floor(state.t / CHUNK_S); hr++) {
+      if (!chunks[hr]) continue;
+      trails.push(new TripsLayer({
+        id: `trails-${hr}-${state.color}`, data: chunks[hr][state.color], _pathType: "open",
         currentTime: state.t, trailLength: TRAIL_S, fadeTrail: true,
         widthUnits: "pixels", getWidth: 3, widthMinPixels: 2, capRounded: true, jointRounded: true,
         opacity: state.follow ? 0.4 : 0.9,
-        updateTriggers: {getColor: state.color},
-      }),
+      }));
+    }
+    overlay.setProps({layers: [
+      ...trails,
       followTrips && new TripsLayer({
         id: `followed-trail-${state.follow}`, data: followTrips[state.color], _pathType: "open",
         currentTime: state.t, trailLength: 2400, fadeTrail: true,
@@ -205,7 +238,7 @@
       }),
       new ScatterplotLayer({
         id: "followed", data: followed, getPosition: (d) => [d.lon, d.lat],
-        getFillColor: [0, 0, 0, 0], stroked: true, getLineColor: [255, 255, 255, 255],
+        filled: false, stroked: true, getLineColor: [255, 255, 255, 255],
         lineWidthUnits: "pixels", getLineWidth: 2, radiusUnits: "pixels", getRadius: 13,
       }),
     ]});
@@ -309,12 +342,8 @@
     state.color = c;
     document.querySelectorAll("[data-color]").forEach((b) => b.classList.toggle("on", b.dataset.color === c));
     const lg = $("legend");
-    lg.classList.toggle("speed", c === "speed");
-    if (c === "route") {
-      const seen = new Set(paths.map((p) => p.r));
-      lg.innerHTML = Object.keys(ROUTES).filter((r) => seen.has(r)).map((r) =>
-        `<span class="k"><span class="sw" style="background:rgb(${ROUTES[r][1].join(",")})"></span>${routeName(r)}</span>`).join("");
-    } else {
+    lg.hidden = c === "route";  // the route chips double as the route legend
+    if (c === "speed") {
       const max = SPEED_STOPS[SPEED_STOPS.length - 1][0];
       const ramp = SPEED_STOPS.map(([v, c]) => `rgb(${c.join(",")}) ${v / max * 100}%`).join(",");
       lg.innerHTML = `<div class="ramp" style="background:linear-gradient(90deg,${ramp})"></div>` +
@@ -325,7 +354,37 @@
   }
   document.querySelectorAll("[data-color]").forEach((b) => b.addEventListener("click", () => setColor(b.dataset.color)));
 
+  // Route chips: with every route showing, a tap picks just that route; after that taps
+  // add or drop routes. Fewer routes also means less for a phone to draw.
+  const allRoutes = Object.keys(ROUTES).filter((r) => paths.some((p) => p.r === r));
+  function renderRoutes() {
+    $("routes").innerHTML = allRoutes.map((r) =>
+      `<button class="chip${routeOn(r) ? "" : " off"}" data-route="${r}" aria-pressed="${state.routes.has(r)}">` +
+      `<span class="sw" style="background:rgb(${ROUTES[r][1].join(",")})"></span>${routeName(r)}</button>`).join("");
+    $("routes-all").hidden = !state.routes.size;
+    $("routes-hint").hidden = !!state.routes.size;
+  }
+  function routesChanged() {
+    if (state.routes.size === allRoutes.length) state.routes.clear();
+    renderRoutes();
+    buildChunks();
+    writeHash();
+    draw();
+  }
+  $("routes").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-route]");
+    if (!b) return;
+    const r = b.dataset.route;
+    if (!state.routes.size) state.routes.add(r);
+    else if (state.routes.has(r)) state.routes.delete(r);
+    else state.routes.add(r);
+    routesChanged();
+  });
+  $("routes-all").addEventListener("click", () => { state.routes.clear(); routesChanged(); });
+
   // --- go ------------------------------------------------------------------------------
+  renderRoutes();
+  buildChunks();
   setSpeed(state.speed);
   setColor(state.color);
   if (state.follow) follow(state.follow);

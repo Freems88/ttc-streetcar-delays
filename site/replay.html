@@ -36,7 +36,13 @@
       <button data-color="speed">Speed</button>
     </div>
   </div>
-  <div id="legend" class="legend"></div>
+  <div class="row routes-head">
+    <span class="label">Routes</span>
+    <span class="hint" id="routes-hint">tap to pick</span>
+    <button class="linkish" id="routes-all" hidden>Show all</button>
+  </div>
+  <div id="routes" class="chips" role="group" aria-label="Routes shown"></div>
+  <div id="legend" class="legend speed" hidden></div>
   <button id="random" class="btn">Ride a random car</button>
 </aside>
 
