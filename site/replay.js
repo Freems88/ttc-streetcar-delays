@@ -1,6 +1,6 @@
 // Replay: every streetcar's day, animated from data/replay.json (see pipeline/replay.py).
 (async function () {
-  const {MapboxOverlay, ScatterplotLayer, TripsLayer, PathLayer, IconLayer} = deck;
+  const {MapboxOverlay, ScatterplotLayer, TripsLayer, PathLayer, IconLayer, TextLayer} = deck;
   const $ = (id) => document.getElementById(id);
 
   const ROUTES = {
@@ -349,6 +349,7 @@
     if (!p) return;
     const [s, e] = raceBounds(p);
     state.race = {p, s, e};
+    state.race.best = bestTrip(state.race);
     if (rewind || state.t < ts[s] || state.t > ts[e]) state.t = ts[s] - 5;
     if (state.speed === 600) setSpeed(120);
     setPlaying(true);
@@ -360,6 +361,44 @@
     writeHash();
     draw();
   }
+  // The best real trip: the quickest any car on the same route covered the same stretch
+  // that day, between the points where this trip pulls away and arrives, the same way.
+  // Daytime races (06:00 on) only count daytime trips and overnight ones overnight trips,
+  // matching the clean run's daytime rule.
+  const NEAR_M = 40;
+  const localHour = (t) => (t / 3600 + 4) % 24;
+  function project(i, P) {
+    // Distance (m) from point P to segment i -> i+1, and how far along it the nearest point is.
+    const ax = pos[2 * i] * KX, ay = pos[2 * i + 1] * KY, bx = pos[2 * i + 2] * KX, by = pos[2 * i + 3] * KY;
+    const px = P[0] * KX, py = P[1] * KY, dx = bx - ax, dy = by - ay, L = dx * dx + dy * dy;
+    const u = L > 0 ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / L)) : 0;
+    return [Math.hypot(px - ax - u * dx, py - ay - u * dy), u];
+  }
+  function bestTrip({p, s, e}) {
+    const A = [pos[2 * s], pos[2 * s + 1]], B = [pos[2 * e], pos[2 * e + 1]];
+    const len = cumKm[e] - cumKm[s], night = localHour(ts[s]) < 6;
+    let best = null;
+    for (const q of paths) {
+      if (q.r !== p.r || q.i1 - q.i0 < 2 || (localHour(q.t0) < 6) !== night) continue;
+      let a = null;
+      for (let i = q.i0; i < q.i1 - 1; i++) {
+        const [dA, uA] = project(i, A);
+        if (dA < NEAR_M) { a = [i, uA]; continue; }  // keep the last pass by A: it may have waited there
+        if (!a) continue;
+        const [dB, uB] = project(i, B);
+        if (dB >= NEAR_M) continue;
+        const tA = lerpAt(ts, a[0], a[1]), tB = lerpAt(ts, i, uB);
+        const kmA = lerpAt(cumKm, a[0], a[1]), kmB = lerpAt(cumKm, i, uB);
+        // Same stretch: about the same distance (not a diversion or a trip round a loop).
+        if (Math.abs(kmB - kmA - len) <= 0.12 * len && tB > tA && (!best || tB - tA < best.tB - best.tA)) {
+          best = {q, tA, tB, kmA, kmB, lo: a[0], hi: Math.min(i + 1, q.i1 - 1)};
+        }
+        break;
+      }
+    }
+    return best;
+  }
+
   // Index and fraction along [lo, hi] where arr (non-decreasing) reaches v.
   function findIn(arr, lo, hi, v) {
     if (v <= arr[lo]) return [lo, 0];
@@ -381,7 +420,18 @@
     const tc = Math.min(Math.max(t, t0), tEnd);
     const [ci, cf] = findIn(ts, s, e, tc);
     const carG = lerpAt(gclk, ci, cf), ghostKm = lerpAt(cumKm, gi, gf), carKm = lerpAt(cumKm, ci, cf);
+    let best = null;
+    const b = state.race.best;
+    if (b && b.q !== p) {
+      const [bi, bf] = findIn(ts, b.lo, b.hi, b.tA + Math.max(0, t - t0));
+      // When the best trip got as far along as the car is now (distances scaled to match).
+      const km = b.kmA + (carKm - cumKm[s]) * (b.kmB - b.kmA) / Math.max(1e-6, cumKm[e] - cumKm[s]);
+      const [ki, kf] = findIn(cumKm, b.lo, b.hi, km);
+      best = {at: [lerpAt(pos, bi, bf, 2, 0), lerpAt(pos, bi, bf, 2, 1)],
+              lost: (tc - t0) - (lerpAt(ts, ki, kf) - b.tA), done: t - t0 >= b.tB - b.tA};
+    }
     return {
+      best, bestTime: b ? b.tB - b.tA : null, bestIsThis: !!b && b.q === p,
       ghost: [lerpAt(pos, gi, gf, 2, 0), lerpAt(pos, gi, gf, 2, 1)], gi, ci,
       car: [lerpAt(pos, ci, cf, 2, 0), lerpAt(pos, ci, cf, 2, 1)],
       lost: (tc - t0) - (carG - g0), aheadKm: Math.max(0, ghostKm - carKm),
@@ -412,25 +462,47 @@
         id: "ghost", data: [r.ghost], getPosition: (d) => d, getIcon: () => GHOST_ICON,
         getSize: 34, sizeUnits: "pixels",
       }),
+      new ScatterplotLayer({
+        id: "best", data: r.best ? [r.best.at] : [], getPosition: (d) => d,
+        getFillColor: [255, 196, 70, 255], radiusUnits: "pixels", getRadius: 6,
+        stroked: true, getLineColor: [255, 255, 255, 230], lineWidthUnits: "pixels", getLineWidth: 1.5,
+      }),
+      new TextLayer({
+        id: "best-label", data: r.best ? [r.best.at] : [], getPosition: (d) => d,
+        getText: () => `Best real trip: car ${state.race.best.q.v}`, getSize: 12, getColor: [255, 214, 120, 255],
+        getPixelOffset: [0, -16], fontFamily: "Inter, system-ui, sans-serif", fontWeight: 600,
+        background: true, getBackgroundColor: [20, 21, 24, 210], backgroundPadding: [5, 2],
+      }),
     ];
   }
   const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
   const mins = (s) => `${Math.round(s / 60)} min`;
   function updateRace(d) {
     const r = raceState(state.t);
+    const b = state.race.best;
+    const bestWho = b ? `car ${b.q.v} at ${clockText(b.tA)}` : "";
+    const bestLine = (lost) => lost >= 5 ? `<span class="r-star">★</span> Best real trip ahead by ${mmss(lost)}` :
+      lost <= -5 ? `<span class="r-star">★</span> ${mmss(-lost)} ahead of the best real trip` :
+      `<span class="r-star">★</span> Level with the best real trip`;
     let html;
     if (!r.started) {
-      html = `<div class="r-big">Ready…</div><div class="r-sub">The ghost leaves when car ${state.follow} pulls away.</div>`;
+      html = `<div class="r-big">Ready…</div><div class="r-sub">The racers leave when car ${state.follow} pulls away.</div>`;
     } else if (!r.carDone) {
-      html = r.lost < 5 ? `<div class="r-big">Neck and neck</div>` :
+      html = (r.lost < 5 ? `<div class="r-big">Neck and neck with the ghost</div>` :
         `<div class="r-big">Ghost ahead by ${mmss(r.lost)}</div>` +
         `<div class="r-sub">${r.ghostDone ? "The ghost has already finished the trip." :
-          `${r.aheadKm.toFixed(1)} km up the line.`}</div>`;
+          `${r.aheadKm.toFixed(1)} km up the line.`}</div>`) +
+        (r.best ? `<div class="r-row">${bestLine(r.best.lost)}</div><div class="r-sub">That's ${bestWho}.</div>` :
+          r.bestIsThis ? `<div class="r-row"><span class="r-star">★</span> This is the day's fastest trip on this stretch.</div>` : "");
     } else {
       const pct = Math.round((r.real / r.clean - 1) * 100);
       html = `<div class="r-big">Ghost wins by ${mins(r.real - r.clean)}</div>` +
-        `<div class="r-sub">This ${r.km.toFixed(1)} km trip took ${mins(r.real)}. ` +
-        `A clean run: ${mins(r.clean)} (${pct}% longer for real).</div>` +
+        `<div class="r-results">` +
+        `<span>This trip</span><b>${mins(r.real)}</b>` +
+        (b ? `<span><span class="r-star">★</span> Best real trip${r.bestIsThis ? " (this one!)" : `, ${bestWho}`}</span><b>${mins(r.bestTime)}</b>` : "") +
+        `<span>👻 Clean-run ghost</span><b>${mins(r.clean)}</b></div>` +
+        `<div class="r-sub">${r.km.toFixed(1)} km. This trip took ${pct}% longer than the ghost` +
+        (b && !r.bestIsThis ? ` and ${Math.round((r.real / r.bestTime - 1) * 100)}% longer than the best real trip.` : ".") + `</div>` +
         `<button class="linkish" id="race-next">Race the next trip</button>`;
     }
     $("race-body").innerHTML = html;
@@ -439,7 +511,8 @@
     if (nx) nx.onclick = () => { const prev = state.race.p; state.race = null; startRace(true, prev); };
     // Chase camera: keep both the car and the ghost in view.
     if (dragging || easing) return;
-    const lons = [r.car[0], r.ghost[0]], lats = [r.car[1], r.ghost[1]];
+    const pts = [r.car, r.ghost, ...(r.best ? [r.best.at] : [])];
+    const lons = pts.map((q) => q[0]), lats = pts.map((q) => q[1]);
     const pad = wide ? {top: 80, bottom: 120, left: 340, right: 320} : {top: 140, bottom: 300, left: 40, right: 40};
     const cam = map.cameraForBounds([[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]],
       {padding: pad, bearing: map.getBearing()});
