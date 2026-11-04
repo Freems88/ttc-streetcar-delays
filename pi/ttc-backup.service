@@ -1,0 +1,10 @@
+[Unit]
+Description=Back up the streetcar archive to the SSD
+RequiresMountsFor=/mnt/strada
+
+[Service]
+Type=oneshot
+User=alex
+Nice=10
+IOSchedulingClass=idle
+ExecStart=/home/alex/ttc-delays/pi/ttc-backup.sh

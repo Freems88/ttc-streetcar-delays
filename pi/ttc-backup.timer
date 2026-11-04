@@ -1,0 +1,10 @@
+[Unit]
+Description=Hourly backup of the streetcar archive to the SSD
+
+[Timer]
+# :35 past each hour, clear of the 04:20 nightly build and the bot posts.
+OnCalendar=*-*-* *:35:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
