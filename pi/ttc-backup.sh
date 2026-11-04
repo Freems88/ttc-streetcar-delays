@@ -8,7 +8,8 @@
 #
 # The mirror follows deletions (a file deleted on the SD card goes from current/ too),
 # so the snapshots are what protect against mistakes or a corrupted file. Secrets
-# (Bluesky app password and session) and the Python venv aren't copied. The logger
+# (Bluesky app password and session) and the Python venv aren't copied, and are removed
+# from current/ if they ever got there. The logger
 # keeps writing to the SD card: if the SSD is missing this run fails and logging carries on.
 set -eu
 
@@ -20,7 +21,7 @@ KEEP_DAYS=90
 mountpoint -q "$MOUNT" || { echo "backup: $MOUNT is not mounted, nothing copied" >&2; exit 1; }
 mkdir -p "$DEST/current" "$DEST/snapshots"
 
-rsync -a --delete \
+rsync -a --delete --delete-excluded \
     --exclude /venv/ --exclude /bot.env --exclude /delays/bsky-session \
     --exclude /delays/site/ --exclude '*.tmp' \
     "$SRC/" "$DEST/current/"
