@@ -99,6 +99,11 @@
   const DAYS_LABELS = {all: "All days", wd: "Weekdays", we: "Weekends"};
   state.hourData = {};
   let approaches = null; // signal-approaches-<window>.json, fetched the first time the signals view needs it
+  const shortTurns = {};  // short-turns-<window>.json (or null if missing), fetched with the headways
+  const SHORT_ICON = {url: "data:image/svg+xml;charset=utf-8," + encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' width='64' height='58' viewBox='0 0 64 58'><path d='M32 4 L60 54 H4 Z' fill='#ffc21a' stroke='#3a2a00' stroke-width='4' stroke-linejoin='round'/><rect x='29' y='19' width='6' height='20' rx='3' fill='#3a2a00'/><circle cx='32' cy='46' r='3.8' fill='#3a2a00'/></svg>"),
+    width: 64, height: 58, anchorY: 58};
+  const shortRate = (n, days) => (days === 1 ? `${n} yesterday` : `${(n / days).toFixed(n / days < 10 ? 1 : 0)} a day`);
+  const pctOf = (x) => `${Math.round(x * 100)}%`;
   const approachCache = {};
   const usesHours = () => !(state.time === "all" && state.days === "all");
   const hourRange = () => (state.time === "custom" ? state.range : PRESETS[state.time].slice(0, 2));
@@ -116,6 +121,7 @@
   const needHeads = () => state.view === "wait" || state.routes.length > 0;
   async function loadHeads(w, force) {
     if ((force || needHeads()) && !state.heads[w]) state.heads[w] = await get(`headways-${w}.json`);
+    if ((force || needHeads()) && !(w in shortTurns)) shortTurns[w] = await get(`short-turns-${w}.json`).catch(() => null);
   }
   // Hour keys (0-23 weekday, 24-47 weekend) in the current time selection.
   function hourKeys() {
@@ -312,6 +318,7 @@
     document.querySelectorAll(".legend-key .k-stop, .legend-key .k-sig, .legend-key .k-tsp, .legend-key .k-turn")
       .forEach((el) => { el.parentElement.hidden = sigv || (wait && !el.classList.contains("k-stop")); });
     document.querySelectorAll(".sigv-key").forEach((el) => { el.hidden = !sigv; });
+    document.querySelectorAll(".short-key").forEach((el) => { el.hidden = !wait; });
   }
 
   document.getElementById("height").addEventListener("input", (e) => { state.height = +e.target.value; render(); });
@@ -895,6 +902,32 @@
   const MAX_WAIT = 12; // minutes; taller columns are capped (the tooltip shows the real value)
   const waitHeight = (v) => Math.sqrt(Math.max(0, Math.min(v, MAX_WAIT))) * state.height * 14;
   let waitCols = [];
+  // Short turns (pipeline/shortturns.py): where cars turned back well before the end their
+  // trip was scheduled to reach. Shown in the waits view: riders beyond the turn lose those cars.
+  function shortPoints() {
+    const st = shortTurns[state.window];
+    if (!st || !st.days) return [];
+    const [a, b] = hourRange();
+    return st.points.filter((p) => routeOn(p.r)).map((p) => {
+      const inRange = p.hours.slice(a, b).reduce((s, x) => s + x, 0);
+      return {...p, inRange, perDay: inRange / st.days};
+    }).filter((p) => p.inRange >= Math.max(2, Math.ceil(0.3 * st.days)));  // repeat turn-backs, not one-offs
+  }
+  function showShortTip(info) {
+    if (!info.object) { tip.hidden = true; return; }
+    const p = info.object, st = shortTurns[state.window], r = st.routes[p.r] || {};
+    const peak = p.hours.indexOf(Math.max(...p.hours));
+    tip.innerHTML =
+      `<div class="t-title">Short turns at ${p.name}</div>` +
+      `<div class="t-dim">${p.r} ${routeNames[p.r] || ""} · ${p.d.toLowerCase()}bound · ${WINDOW_LABELS[state.window]}, ${timeLabel()}</div>` +
+      `<div class="t-big">${shortRate(p.inRange, st.days)}</div>` +
+      `<div>${p.d}bound cars due to go on to <b>${p.to}</b> turned back here instead, ${p.left} km short. ` +
+      `Riders further along lose those cars.</div>` +
+      `<div class="t-dim">${p.n} over ${st.days} day${st.days === 1 ? "" : "s"} · most around ${clock(peak)}</div>` +
+      (r.runs ? `<div class="t-routes t-dim">${pctOf(r.short / r.runs)} of all ${p.r} trips were short-turned somewhere.</div>` : "");
+    placeTip(info);
+  }
+
   function renderWait() {
     const base = [], cols = [], seen = new Set();
     const heads = state.heads[state.window];
@@ -927,6 +960,10 @@
         material: false, pickable: true, autoHighlight: true, highlightColor: [0, 0, 0, 255],
         onHover: showWaitTip, onClick: showWaitTip,
         updateTriggers: {getElevation: [state.height, state.window, timeLabel()], getFillColor: [state.window, timeLabel()]}}),
+      new IconLayer({id: "short-turns", data: shortPoints(), getPosition: (p) => [p.lon, p.lat], getIcon: () => SHORT_ICON,
+        getSize: (p) => Math.min(34, 15 + 6 * Math.sqrt(p.perDay)), sizeUnits: "pixels", getPixelOffset: [12, -12],
+        pickable: true, onHover: showShortTip, onClick: showShortTip, parameters: {depthCompare: "always"},
+        updateTriggers: {getSize: [state.window, timeLabel()]}}),
     ]});
     renderRouteCard();
     document.getElementById("wait-empty").hidden = (meta.windows[state.window].headway_days || 0) > 0;
@@ -1434,6 +1471,15 @@
           `<br>${fmt(r.samples)} slice passes · ${Math.round(r.data_coverage * 100)}% of the route measured${movedTxt}`
           : r.clean_s ? `Not enough data yet for ${timeLabel().toLowerCase()}` : "No streetcar data yet for this direction") +
         waitTxt + `</div></div>`;
+    }
+    const stw = shortTurns[state.window], sr = stw?.routes[route];
+    if (sr && sr.runs) {
+      const top = stw.points.filter((p) => p.r === route).slice(0, 2);
+      html += `<div class="dir-stats st-line"><span class="st-ico" aria-hidden="true">⚠</span> ` +
+        `<b>${pctOf(sr.short / sr.runs)}</b> of trips short-turned (${shortRate(sr.short, stw.days)})` +
+        (top.length ? `, mostly at ${top.map((p) => `${p.name} (${p.d.toLowerCase()}bound)`).join(" and ")}` : "") + `.` +
+        (sr.early ? ` Another ${shortRate(sr.early, stw.days)} ended early (taken out of service, or lost from the feed).` : "") +
+        `</div>`;
     }
     html += hourChart(dirs);
     const rows = timeline.routes[route] || [];

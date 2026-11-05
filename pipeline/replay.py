@@ -11,6 +11,8 @@ Output (site/data/replay.json): {"day", "start" (epoch of 04:00), "cars": [{"v":
 from the one before, which keeps the file small. A car gets a new entry for each trip (and
 when it vanishes from the feed for over BREAK_S), so an entry is one trip.
 
+"st" lists the day's short turns (shortturns.py), for the replay's "!" markers.
+
 "g" is the ghost clock for the replay's race: seconds a clean run (the delay map's
 baseline, stops included) would take to get from the entry's first point to each point,
 along the same track. Off known track, the ghost moves at GHOST_OFF_MS.
@@ -177,6 +179,14 @@ def write(day, dest, network=None, clean_file=None):
     if clean_file and Path(clean_file).exists():
         clean = {pid: p["clean"] for pid, p in json.loads(Path(clean_file).read_text())["pieces"].items()}
     out = build(day, network, clean)
+    # The day's short turns (from the day's processed results), for the replay's "!" markers:
+    # [seconds from 04:00, vehicle, lon, lat, route, direction, stop name, scheduled end].
+    agg = WORK_DIR / "agg" / f"{day}.json.gz"
+    if agg.exists():
+        with gzip.open(agg, "rt") as f:
+            events = (json.load(f).get("short_turns") or {}).get("events", [])
+        out["st"] = [[e["t"] - out["start"], e["v"], e["lon"], e["lat"], e["r"], e["d"], e["name"], e["to"]]
+                     for e in events]
     dest.write_text(json.dumps(out, separators=(",", ":")))
     n = sum(len(c["p"]) // 3 for c in out["cars"])
     print(f"replay {day}: {len(out['cars'])} paths, {n} points, {dest.stat().st_size / 1e6:.1f} MB"

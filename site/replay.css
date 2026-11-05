@@ -53,6 +53,11 @@ body {
 
 .legend { margin-top: 10px; font-size: 12.5px; }
 .legend[hidden] { display: none; }
+.st-count { margin: 10px 0 0; font-size: 13px; color: var(--muted); }
+.st-count[hidden] { display: none; }
+.st-ico { color: #ffc21a; }
+.st-now { display: block; font-size: 16px; color: #ffd45a; }
+.st-sub { display: block; font-size: 12.5px; font-weight: 400; color: var(--muted); margin-top: 2px; }
 .routes-head { margin: 4px 0 4px; }
 .hint { color: var(--muted); font-size: 12px; }
 .linkish {

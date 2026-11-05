@@ -43,6 +43,7 @@ from collections import defaultdict
 
 import fleet
 import headways
+import shortturns
 import signals
 from common import (BIN_M, DATA_DIR, FLEXITY_IDS, NIGHT_TWIN, WORK_DIR, PathGeom,
                     angle_diff, hour_key, slot_of, to_lonlat, to_xy)
@@ -465,6 +466,13 @@ def process(day, network=None):
             counts[(route, kind)] += 1
         per_fetch[ts] = counts
     out["fleet"] = {"actual": fleet.actual(per_fetch, day), "sched": fleet.scheduled(day)}
+    # Short turns: runs that turned back well short of their scheduled end (shortturns.py).
+    trip_sched = shortturns.trips_for(day)
+    if trip_sched:
+        yard_xy = [to_xy(lon, lat) for lat, lon in YARDS.values()]
+        out["short_turns"] = shortturns.detect(
+            {key: [by_ts[t][:3] for t in sorted(by_ts)] for key, by_ts in runs.items()}, trip_sched,
+            lambda x, y: any(math.hypot(x - a, y - b) < YARD_M for a, b in yard_xy))
     dest = WORK_DIR / "agg" / f"{day}.json.gz"
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_suffix(".tmp")

@@ -78,6 +78,16 @@
   }
   const tMin = Math.min(...paths.map((p) => p.t0)), tMax = Math.max(...paths.map((p) => p.t1));
 
+  // Short turns that day (pipeline/shortturns.py): a car sent back before the end of its
+  // trip. Each pops a yellow "!" over the car for a few seconds of watching.
+  const shortEv = (data.st || []).map(([t, v, lon, lat, r, d, name, to]) => ({t, v, lon, lat, r, d, name, to}))
+    .sort((a, b) => a.t - b.t);
+  const SHORT_ICON = {url: "data:image/svg+xml;charset=utf-8," + encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' width='64' height='58' viewBox='0 0 64 58'><path d='M32 4 L60 54 H4 Z' fill='#ffc21a' stroke='#3a2a00' stroke-width='4' stroke-linejoin='round'/><rect x='29' y='19' width='6' height='20' rx='3' fill='#3a2a00'/><circle cx='32' cy='46' r='3.8' fill='#3a2a00'/></svg>"),
+    width: 64, height: 58, anchorY: 58};
+  const shortShowFor = () => Math.max(300, state.speed * 3.5);  // replay seconds: at least ~3.5 s on screen
+  const activeShort = (v) => shortEv.filter((e) => (v ? e.v === v : routeOn(e.r)) &&
+    state.t >= e.t && state.t < e.t + shortShowFor());
+
   // Where a path is at time t: [lon, lat, vertex index], or null when it isn't running.
   function at(p, t) {
     if (t < p.t0 || t > p.t1) return null;
@@ -207,6 +217,21 @@
   let followTrips = null;
   const followData = (v) => pack(byCar.get(v).map((p) => [p.i0, p.i1]));
 
+  function shortLayers(hs) {
+    // Ride along with the car: the marker sits over it (or where it turned, if it's gone).
+    const marks = activeShort().map((e) => {
+      const h = hs.find((d) => d.p.v === e.v);
+      return {e, pos: h ? [h.lon, h.lat] : [e.lon, e.lat]};
+    });
+    return [
+      new IconLayer({id: "short-turns", data: marks, getPosition: (m) => m.pos, getIcon: () => SHORT_ICON,
+        getSize: 28, sizeUnits: "pixels", getPixelOffset: [0, -10]}),
+      new TextLayer({id: "short-labels", data: marks, getPosition: (m) => m.pos, getText: () => "Short turn",
+        getSize: 11.5, getColor: [255, 214, 90, 255], getPixelOffset: [0, -48], fontFamily: "Inter, system-ui, sans-serif",
+        fontWeight: 600, background: true, getBackgroundColor: [20, 21, 24, 210], backgroundPadding: [5, 2]}),
+    ];
+  }
+
   function draw() {
     const hs = heads(state.t);
     const followed = state.follow ? heads(state.t, byCar.get(state.follow)) : [];
@@ -245,7 +270,14 @@
         lineWidthUnits: "pixels", getLineWidth: 2, radiusUnits: "pixels", getRadius: 13,
       }),
       ...raceLayers(),
+      ...shortLayers(hs),
     ]});
+    if (shortEv.length) {
+      const n = shortEv.filter((e) => e.t <= state.t && routeOn(e.r)).length;
+      $("st-count").hidden = false;
+      $("st-count").innerHTML = `<span class="st-ico" aria-hidden="true">⚠</span> ${n} short turn${n === 1 ? "" : "s"} so far` +
+        `${state.routes.size ? " on these routes" : ""}`;
+    }
     $("clock").textContent = clockText(state.t);
     $("scrub").value = state.t;
     if (state.follow) updateFollow(followed[0]);
@@ -301,6 +333,11 @@
         $("f-now").innerHTML = `<span class="still">Standing still ${dur(state.t - ts[i])}</span>`;
       } else {
         $("f-now").textContent = `${Math.round(speed)} km/h`;
+      }
+      const st = activeShort(v)[0];
+      if (st) {
+        $("f-now").innerHTML = `<span class="st-now"><span class="st-ico" aria-hidden="true">⚠</span> Short-turned at ${st.name}</span>` +
+          `<span class="st-sub">Due to go on to ${st.to}; sent back ${st.d === "East" ? "west" : st.d === "West" ? "east" : st.d === "North" ? "south" : "north"} instead.</span>`;
       }
     }
     if (!state.race) $("race").hidden = true;

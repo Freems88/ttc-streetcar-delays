@@ -69,7 +69,7 @@ def main():
         today = service_day(time.time())
         done = sorted(p.name[:10] for p in (WORK_DIR / "agg").glob("*.json.gz") if p.name[:10] < today)
         if done:
-            cached = WORK_DIR / "replay" / f"{done[-1]}.v2.json"  # v2: one entry per trip, ghost clock
+            cached = WORK_DIR / "replay" / f"{done[-1]}.v3.json"  # v3: + short turns
             if not cached.exists() or "--rebuild" in args:
                 cached.parent.mkdir(exist_ok=True)
                 replay.write(done[-1], cached, net, SITE_OUT / "data" / "stats-recent.json")

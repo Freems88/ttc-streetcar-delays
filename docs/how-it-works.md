@@ -134,6 +134,19 @@ At every feed fetch, count the distinct streetcars (and buses) signed on to each
 average over 10-minute steps. The schedule's vehicle assignments give the scheduled count. Cars
 going to or from the yard aren't in the feed, so this is cars carrying passengers.
 
+### Short turns
+A short turn is a car sent back before the end of the line, usually to fill a gap going the
+other way. Riders further along lose that car. The live feed says which scheduled trip each
+car is on (it matches the schedule about 99% of the time), so for every trip we know where it
+*should* have ended. A trip counts as short-turned when the car got no closer than 1 km to
+that end and then started another trip within 20 minutes. Trips the schedule itself ends early
+aren't short turns. A car that just disappears is counted separately as "ended early" (taken out
+of service, or lost from the feed); one heading for a yard isn't counted at all.
+
+On the map they're yellow ⚠ marks in the Waits view (only spots with repeat turn-backs), and
+each route card gives the share of trips short-turned. The replay pops a ⚠ over the car at the
+moment it turns. Data starts 1 November 2026, the first day a saved schedule covers.
+
 ### The bot
 After the nightly build writes yesterday's drafts, the bot posts them as one thread spread over
 the day. It only posts while the switch file `~/ttc-streetcars/delays/bot-enabled` exists.

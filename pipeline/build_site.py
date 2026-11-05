@@ -31,7 +31,7 @@ import shutil
 import sys
 import time
 from collections import defaultdict
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import drafts
@@ -410,6 +410,31 @@ def fleet_stats(days):
             "profile": profile, "days": per_day}
 
 
+def short_turn_stats(days):
+    """Short turns over a window (see shortturns.py): per route the trips run, turned back
+    short and ended early; and the turn-back points (route, direction, stop) with how
+    often and when (local hour of day), over the days that had a saved schedule."""
+    use = [d for d in days if d.get("short_turns")]
+    routes = defaultdict(lambda: {"runs": 0, "short": 0, "early": 0})
+    points = {}
+    for d in use:
+        for r, c in d["short_turns"]["routes"].items():
+            for k in ("runs", "short", "early"):
+                routes[r][k] += c[k]
+        for e in d["short_turns"]["events"]:
+            key = (e["r"], e["d"], e["stop"])
+            pt = points.setdefault(key, {"r": e["r"], "d": e["d"], "to": e["to"], "stop": e["stop"],
+                                         "name": e["name"], "lon": e["lon"], "lat": e["lat"],
+                                         "n": 0, "hours": [0] * 24, "left": e["left"]})
+            pt["n"] += 1
+            pt["hours"][datetime.fromtimestamp(e["t"]).hour] += 1
+    n = len(use)
+    for pt in points.values():
+        pt["per_day"] = round(pt["n"] / n, 1)
+    return {"days": n, "routes": dict(routes),
+            "points": sorted(points.values(), key=lambda p: -p["n"])}
+
+
 SPREAD_EDGES_S = (15, 30, 60, 90, 120, 180)  # extra-wait histogram bins for the signal tooltip
 HELD_S = (60, 90, 120)   # "held": this much longer than the approach's clean run (90 = about a cycle)
 MIN_APPROACH_PASSES = 30
@@ -722,6 +747,8 @@ def main():
         lt = {"day": k, "stats": d["stats"], "routes": d["routes"]}
         if "fleet" in d:
             lt["fleet"] = d["fleet"]
+        if "short_turns" in d:
+            lt["short_turns"] = d["short_turns"]
         if "pat_used" in d:
             lt["pat_cover"] = {pid: sum(n for s, n in d["pat_used"].get(pid, {}).items() if s in keys)
                                for pid, keys in pat_keys.items()}
@@ -771,6 +798,7 @@ def main():
         (data / f"hours-{w}.json").write_text(json.dumps(hour_stats(network, accs[w]), separators=(",", ":")))
         (data / f"headways-{w}.json").write_text(json.dumps(headway_stats(accs[w]), separators=(",", ":")))
         (data / f"fleet-{w}.json").write_text(json.dumps(fleet_stats(accs[w].days), separators=(",", ":")))
+        (data / f"short-turns-{w}.json").write_text(json.dumps(short_turn_stats(accs[w].days), separators=(",", ":")))
 
     # The last finished service day, for the bot drafts and screenshot mode.
     if yesterday:
