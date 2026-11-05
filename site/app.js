@@ -908,24 +908,39 @@
     const st = shortTurns[state.window];
     if (!st || !st.days) return [];
     const [a, b] = hourRange();
-    return st.points.filter((p) => routeOn(p.r)).map((p) => {
+    const pts = st.points.filter((p) => routeOn(p.r)).map((p) => {
       const inRange = p.hours.slice(a, b).reduce((s, x) => s + x, 0);
       return {...p, inRange, perDay: inRange / st.days};
-    }).filter((p) => p.inRange >= Math.max(2, Math.ceil(0.3 * st.days)));  // repeat turn-backs, not one-offs
+    }).filter((p) => p.inRange >= Math.max(2, Math.ceil(0.3 * st.days)))  // repeat turn-backs, not one-offs
+      .sort((x, y) => y.perDay - x.perDay);
+    // One marker per junction: routes and directions turning back at stops within GROUP_M of each
+    // other (a shared stop, or the two sides of a junction) share it; the tooltip lists each.
+    const GROUP_M = 150, groups = [];
+    for (const p of pts) {
+      const g = groups.find((q) => Math.hypot((q.lon - p.lon) * 111320 * KX, (q.lat - p.lat) * 110540) < GROUP_M);
+      if (g) { g.items.push(p); g.perDay += p.perDay; } else groups.push({lon: p.lon, lat: p.lat, perDay: p.perDay, items: [p]});
+    }
+    return groups;
   }
   function showShortTip(info) {
     if (!info.object) { tip.hidden = true; return; }
-    const p = info.object, st = shortTurns[state.window], r = st.routes[p.r] || {};
-    const peak = p.hours.indexOf(Math.max(...p.hours));
+    const g = info.object, st = shortTurns[state.window];
+    const one = (p) => {
+      const peak = p.hours.indexOf(Math.max(...p.hours)), r = st.routes[p.r] || {};
+      return `<div class="t-routes"><div class="t-head">${p.r} ${routeNames[p.r] || ""} ${p.d.toLowerCase()}bound: ` +
+        `${shortRate(p.inRange, st.days)}</div>` +
+        `<div>After <b>${p.name}</b>, sent back instead of going on to ${p.to} (${p.left} km short).</div>` +
+        `<div class="t-dim">${p.n} over ${st.days} day${st.days === 1 ? "" : "s"} · most around ${clock(peak)}` +
+        (r.runs ? ` · ${pctOf(r.short / r.runs)} of all ${p.r} trips short-turned somewhere` : "") + `</div></div>`;
+    };
+    const names = [...new Set(g.items.map((p) => p.name))];
     tip.innerHTML =
-      `<div class="t-title">Short turns after ${p.name}</div>` +
-      `<div class="t-dim">${p.r} ${routeNames[p.r] || ""} · ${p.d.toLowerCase()}bound · ${WINDOW_LABELS[state.window]}, ${timeLabel()}</div>` +
-      `<div class="t-big">${shortRate(p.inRange, st.days)}</div>` +
-      `<div>${p.d}bound cars due to go on to <b>${p.to}</b> were sent back instead. This stop was the last ` +
-      `one they reached (they may turn a little further on, at a loop or round a block): ${p.left} km of ` +
-      `their trip went unserved, and riders further along lost those cars.</div>` +
-      `<div class="t-dim">${p.n} over ${st.days} day${st.days === 1 ? "" : "s"} · most around ${clock(peak)}</div>` +
-      (r.runs ? `<div class="t-routes t-dim">${pctOf(r.short / r.runs)} of all ${p.r} trips were short-turned somewhere.</div>` : "");
+      `<div class="t-title">Short turns${names.length === 1 ? ` after ${names[0]}` : " here"}</div>` +
+      `<div class="t-dim">${WINDOW_LABELS[state.window]}, ${timeLabel()}</div>` +
+      (g.items.length > 1 ? `<div class="t-big">${shortRate(g.items.reduce((t, p) => t + p.inRange, 0), st.days)} in all</div>` : "") +
+      g.items.map(one).join("") +
+      `<div class="t-routes t-dim">Cars sent back before the end of their trip. The stop shown is the last one ` +
+      `they reached; they may turn a little further on, at a loop or round a block. Riders further along lose those cars.</div>`;
     placeTip(info);
   }
 
