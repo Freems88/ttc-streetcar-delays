@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Streetcar Trends</title>
+<meta name="description" content="How Toronto streetcar delays, signal holds, waits and service change from day to day, by route.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Stuck">
+<meta property="og:title" content="Stuck: streetcar trends">
+<meta property="og:description" content="How Toronto streetcar delays, signal holds, waits and service change from day to day, by route.">
+<meta property="og:image" content="https://freems88.github.io/ttc-streetcar-delays/data/card.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%238a1c2b'/%3E%3Cpolyline points='4,24 9,22 12,10 15,21 19,19 22,6 25,20 28,22' fill='none' stroke='%23fff' stroke-width='2.4' stroke-linejoin='round' stroke-linecap='round'/%3E%3Cline x1='4' y1='26.5' x2='28' y2='26.5' stroke='%238cc5ad' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="style.css" rel="stylesheet">
+<link href="trends.css" rel="stylesheet">
+</head>
+<body class="trends">
+<main class="tr-page">
+  <header class="tr-head">
+    <a class="back" href="./">← Delay map</a>
+    <h1>Trends</h1>
+    <p class="lede">How each route changes from day to day. Every day is measured against the same
+      baseline (the current clean runs), so days compare fairly; recent values can shift a little
+      while that baseline settles. <span id="span-note"></span></p>
+  </header>
+
+  <section class="tr-controls" aria-label="Filters">
+    <div class="field">
+      <span class="label">Routes <span class="label-note">(pick any)</span></span>
+      <div class="chips route-chips" id="routes" role="group" aria-label="Routes"></div>
+    </div>
+    <div class="tr-row">
+      <div class="field">
+        <span class="label">Period</span>
+        <div class="seg" role="group" aria-label="Period">
+          <button data-period="30">30 days</button>
+          <button data-period="90" class="on">90 days</button>
+        </div>
+      </div>
+      <div class="field">
+        <span class="label">Days</span>
+        <div class="seg" role="group" aria-label="Days">
+          <button data-days="all" class="on">All</button>
+          <button data-days="wd">Weekdays</button>
+          <button data-days="we">Weekends</button>
+        </div>
+      </div>
+      <div class="field">
+        <span class="label">Time of day</span>
+        <div class="seg" role="group" aria-label="Time of day">
+          <button data-band="all" class="on">All day</button>
+          <button data-band="am">AM peak</button>
+          <button data-band="pm">PM peak</button>
+        </div>
+      </div>
+      <label class="check"><input type="checkbox" id="shade-weather"> Shade wet and very cold days</label>
+    </div>
+    <p class="field-note" id="band-note" hidden>AM peak is 6–10 am and PM peak 3–7 pm, weekdays only, so weekends drop out.</p>
+  </section>
+
+  <div id="charts" class="tr-charts"></div>
+  <div id="tip" class="tr-tip" hidden></div>
+  <p class="meta" id="meta"></p>
+</main>
+<script src="trends.js"></script>
+</body>
+</html>

@@ -38,6 +38,7 @@ import drafts
 import fleet
 import headways
 import signals
+import trends
 import turns
 from common import BIN_M, DATA_DIR, NIGHT_TWIN, SLOT_LABELS, SLOTS, WORK_DIR, service_day
 from process_day import NB, bucket_mid
@@ -720,7 +721,8 @@ def main():
     # GitHub Pages lets browsers cache files for 10 minutes; tag the script and stylesheet
     # with a hash of their contents so a changed file is fetched fresh.
     for page, assets in (("index.html", (("app.js", "src"), ("style.css", "href"))),
-                         ("replay.html", (("replay.js", "src"), ("replay.css", "href")))):
+                         ("replay.html", (("replay.js", "src"), ("replay.css", "href"))),
+                         ("trends.html", (("trends.js", "src"), ("trends.css", "href"), ("style.css", "href")))):
         html = (out / page).read_text(encoding="utf-8")
         for name, attr in assets:
             tag = hashlib.sha1((out / name).read_bytes()).hexdigest()[:10]
@@ -880,6 +882,19 @@ def main():
         print(f"APPROACHES {title}: " + "; ".join(
             f"{r['name']} {r['dir']} held {r['held']['90']:.0%} ({r['per_day']:.0f}/day)" for r in rows), file=sys.stderr)
     (data / "timeline.json").write_text(json.dumps({"routes": tl, "alerts": alert_texts}, separators=(",", ":")))
+
+    # Trends page: every finished day in the window, all against today's baseline (trends.py),
+    # with the dates new TTC schedules started and the day's Toronto weather (weather.py).
+    trend_days = [d["day"] for d in accs["recent"].days if d["day"] != today]
+    tr = trends.build(trend_days, lambda k: load_day(paths[k]), network, clean_recent, ap["approaches"])
+    starts = {headways._snapshot_cache(z)["feed_start"]
+              for z in headways.STATIC_DIR.glob("surface-routes-and-schedules-for-bustime/*.zip")}
+    tr["schedules"] = sorted(f"{s[:4]}-{s[4:6]}-{s[6:]}" for s in starts if len(s) == 8)
+    wfile = WORK_DIR / "weather.json"
+    if wfile.exists():
+        w = json.loads(wfile.read_text())
+        tr["weather"] = {k: w[k] for k in trend_days if k in w}
+    (data / "trends.json").write_text(json.dumps(tr, separators=(",", ":")))
 
     def totals(ds):
         return {k: sum(d["stats"][k] for d in ds) for k in ("pings", "passes", "samples")}

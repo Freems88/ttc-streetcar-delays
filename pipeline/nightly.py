@@ -23,6 +23,7 @@ import process_day
 import replay
 import signals
 import turns
+import weather
 from common import DATA_DIR, WORK_DIR, service_day
 
 REMOTE = "git@github-ttc-delays:Freems88/ttc-streetcar-delays.git"
@@ -62,6 +63,10 @@ def main():
     net = json.loads((WORK_DIR / "network.json").read_text())
     for day in days_to_process("--rebuild" in args, "--include-today" in args):
         process_day.process(day, net)
+    try:
+        weather.update()  # for the Trends page; a failed fetch keeps what's already saved
+    except Exception as e:
+        print(f"weather failed: {type(e).__name__}: {e}", file=sys.stderr)
     sys.argv = ["build_site.py", str(SITE_OUT)]
     build_site.main()
     # Replay page: yesterday's cars, animated. Built once per day and kept in WORK_DIR.

@@ -150,6 +150,16 @@ On the map they're yellow ⚠ marks in the Waits view (only spots with repeat tu
 each route card gives the share of trips short-turned. The replay pops a ⚠ over the car at the
 moment it turns. Data starts 1 November 2026, the first day a saved schedule covers.
 
+### Trends
+A separate page (`trends.html`) charts each route day by day: time lost to delays, seconds lost
+per signal (priority signals and the rest, the TSP check), excess wait, short turns and cars in
+service, for all day or the AM/PM peaks. Every day is measured against **today's** baseline (the
+90-day clean runs and signal approaches) and the whole series is rebuilt each night, so days
+compare fairly but recent values can shift a little while the baseline settles. A dashed line
+marks each new TTC schedule. Toronto's daily weather (Environment Canada, station Toronto City)
+runs along the top: rain, likely snow (precipitation on a day that stayed at or below freezing)
+and days below −15 °C. It covers the 90-day window.
+
 ### The bot
 After the nightly build writes yesterday's drafts, the bot posts them as one thread spread over
 the day. It only posts while the switch file `~/ttc-streetcars/delays/bot-enabled` exists.
