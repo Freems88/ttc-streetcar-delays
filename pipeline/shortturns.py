@@ -5,10 +5,13 @@ ids in the live feed match the static schedule in effect about 99% of the time. 
 furthest scheduled stop the car came within NEAR_M of is how far it got. If that leaves
 more than SHORT_KM of the trip undone:
 
-  - the car starts another trip within NEXT_S   -> a short turn, at that stop
-  - it was last seen near a yard                -> heading in (not counted)
-  - otherwise                                   -> ended early (taken out of service, or the
-                                                   feed lost it)
+  - within NEXT_S the car comes back past a stop of this trip at least BACK_KM behind the
+    furthest one (whatever trip it's signed on to by then)  -> a short turn, at that stop
+  - it was last seen near a yard                             -> heading in (not counted)
+  - it carried on without turning back                      -> not counted: the feed gave it
+                                                                a new trip number mid-route
+  - it vanished from the feed                                -> ended early (taken out of
+                                                                service, or the feed lost it)
 
 Runs where the car never got MIN_RUN_KM into the trip are skipped: cars are often signed
 on to a trip at a terminal and re-signed before leaving. Planned short trips (the schedule
@@ -26,7 +29,8 @@ from common import NIGHT_TWIN, STATIC_DIR, WORK_DIR, to_xy
 NEAR_M = 80       # a car this close to a scheduled stop has reached it
 SHORT_KM = 1.0    # more than this of the trip left undone = cut short
 MIN_RUN_KM = 1.0  # a run has to get this far into its trip to count
-NEXT_S = 20 * 60  # a new trip this soon after = the car turned back, still in service
+NEXT_S = 20 * 60  # the car has this long after its trip ends to show it turned back
+BACK_KM = 0.4     # ...by passing a stop at least this far back along the way it came
 LOOKAHEAD = 25    # stops checked ahead of the furthest one so far (pings are ~150 m apart)
 
 
@@ -114,9 +118,19 @@ def detect(runs, sched, near_yard):
             last = pts[-1]
             if near_yard(last[1], last[2]):
                 continue
-            nxt = rs[k + 1][0] - last[0] if k + 1 < len(rs) else None
-            if nxt is None or nxt > NEXT_S:
+            # Turned back: soon after, it passes a stop of this trip well behind the furthest
+            # one. A new trip number alone isn't enough: the feed sometimes relabels a car
+            # mid-route, and it just carries on.
+            later = []
+            for _, _, q in rs[k + 1:]:
+                if q[0][0] - last[0] > NEXT_S:
+                    break
+                later += [p for p in q if p[0] - last[0] <= NEXT_S]
+            if not later:
                 c["early"] += 1
+                continue
+            back = [xy[i] for i in range(best) if BACK_KM <= cum[best] - cum[i] <= BACK_KM + 3]
+            if not any(math.hypot(x - bx, y - by) < NEAR_M for _, x, y in later for bx, by in back):
                 continue
             c["short"] += 1
             d, to = _direction(headsign)

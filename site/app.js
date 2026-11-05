@@ -918,11 +918,12 @@
     const p = info.object, st = shortTurns[state.window], r = st.routes[p.r] || {};
     const peak = p.hours.indexOf(Math.max(...p.hours));
     tip.innerHTML =
-      `<div class="t-title">Short turns at ${p.name}</div>` +
+      `<div class="t-title">Short turns after ${p.name}</div>` +
       `<div class="t-dim">${p.r} ${routeNames[p.r] || ""} · ${p.d.toLowerCase()}bound · ${WINDOW_LABELS[state.window]}, ${timeLabel()}</div>` +
       `<div class="t-big">${shortRate(p.inRange, st.days)}</div>` +
-      `<div>${p.d}bound cars due to go on to <b>${p.to}</b> turned back here instead, ${p.left} km short. ` +
-      `Riders further along lose those cars.</div>` +
+      `<div>${p.d}bound cars due to go on to <b>${p.to}</b> were sent back instead. This stop was the last ` +
+      `one they reached (they may turn a little further on, at a loop or round a block): ${p.left} km of ` +
+      `their trip went unserved, and riders further along lost those cars.</div>` +
       `<div class="t-dim">${p.n} over ${st.days} day${st.days === 1 ? "" : "s"} · most around ${clock(peak)}</div>` +
       (r.runs ? `<div class="t-routes t-dim">${pctOf(r.short / r.runs)} of all ${p.r} trips were short-turned somewhere.</div>` : "");
     placeTip(info);
@@ -1477,7 +1478,7 @@
       const top = stw.points.filter((p) => p.r === route).slice(0, 2);
       html += `<div class="dir-stats st-line"><span class="st-ico" aria-hidden="true">⚠</span> ` +
         `<b>${pctOf(sr.short / sr.runs)}</b> of trips short-turned (${shortRate(sr.short, stw.days)})` +
-        (top.length ? `, mostly at ${top.map((p) => `${p.name} (${p.d.toLowerCase()}bound)`).join(" and ")}` : "") + `.` +
+        (top.length ? `, mostly after ${top.map((p) => `${p.name} (${p.d.toLowerCase()}bound)`).join(" and ")}` : "") + `.` +
         (sr.early ? ` Another ${shortRate(sr.early, stw.days)} ended early (taken out of service, or lost from the feed).` : "") +
         `</div>`;
     }

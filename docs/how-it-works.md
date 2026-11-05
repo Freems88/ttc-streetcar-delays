@@ -139,7 +139,10 @@ A short turn is a car sent back before the end of the line, usually to fill a ga
 other way. Riders further along lose that car. The live feed says which scheduled trip each
 car is on (it matches the schedule about 99% of the time), so for every trip we know where it
 *should* have ended. A trip counts as short-turned when the car got no closer than 1 km to
-that end and then started another trip within 20 minutes. Trips the schedule itself ends early
+that end and then, within 20 minutes, came back past a stop at least 400 m behind the furthest
+one it reached. (A new trip number alone isn't enough: the feed sometimes relabels a car
+mid-route and it just carries on.) The place shown is the last scheduled stop the car reached,
+not the exact turning spot, which can be a loop or a block further on. Trips the schedule itself ends early
 aren't short turns. A car that just disappears is counted separately as "ended early" (taken out
 of service, or lost from the feed); one heading for a yard isn't counted at all.
 

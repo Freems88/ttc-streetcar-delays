@@ -336,7 +336,7 @@
       }
       const st = activeShort(v)[0];
       if (st) {
-        $("f-now").innerHTML = `<span class="st-now"><span class="st-ico" aria-hidden="true">⚠</span> Short-turned at ${st.name}</span>` +
+        $("f-now").innerHTML = `<span class="st-now"><span class="st-ico" aria-hidden="true">⚠</span> Short-turned after ${st.name}</span>` +
           `<span class="st-sub">Due to go on to ${st.to}; sent back ${st.d === "East" ? "west" : st.d === "West" ? "east" : st.d === "North" ? "south" : "north"} instead.</span>`;
       }
     }
