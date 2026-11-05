@@ -157,8 +157,12 @@ service, for all day or the AM/PM peaks. Every day is measured against **today's
 90-day clean runs and signal approaches) and the whole series is rebuilt each night, so days
 compare fairly but recent values can shift a little while the baseline settles. A dashed line
 marks each new TTC schedule. Toronto's daily weather (Environment Canada, station Toronto City)
-runs along the top: rain, likely snow (precipitation on a day that stayed at or below freezing)
-and days below −15 °C. It covers the 90-day window.
+runs along the top. The station only reports melted-down (liquid-equivalent) precipitation, which
+the page never shows: days that stayed at or below about freezing count as snow, with depth
+**estimated** from the water and the day's mean temperature (US National Weather Service
+snowfall-to-meltwater table: about 10:1 near 0 °C, 15:1 to −7 °C, 20:1 colder, capped); days
+above freezing are rain in mm; days that crossed freezing are "rain, possibly with some snow".
+❄ marks days below −15 °C. It covers the 90-day window.
 
 ### The bot
 After the nightly build writes yesterday's drafts, the bot posts them as one thread spread over

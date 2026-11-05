@@ -105,9 +105,17 @@
     const w = vals.slice(Math.max(0, i - k + 1), i + 1).filter((v) => v != null);
     return w.length >= Math.min(4, k) ? w.reduce((a, b) => a + b, 0) / w.length : null;
   });
+  // Weather words: rain in mm, snow as an estimated depth in cm (pipeline/weather.py); never
+  // the station's liquid-equivalent figure, which needs too much explaining.
+  const wxKind = (w) => w.kind ?? (w.p ? (w.tmax != null && w.tmax <= 1 ? "snow" : "rain") : null);
+  const wxText = (w) => {
+    const k = wxKind(w);
+    return k === "snow" ? `≈ ${w.snow_cm ?? w.p} cm snow (estimated)` : k === "rain" ? `${w.rain_mm ?? w.p} mm rain`
+      : k === "mixed" ? `${w.rain_mm ?? w.p} mm rain, possibly with some snow` : "dry";
+  };
   const wetOrCold = (d) => {
     const w = T.weather?.[d];
-    return w && ((w.p || 0) >= 5 || (w.tmin != null && w.tmin <= -15));
+    return w && ((w.rain_mm ?? w.p ?? 0) >= 5 || (w.snow_cm ?? 0) >= 2 || (w.tmin != null && w.tmin <= -15));
   };
 
   function xScale(n) {
@@ -188,19 +196,21 @@
     if (!T.weather || !xi.some((i) => T.weather[T.days[i]])) return "";
     const maxP = Math.max(10, ...xi.map((i) => T.weather[T.days[i]]?.p || 0));
     const bw = Math.max(3, Math.min(14, (W - ML - MR) / Math.max(1, n) * 0.6));
-    let svg = `<svg viewBox="0 0 ${W} ${WH}" role="img" aria-label="Daily weather"><text x="${ML - 6}" y="20" text-anchor="end">mm</text>`;
+    let svg = `<svg viewBox="0 0 ${W} ${WH}" role="img" aria-label="Daily weather">`;
     xi.forEach((i, k) => {
       const w = T.weather[T.days[i]];
       if (!w) return;
       if (w.p > 0) {
-        const hgt = Math.max(2, (w.p / maxP) * 30), snow = w.tmax != null && w.tmax <= 1;
-        svg += `<rect class="${snow ? "snow" : "rain"}" x="${(X(k) - bw / 2).toFixed(1)}" y="${(34 - hgt).toFixed(1)}" width="${bw.toFixed(1)}" height="${hgt.toFixed(1)}" rx="1.5"/>`;
+        // Heights follow the amount of water, so a big snowfall and a downpour look alike in size.
+        const hgt = Math.max(2, (w.p / maxP) * 30);
+        svg += `<rect class="${wxKind(w)}" x="${(X(k) - bw / 2).toFixed(1)}" y="${(34 - hgt).toFixed(1)}" width="${bw.toFixed(1)}" height="${hgt.toFixed(1)}" rx="1.5"><title>${fmtDay(T.days[i], true)}: ${wxText(w)}</title></rect>`;
       }
       if (w.tmin != null && w.tmin <= -15) svg += `<text class="cold" x="${X(k).toFixed(1)}" y="44" text-anchor="middle" style="fill:#6c4fc1">❄</text>`;
     });
     svg += `<line x1="${ML}" x2="${W - MR}" y1="34" y2="34" stroke="var(--line)"/></svg>`;
     return `<section class="tr-chart wx"><h2>Weather <span class="label-note">Toronto</span></h2>` +
-      `<p class="sub">Rain (blue) and likely snow (pale, on days that stayed at or below freezing), mm; ❄ marks days below −15 °C.</p>${svg}</section>`;
+      `<p class="sub">Rain (blue), snow (pale) and mixed days (outlined), at Toronto City. Snow depth is estimated from the ` +
+      `temperature (colder snow is fluffier); ❄ marks days below −15 °C. Hover a chart for each day's figures.</p>${svg}</section>`;
   }
 
   // --- render ------------------------------------------------------------------------------
@@ -250,8 +260,8 @@
     const day = T.days[xi[k]], w = T.weather?.[day];
     const rows = lines.filter((l) => l.vals[k] != null).sort((a, b) => b.vals[k] - a.vals[k]).map((l) =>
       `<div class="row"><span><span class="sw" style="background:${colorOf(l.r)}"></span>${nameOf(l.r)}${l.label ? ` <span class="dim">${l.label}</span>` : ""}</span><b>${def.fmt(l.vals[k])}</b></div>`).join("");
-    const wx = w ? `<div class="dim">${w.p ? `${w.p} mm${w.tmax != null && w.tmax <= 1 ? " (likely snow)" : ""} · ` : "dry · "}` +
-      `${w.tmin != null ? `${Math.round(w.tmin)}° to ${Math.round(w.tmax)}°C` : ""}</div>` : "";
+    const wx = w ? `<div class="dim">${wxText(w)}` +
+      `${w.tmin != null ? ` · ${Math.round(w.tmin)}° to ${Math.round(w.tmax)}°C` : ""}</div>` : "";
     tip.innerHTML = `<div><b>${fmtDay(day, true)}</b></div>${wx}${rows || "<div class='dim'>No data this day</div>"}`;
     tip.hidden = false;
     const tw = tip.offsetWidth, th = tip.offsetHeight;
