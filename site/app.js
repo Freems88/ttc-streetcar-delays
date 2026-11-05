@@ -149,6 +149,8 @@
     thumbs.b.setAttribute("aria-valuenow", b);
     thumbs.b.setAttribute("aria-valuetext", clock(b));
     document.getElementById("time-label").textContent = `(${timeLabel()})`;
+    // Custom hours live behind a fold; open it whenever the hours aren't one of the presets.
+    if (state.time === "custom") document.getElementById("custom-hours").open = true;
   }
   async function timeChanged() {
     syncTimeControls();
@@ -290,6 +292,7 @@
 
   function updateViewChrome() {
     const speed = state.view === "speed", wait = state.view === "wait", sigv = state.view === "signals";
+    document.getElementById("delay-note").hidden = state.view !== "delay";
     document.getElementById("speed-note").hidden = !speed;
     document.getElementById("wait-note").hidden = !wait;
     document.getElementById("signals-note").hidden = !sigv;
@@ -318,7 +321,11 @@
     panel.classList.toggle("collapsed");
     e.currentTarget.setAttribute("aria-expanded", !panel.classList.contains("collapsed"));
   });
-  if (matchMedia("(max-width: 700px)").matches) panel.classList.add("collapsed");
+  if (matchMedia("(max-width: 700px)").matches) {
+    panel.classList.add("collapsed");
+    // Phones show the title in the collapse bar, so Share and ? join the row of pills.
+    document.querySelector(".explore").append(...document.querySelectorAll(".head-actions .head-btn"));
+  }
 
   // "What's a clean run?" links anywhere on the page, including ones rendered later.
   const explain = document.getElementById("explain");
@@ -594,9 +601,9 @@
       await navigator.clipboard.writeText(location.href);
       copyBtn.textContent = "Link copied";
     } catch (e) {
-      copyBtn.textContent = "Copy the address bar to share this view";
+      copyBtn.textContent = "Copy the address bar";
     }
-    setTimeout(() => { copyBtn.textContent = "Copy link to this view"; }, 2500);
+    setTimeout(() => { copyBtn.textContent = "Share"; }, 2500);
   });
 
   // --- map ------------------------------------------------------------------------
