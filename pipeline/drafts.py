@@ -315,8 +315,7 @@ def short_turn_post(when, net, agg):
     text = (f"Most short-turned, {when}: {route} {names[route]}. "
             + (f"1 in {every} trips ({c['short']})" if every >= 2 else f"{share:.0%} of trips ({c['short']})")
             + f" were sent back before the end of the line, most after {stop} ({d.lower()}bound, {len(evs)}), "
-            f"instead of going on to {to}.\n\nRiders further along lose those cars. "
-            f"Across all routes, {all_share:.0%} of trips were short-turned.")
+            f"instead of going on to {to}.\n\nAcross all routes, {all_share:.0%} of trips were short-turned.")
     if post_len(text) > POST_LIMIT:
         text = text.split("\n\n")[0]
     alt = (f"Map of the {route} {names[route]} route in the waits view: a column at each stop, taller and darker "
