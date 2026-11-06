@@ -115,6 +115,13 @@
     const hours = state.time === "custom" ? `${clock(a)}–${clock(b)}` : PRESETS[state.time][2];
     return `${DAYS_LABELS[state.days]} · ${hours}`;
   }
+  // For tooltips: the window ("Yesterday"), then the day and hour filters only when set.
+  function whenLabel() {
+    const [a, b] = hourRange();
+    const hours = state.time === "custom" ? `${clock(a)}–${clock(b)}` : PRESETS[state.time][2];
+    return [WINDOW_LABELS[state.window], state.days !== "all" && DAYS_LABELS[state.days],
+      state.time !== "all" && hours].filter(Boolean).join(" · ");
+  }
   async function loadHours(w) {
     if (usesHours() && !state.hourData[w]) state.hourData[w] = await get(`hours-${w}.json`);
   }
@@ -938,7 +945,7 @@
     const names = [...new Set(g.items.map((p) => p.name))];
     tip.innerHTML =
       `<div class="t-title">Short turns${names.length === 1 ? ` after ${names[0]}` : " here"}</div>` +
-      `<div class="t-dim">${WINDOW_LABELS[state.window]}, ${timeLabel()}</div>` +
+      `<div class="t-dim">${whenLabel()}</div>` +
       (g.items.length > 1 ? `<div class="t-big">${shortRate(g.items.reduce((t, p) => t + p.inRange, 0), st.days)} in all</div>` : "") +
       g.items.map(one).join("") +
       `<div class="t-routes t-dim">Cars sent back before the end of their trip. The stop shown is the last one ` +
@@ -1408,7 +1415,7 @@
     const ewtTxt = (v) => (v < -0.05 ? `${minTxt(-v)} shorter than scheduled` : `+${minTxt(v)} excess wait`);
     tip.innerHTML =
       `<div class="t-title">${c.name}</div>` +
-      `<div class="t-dim">${c.dir} · ${c.per.map(([r]) => r).join(", ")} · ${timeLabel()}</div>` +
+      `<div class="t-dim">${c.dir} · ${c.per.map(([r]) => r).join(", ")} · ${whenLabel()}</div>` +
       (c.per.length === 1 ? `<div class="t-big">${ewtTxt(c.per[0][1].ewt)}</div>${waitLines(c.per[0][1])}`
         : `<div class="t-big">${ewtTxt(c.ewt)} (routes averaged)</div>` + c.per.map(([r, w]) =>
           `<div class="t-routes"><div class="t-head">${r} ${routeNames[r] || ""}: ${ewtTxt(w.ewt)}</div>${waitLines(w)}</div>`).join("")) +
@@ -1445,7 +1452,7 @@
     const routes = (sliceRoutes.get(`${p.index}:${b}`) || []).filter((id) => routeOn(patterns[id].route));
     tip.innerHTML =
       `<div class="t-title">${stop ? `Near ${stop}` : "Streetcar track"}</div>` +
-      `<div class="t-dim">${approachAt(p, b)} · ${p.routes.join(", ")} · ${timeLabel()}</div>` +
+      `<div class="t-dim">${approachAt(p, b)} · ${p.routes.join(", ")} · ${whenLabel()}</div>` +
       `<div class="t-kind">${kindText(p, b)}</div>` + staleText(p, b) +
       `<div class="t-big">${rate.toFixed(1)} s lost per 100 m</div>` +
       `<div>The ${span} m around here cost a typical car <b>${lostHere < 1 ? "under 1 s" : `${Math.round(lostHere)} s`}</b></div>` +
