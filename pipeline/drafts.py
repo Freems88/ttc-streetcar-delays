@@ -52,7 +52,7 @@ MIN_LOGGED = 0.9         # fleet post only for days logged at least this fully
 MIN_SIGNAL_PASSES = 40   # a signal approach needs this many passes yesterday to be named
 # Terminal loops and station platforms: the queue to get in and short layovers there make
 # them "slow" every day; the slowest-spot post leaves them out.
-TERMINAL = re.compile(r"\b(Station|Loop)\b|\bBay \d", re.I)
+TERMINAL = re.compile(r"\b(Station|Loop|Platform)\b|\bBay \d", re.I)
 STATUS_TEXT = {"bus": "mostly by bus", "mixed": "partly by bus", "diverted": "often off its usual route"}
 
 
@@ -281,7 +281,8 @@ def stop_wait(hours):
     n, sh, sh2, nb, ng, _, _, ns, shs, shs2 = a[:10]
     if n < MIN_HEADWAYS or ns < MIN_HEADWAYS:
         return None
-    return {"n": n, "ns": ns, "nb": nb, "ewt": (sh2 / (2 * sh) - shs2 / (2 * shs)) / 60}
+    return {"n": n, "ns": ns, "nb": nb, "ng": ng, "awt": sh2 / (2 * sh) / 60, "swt": shs2 / (2 * shs) / 60,
+            "ewt": (sh2 / (2 * sh) - shs2 / (2 * shs)) / 60}
 
 
 def waits_post(when, net, agg):
@@ -308,12 +309,76 @@ def waits_post(when, net, agg):
             f"at a stop on frequent routes.\n\n")
     worst_line = f"Worst: {label(worst)}, {extra(per[worst]['ewt'])}; {share_text(per[worst]['bunched'], 'cars')} bunched."
     best_line = f"\nSteadiest: {label(best)}, {extra(per[best]['ewt'])}."
-    link = f"\n\n{SITE_URL}#v=wait"
     # Long route names can push it over the limit; the steadiest route goes first.
-    text = head + worst_line + best_line + link
+    text = head + worst_line + best_line
     if post_len(text) > POST_LIMIT:
-        text = head + worst_line + link
-    return {"kind": "waits", "text": text}
+        text = head + worst_line
+    # Image: the worst route and direction in the waits view, the whole route in frame.
+    pat = pats[worst]
+    d = "en" if pat["direction"].lower().startswith(("east", "north")) else "ws"
+    alt = (f"Map of the {label(worst)} route with a column at every stop, taller and darker where riders waited "
+           f"longer than they would have if cars had come as scheduled. A colour key runs from 0 to 8+ minutes.")
+    return {"kind": "waits", "text": text, "alt": alt, "shot": {"clean": "1", "theme": "light", "fit": "1"},
+            "hash": f"w=d1&v=wait&r={pat['route']}&d={d}", "size": [960, 720], "scale": 1.25}
+
+
+MIN_STOP_HEADWAYS = 40   # departures a stop needs yesterday to be the worst one named
+MIN_BUSY_HEADWAYS = 80   # ...and to be the steadiest (a quiet stop is steady by chance)
+MIN_SEEN = 0.75          # share of scheduled cars a stop must have seen to be named at all
+
+
+def stop_waits_post(when, net, agg):
+    """Yesterday's stop with the longest extra wait (frequent service, not a terminal), with a map
+    image of it and its tooltip; the steadiest busy stop as a second line when it fits."""
+    heads = agg.get("heads")
+    if not heads:
+        return None
+    pats = {p["id"]: p for p in net["patterns"]}
+    stops = {s["id"]: s for p in net["pieces"] for s in p["stops"]}
+    where = {}  # (stop, route) -> pattern
+    for pid, ids in pattern_stops(net).items():
+        # Not the last two stops before the end of the line: hardly anyone boards there going
+        # that way, and short turns make them look far worse than the stops riders use.
+        for s in ids[:-2]:
+            where.setdefault((s, pats[pid]["route"]), pid)
+    rows = []
+    for sid, routes in heads.items():
+        s = stops.get(sid)
+        if not s or TERMINAL.search(s["name"]):
+            continue
+        for route, hours in routes.items():
+            w = stop_wait(hours)
+            # Only stops measured reliably: far fewer cars seen than scheduled usually means a
+            # detection gap (a loop or junction right beside the stop), not service.
+            if w and (sid, route) in where and w["n"] >= MIN_SEEN * w["ns"]:
+                rows.append((sid, route, w))
+    worst = [r for r in rows if r[2]["n"] >= MIN_STOP_HEADWAYS]
+    if len(worst) < 20:
+        return None
+    sid, route, w = max(worst, key=lambda r: r[2]["ewt"])
+    pat = pats[where[(sid, route)]]
+    name = stops[sid]["name"]
+    missing = max(0, w["ns"] - w["n"])
+    label = f"{route} {pat['name']} {pat['direction'].lower()}"
+    text = (f"Longest extra wait at a stop, {when}: {name} ({label}).\n\n"
+            f"Riders waited {w['awt']:.1f} min on average, against {w['swt']:.1f} if cars had come as scheduled: "
+            f"{w['ewt']:.1f} min extra. {share_text(w['nb'] / w['n'], 'cars')[0].upper() + share_text(w['nb'] / w['n'], 'cars')[1:]} came bunched"
+            + (f", and {missing} of {w['ns']} scheduled cars never came." if missing >= 2 else "."))
+    busy = [r for r in rows if r[2]["n"] >= MIN_BUSY_HEADWAYS]
+    if busy:
+        bs, br, bw = min(busy, key=lambda r: r[2]["ewt"])
+        bp = pats[where[(bs, br)]]
+        line = (f"\nSteadiest busy stop: {stops[bs]['name']} ({br} {bp['direction'].lower()}), "
+                + (f"{bw['ewt']:.1f} min extra." if bw["ewt"] >= 0.05 else "no extra wait."))
+        if post_len(text + line) <= POST_LIMIT:
+            text += line
+    lon, lat = stops[sid]["lonlat"]
+    d = "en" if pat["direction"].lower().startswith(("east", "north")) else "ws"
+    alt = (f"Map of the streets around {name} in the waits view, a column at each stop. A tooltip for the stop reads "
+           f"{w['ewt']:.1f} minutes of excess wait, with how often cars came bunched or with gaps, and a chart of the "
+           f"spread of gaps between cars.")
+    return {"kind": "stopwait", "text": text, "alt": alt, "shot": {"clean": "1", "theme": "light", "tip": sid},
+            "hash": f"w=d1&v=wait&r={route}&d={d}&c={lon:.5f},{lat:.5f},15.6,-17,45", "size": [960, 720], "scale": 1.25}
 
 
 def signal_post(when, day_name, sig):
@@ -369,7 +434,12 @@ def fleet_post(when, net, agg, partial=False):
         line = f"Furthest behind: {r} {names.get(r, '')}, at {short[r]:.0%} of its scheduled service."
         if short[r] < 0.95 and len("\n".join(lines + [line])) <= POST_LIMIT:
             lines.append(line)
-    return {"kind": "fleet", "text": "\n".join(lines)}
+    alt = (f"Line chart of streetcars in service through {when}, every 10 minutes from 4 am, against the TTC's "
+           f"schedule (dashed). The busiest moment was {cars[peak]:.0f} streetcars at {at}, against {sched[peak]:.0f} scheduled; "
+           f"over the day {car_h / sched_h:.0%} of scheduled streetcar hours ran.")
+    return {"kind": "fleet", "text": "\n".join(lines), "alt": alt,
+            "shot": {"clean": "1", "theme": "light", "fleet": "1", "title": f"Streetcars in service, {when}"},
+            "hash": "w=d1", "size": [960, 500], "scale": 1.25}
 
 
 def capture_image(site, shot, out, size=(1200, 900), scale=1, hash_=""):
@@ -415,7 +485,12 @@ def make(site, force=False, today=False):
                          waits_post(when, net, agg),
                          None if today else signal_post(when, day_name, worst_signal(site)),
                          fleet_post(when, net, agg, today),
+                         stop_waits_post(when, net, agg),
                          service_post(day, when, net, timeline)) if p]
+    if today:  # images come from yesterday's window, so so-far drafts go without
+        for p in posts:
+            for k in ("shot", "alt", "hash"):
+                p.pop(k, None)
     for p in posts:
         p["chars"] = post_len(p["text"])
         if p.get("shot") and capture_image(site, p["shot"], out_dir / f"{p['kind']}.png",

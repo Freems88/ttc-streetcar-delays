@@ -48,9 +48,10 @@
   // ?shot=1: screenshot mode for bot images (see renderShot).
   const params = new URLSearchParams(location.search);
   const SHOT = params.get("shot") === "1";
-  // ?clean=1: the map, legend and tooltip only, for images (threads, slides). Sets
+  // ?clean=1: the map, legend and tooltip only, for images (threads, slides, bot posts). Sets
   // window.__shotReady once drawn, like screenshot mode. ?tip=<stop id> also opens that
-  // stop's tooltip in the waits view.
+  // stop's tooltip in the waits view; ?fit=1 frames the routes picked in the link (r=, d=);
+  // ?fleet=1 shows only the cars-in-service chart (title= sets its heading).
   const CLEAN = params.get("clean") === "1";
   if (CLEAN) document.body.classList.add("clean");
   // ?card=1 (with clean=1): the link-preview image, with the site's title over the map.
@@ -1778,6 +1779,22 @@
   }
 
   if (SHOT) renderShot(); else render();
+  if (CLEAN && params.get("fit") === "1") {
+    const b = new maplibregl.LngLatBounds();
+    for (const p of visiblePieces()) for (const run of runsOf(p)) for (const c of run) b.extend(c);
+    if (!b.isEmpty()) map.fitBounds(b, {bearing: -17, pitch: 45, duration: 0, padding: {top: 50, bottom: 50, left: 50, right: 50}});
+  }
+  if (CLEAN && params.get("fleet") === "1") {
+    document.body.classList.add("fleetshot");
+    state.fleet[state.window] = await get(`fleet-${state.window}.json`);
+    const fl = state.fleet[state.window];
+    fleetDays = (fl.days_used.wd || 0) ? "wd" : "we";
+    renderFleet();
+    document.getElementById("fleet-title").textContent = params.get("title") || "Streetcars in service";
+    document.querySelector("#fleet .compare-lede").textContent =
+      "Streetcars carrying passengers on all streetcar routes, against the TTC's schedule, in 10-minute steps.";
+    fleetDlg.show();
+  }
   if (CLEAN) {
     map.once("idle", () => {
       const col = waitCols.find((c) => c.id === params.get("tip"));
