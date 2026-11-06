@@ -324,7 +324,9 @@ def short_turn_post(when, net, agg):
            f"instead of going on to {to}.")
     return {"kind": "shortturn", "text": text, "alt": alt,
             "shot": {"clean": "1", "theme": "light", "fit": "1", "tips": "1"},
-            "hash": f"w=d1&v=wait&r={route}", "size": [960, 720], "scale": 1.25}
+            # One direction (the busiest spot's): zoomed out, the map draws the two directions far
+            # apart, which on a still image looks like two streets.
+            "hash": f"w=d1&v=wait&r={route}&d={'en' if d in ('East', 'North') else 'ws'}", "size": [960, 720], "scale": 1.25}
 
 
 MIN_STOP_HEADWAYS = 40   # departures a stop needs yesterday to be the worst one named
