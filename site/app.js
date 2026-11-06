@@ -1755,7 +1755,7 @@
 
     const callout = document.getElementById("callout");
     for (const [cls, text] of [["c-title", params.get("title")], ["c-sub", params.get("sub")],
-      ["c-site", "freems88.github.io/ttc-streetcar-delays"]]) {
+      ["c-site", "stuckin.to"]]) {
       if (!text) continue;
       const div = document.createElement("div");
       div.className = cls;

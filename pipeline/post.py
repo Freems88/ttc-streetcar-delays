@@ -31,7 +31,8 @@ DRAFTS = WORK_DIR / "drafts"
 ENABLED = WORK_DIR / "bot-enabled"
 SESSION = WORK_DIR / "bsky-session"
 SLOTS = {"morning": ["summary", "segment"], "midday": ["shortturn", "signal"], "evening": ["fleet", "stopwait"]}
-LINK = re.compile(r"\s*(https://freems88\.github\.io/ttc-streetcar-delays/\S*)")
+# The site link in a draft; drafts written before the move to stuckin.to have the github.io one.
+LINK = re.compile(r"\s*(https://(?:stuckin\.to|freems88\.github\.io/ttc-streetcar-delays)/\S*)")
 # Same as the page's Open Graph tags (site/index.html).
 CARD_TITLE = "Stuck: Toronto's streetcar delays"
 CARD_DESC = ("Where Toronto streetcars lose time, how long riders wait, and how often they're held at "

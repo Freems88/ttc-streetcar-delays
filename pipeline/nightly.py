@@ -27,6 +27,7 @@ import weather
 from common import DATA_DIR, WORK_DIR, service_day
 
 REMOTE = "git@github-ttc-delays:Freems88/ttc-streetcar-delays.git"
+DOMAIN = "stuckin.to"  # GitHub Pages custom domain
 SITE_OUT = WORK_DIR / "site"
 
 
@@ -46,6 +47,8 @@ def days_to_process(rebuild, include_today):
 def publish(last_day):
     git = lambda *a: subprocess.run(["git", "-C", str(SITE_OUT), *a], check=True)
     (SITE_OUT / ".nojekyll").touch()
+    (SITE_OUT / "CNAME").write_text(DOMAIN + "
+")  # without it, each force-push drops the custom domain
     git("init", "-q")
     git("checkout", "-q", "-B", "gh-pages")
     git("add", "-A")

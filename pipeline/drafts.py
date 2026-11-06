@@ -38,7 +38,7 @@ import fleet
 from common import BIN_M, WORK_DIR
 
 DRAFTS = WORK_DIR / "drafts"
-SITE_URL = "https://freems88.github.io/ttc-streetcar-delays/"
+SITE_URL = "https://stuckin.to/"
 VENV_PY = Path.home() / "ttc-streetcars" / "venv" / "bin" / "python"
 CAPTURE = Path(__file__).resolve().parent / "capture.py"
 GRID = -17               # Toronto's street grid, degrees from north

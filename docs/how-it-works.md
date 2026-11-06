@@ -269,6 +269,7 @@ cat /mnt/strada/ttc-backup/last-backup.txt   # should be within the hour
 | Place | What |
 |---|---|
 | GitHub `Freems88/ttc-streetcar-delays` | All the code; the built site on the `gh-pages` branch |
+| Domain `stuckin.to` | Points at GitHub Pages (A/AAAA records on the apex, `www` CNAME); `nightly.py` writes the `CNAME` file on each publish |
 | Pi `~/ttc-streetcars/data/` | The raw archive: one file per day, plus alerts |
 | Pi `~/ttc-streetcars/static/` | Saved TTC schedules |
 | Pi `~/ttc-streetcars/delays/` | Working files: track map (`network.json`), per-day results (`agg/`), drafts, the built site |
