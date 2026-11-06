@@ -4,7 +4,7 @@
 The nightly run writes yesterday's draft (drafts/<day>/draft.json). It goes out in slots,
 each replying to the thread's last post:
   morning  summary, then the slowest spot with its image
-  midday   waits at stops (map of the worst route), then the most-held signal with its image
+  midday   the most short-turned route (map), then the most-held signal with its image
   evening  cars in service (chart), then the stop with the longest extra wait (map + tooltip)
 (Service-change drafts stay on the drafts page but aren't posted.)
 A post with nothing to say that day is simply missing from the draft and skipped.
@@ -30,7 +30,7 @@ from common import WORK_DIR, service_day
 DRAFTS = WORK_DIR / "drafts"
 ENABLED = WORK_DIR / "bot-enabled"
 SESSION = WORK_DIR / "bsky-session"
-SLOTS = {"morning": ["summary", "segment"], "midday": ["waits", "signal"], "evening": ["fleet", "stopwait"]}
+SLOTS = {"morning": ["summary", "segment"], "midday": ["shortturn", "signal"], "evening": ["fleet", "stopwait"]}
 LINK = re.compile(r"\s*(https://freems88\.github\.io/ttc-streetcar-delays/\S*)")
 # Same as the page's Open Graph tags (site/index.html).
 CARD_TITLE = "Stuck: Toronto's streetcar delays"

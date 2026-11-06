@@ -47,7 +47,6 @@ MIN_NORMAL_DAYS = 7      # before this, no "usual" comparisons
 POST_LIMIT = 300         # Bluesky's limit, in characters (graphemes)
 KEEP_DAYS = 30
 MIN_HEADWAYS = 20        # per stop and route, as on the page
-MIN_WAIT_STOPS = 5       # a route direction needs this many measured stops to be named
 MIN_LOGGED = 0.9         # fleet post only for days logged at least this fully
 MIN_SIGNAL_PASSES = 40   # a signal approach needs this many passes yesterday to be named
 # Terminal loops and station platforms: the queue to get in and short layovers there make
@@ -285,41 +284,48 @@ def stop_wait(hours):
             "ewt": (sh2 / (2 * sh) - shs2 / (2 * shs)) / 60}
 
 
-def waits_post(when, net, agg):
-    heads = agg.get("heads")
-    if not heads:
+MIN_SHORT_RUNS = 50  # trips a route needs yesterday to be named for short turns
+MIN_SHORT = 5        # ...and at least this many short turns
+
+
+def short_turn_post(when, net, agg):
+    """Yesterday's route with the highest share of trips short-turned (shortturns.py), with a map
+    of the route in the waits view: the short-turn marks, and the tooltip of its busiest spot."""
+    st = agg.get("short_turns")
+    if not st or not st.get("routes"):
         return None
-    pats = {p["id"]: p for p in net["patterns"]}
-    every = [w for routes in heads.values() for hours in routes.values() if (w := stop_wait(hours))]
-    if len(every) < 20:
+    names = {p["route"]: p["name"] for p in net["patterns"]}
+    routes = {r: c for r, c in st["routes"].items() if c["runs"] >= MIN_SHORT_RUNS and r in names}
+    total_runs = sum(c["runs"] for c in routes.values())
+    if not routes or not total_runs:
         return None
-    avg = sum(w["ewt"] for w in every) / len(every)
-    per = {}
-    for pid, ids in pattern_stops(net).items():
-        ws = [w for s in ids if (w := stop_wait(heads.get(s, {}).get(pats[pid]["route"], {})))]
-        if len(ws) >= MIN_WAIT_STOPS:
-            per[pid] = {"ewt": sum(w["ewt"] for w in ws) / len(ws),
-                        "bunched": sum(w["nb"] for w in ws) / sum(w["n"] for w in ws)}
-    if len(per) < 2:
+    route = max(routes, key=lambda r: routes[r]["short"] / routes[r]["runs"])
+    c = routes[route]
+    if c["short"] < MIN_SHORT:
         return None
-    label = lambda pid: f"{pats[pid]['route']} {pats[pid]['name']} {pats[pid]['direction'].lower()}"
-    extra = lambda m: f"{m:.1f} min extra" if m >= 0.05 else "no extra wait"
-    worst, best = max(per, key=lambda p: per[p]["ewt"]), min(per, key=lambda p: per[p]["ewt"])
-    head = (f"{when}: bunching and missing cars added {max(0, avg):.1f} min to the average wait "
-            f"at a stop on frequent routes.\n\n")
-    worst_line = f"Worst: {label(worst)}, {extra(per[worst]['ewt'])}; {share_text(per[worst]['bunched'], 'cars')} bunched."
-    best_line = f"\nSteadiest: {label(best)}, {extra(per[best]['ewt'])}."
-    # Long route names can push it over the limit; the steadiest route goes first.
-    text = head + worst_line + best_line
+    # Where: the stop most of its short turns came after.
+    spots = {}
+    for e in st["events"]:
+        if e["r"] == route:
+            spots.setdefault((e["name"], e["d"], e["to"]), []).append(e)
+    (stop, d, to), evs = max(spots.items(), key=lambda kv: len(kv[1]))
+    share = c["short"] / c["runs"]
+    every = round(1 / share)
+    all_share = sum(x["short"] for x in routes.values()) / total_runs
+    text = (f"Most short-turned, {when}: {route} {names[route]}. "
+            + (f"1 in {every} trips ({c['short']})" if every >= 2 else f"{share:.0%} of trips ({c['short']})")
+            + f" were sent back before the end of the line, most after {stop} ({d.lower()}bound, {len(evs)}), "
+            f"instead of going on to {to}.\n\nRiders further along lose those cars. "
+            f"Across all routes, {all_share:.0%} of trips were short-turned.")
     if post_len(text) > POST_LIMIT:
-        text = head + worst_line
-    # Image: the worst route and direction in the waits view, the whole route in frame.
-    pat = pats[worst]
-    d = "en" if pat["direction"].lower().startswith(("east", "north")) else "ws"
-    alt = (f"Map of the {label(worst)} route with a column at every stop, taller and darker where riders waited "
-           f"longer than they would have if cars had come as scheduled. A colour key runs from 0 to 8+ minutes.")
-    return {"kind": "waits", "text": text, "alt": alt, "shot": {"clean": "1", "theme": "light", "fit": "1"},
-            "hash": f"w=d1&v=wait&r={pat['route']}&d={d}", "size": [960, 720], "scale": 1.25}
+        text = text.split("\n\n")[0]
+    alt = (f"Map of the {route} {names[route]} route in the waits view: a column at each stop, taller and darker "
+           f"where riders waited longer than scheduled, and yellow warning signs where cars were short-turned. "
+           f"A tooltip on the busiest spot, after {stop}, gives how many {d.lower()}bound cars were sent back there "
+           f"instead of going on to {to}.")
+    return {"kind": "shortturn", "text": text, "alt": alt,
+            "shot": {"clean": "1", "theme": "light", "fit": "1", "tips": "1"},
+            "hash": f"w=d1&v=wait&r={route}", "size": [960, 720], "scale": 1.25}
 
 
 MIN_STOP_HEADWAYS = 40   # departures a stop needs yesterday to be the worst one named
@@ -482,7 +488,7 @@ def make(site, force=False, today=False):
     agg = load_agg(day)
     posts = [p for p in (summary_post(when, net, recent, yest, have_normal),
                          segment_post(when, day_name, net, recent, yest, have_normal, today),
-                         waits_post(when, net, agg),
+                         short_turn_post(when, net, agg),
                          None if today else signal_post(when, day_name, worst_signal(site)),
                          fleet_post(when, net, agg, today),
                          stop_waits_post(when, net, agg),

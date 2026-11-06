@@ -51,7 +51,8 @@
   // ?clean=1: the map, legend and tooltip only, for images (threads, slides, bot posts). Sets
   // window.__shotReady once drawn, like screenshot mode. ?tip=<stop id> also opens that
   // stop's tooltip in the waits view; ?fit=1 frames the routes picked in the link (r=, d=);
-  // ?fleet=1 shows only the cars-in-service chart (title= sets its heading).
+  // ?fleet=1 shows only the cars-in-service chart (title= sets its heading); ?tips=1 opens the
+  // tooltip of the busiest short-turn spot on the picked routes (waits view).
   const CLEAN = params.get("clean") === "1";
   if (CLEAN) document.body.classList.add("clean");
   // ?card=1 (with clean=1): the link-preview image, with the site's title over the map.
@@ -1799,10 +1800,12 @@
     map.once("idle", () => {
       const col = waitCols.find((c) => c.id === params.get("tip"));
       const mark = signalMarks.find((m) => `${m.piece}|${m.px}` === params.get("tipa"));
-      if (col || mark) {
-        const pt = map.project((col || mark).pos);
+      const st = params.get("tips") === "1" ? shortPoints().sort((a, b) => b.perDay - a.perDay)[0] : null;
+      if (col || mark || st) {
+        const pt = map.project(st ? [st.lon, st.lat] : (col || mark).pos);
         if (col) showWaitTip({object: col, x: pt.x, y: pt.y});
-        else showApproachTip({object: mark, x: pt.x, y: pt.y});
+        else if (mark) showApproachTip({object: mark, x: pt.x, y: pt.y});
+        else showShortTip({object: st, x: pt.x, y: pt.y});
         // Beside the column (to the right, or left near the edge), not over it.
         const right = pt.x + 70 + tip.offsetWidth < innerWidth - 16;
         tip.style.left = `${right ? pt.x + 70 : pt.x - 70 - tip.offsetWidth}px`;
