@@ -3,7 +3,7 @@
 
 The nightly run writes yesterday's draft (drafts/<day>/draft.json). It goes out in slots,
 each replying to the thread's last post:
-  morning  summary, then the slowest spot with its image
+  morning  summary (with the hashtags), then the slowest spot with its image
   midday   the most short-turned route (map), then the most-held signal with its image
   evening  cars in service (chart), then the stop with the longest extra wait (map + tooltip)
 (Service-change drafts stay on the drafts page but aren't posted.)
@@ -60,6 +60,17 @@ def split_link(text):
     return (LINK.sub("", text).rstrip(), m.group(1)) if m else (text, None)
 
 
+def tag_facets(text):
+    """Bluesky only treats #words as hashtags (searchable, tappable) when the post marks them,
+    by byte offset in the UTF-8 text."""
+    from atproto import models
+    facets = [models.AppBskyRichtextFacet.Main(
+        index=models.AppBskyRichtextFacet.ByteSlice(byte_start=m.start(), byte_end=m.end()),
+        features=[models.AppBskyRichtextFacet.Tag(tag=m.group(1).decode())])
+        for m in re.finditer(rb"(?<![\w#])#([A-Za-z][A-Za-z0-9_]*)", text.encode("utf-8"))]
+    return facets or None
+
+
 def link_card(client, url):
     from atproto import models
     thumb = client.upload_blob(CARD_IMAGE.read_bytes()).blob if CARD_IMAGE.exists() else None
@@ -105,9 +116,9 @@ def main():
             res = client.send_image(text=text, image=image.read_bytes(), image_alt=p.get("alt", ""),
                                     image_aspect_ratio=models.AppBskyEmbedDefs.AspectRatio(
                                         width=IMAGE_SIZE[0], height=IMAGE_SIZE[1]),
-                                    reply_to=reply, langs=["en-CA"])
+                                    reply_to=reply, langs=["en-CA"], facets=tag_facets(text))
         else:
-            res = client.send_post(text=text, reply_to=reply, langs=["en-CA"],
+            res = client.send_post(text=text, reply_to=reply, langs=["en-CA"], facets=tag_facets(text),
                                    embed=link_card(client, url) if url else None)
         ref = {"uri": res.uri, "cid": res.cid}
         state.setdefault("root", ref)

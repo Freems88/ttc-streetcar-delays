@@ -45,6 +45,7 @@ GRID = -17               # Toronto's street grid, degrees from north
 MIN_PASSES = 30          # a segment needs this many passes yesterday to be named
 MIN_NORMAL_DAYS = 7      # before this, no "usual" comparisons
 POST_LIMIT = 300         # Bluesky's limit, in characters (graphemes)
+TAGS = "#TTC #TransitSky #DataViz"  # on the first post of each day's thread
 KEEP_DAYS = 30
 MIN_HEADWAYS = 20        # per stop and route, as on the page
 MIN_LOGGED = 0.9         # fleet post only for days logged at least this fully
@@ -175,7 +176,10 @@ def summary_post(when, net, recent, yest, have_normal):
         usual = f" (usually {loss_n[worst]:.0f})" if have_normal and worst in loss_n else ""
         lines.append(f"Hardest hit: {label(worst)}, where the typical trip lost {loss_y[worst]:.0f} min{usual}.")
     lines.append(f"Smoothest: {label(best)}, {loss_y[best]:.0f} min.")
-    return {"kind": "summary", "text": f"{head}\n\n" + "\n".join(lines) + f"\n\n{SITE_URL}"}
+    text = f"{head}\n\n" + "\n".join(lines) + f"\n\n{TAGS}\n\n{SITE_URL}"
+    if post_len(text) > POST_LIMIT and len(lines) > 1:  # long route names: the smoothest line goes first
+        text = f"{head}\n\n{lines[0]}\n\n{TAGS}\n\n{SITE_URL}"
+    return {"kind": "summary", "text": text}
 
 
 def segment_post(when, day_name, net, recent, yest, have_normal, partial=False):
