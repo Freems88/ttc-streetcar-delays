@@ -47,8 +47,7 @@ def days_to_process(rebuild, include_today):
 def publish(last_day):
     git = lambda *a: subprocess.run(["git", "-C", str(SITE_OUT), *a], check=True)
     (SITE_OUT / ".nojekyll").touch()
-    (SITE_OUT / "CNAME").write_text(DOMAIN + "
-")  # without it, each force-push drops the custom domain
+    (SITE_OUT / "CNAME").write_text(DOMAIN + "\n")  # without it, each force-push drops the custom domain
     git("init", "-q")
     git("checkout", "-q", "-B", "gh-pages")
     git("add", "-A")
