@@ -156,7 +156,9 @@ per signal (priority signals and the rest, the TSP check), excess wait, short tu
 service, for all day or the AM/PM peaks. Every day is measured against **today's** baseline (the
 90-day clean runs and signal approaches) and the whole series is rebuilt each night, so days
 compare fairly but recent values can shift a little while the baseline settles. A dashed line
-marks each new TTC schedule. Toronto's daily weather (Environment Canada, station Toronto City)
+marks each new TTC schedule. Excess wait counts every vehicle (riders take whatever comes), so
+a route-day run mostly by buses, like a full bus replacement, is left out of it rather than
+charted as streetcar service. Toronto's daily weather (Environment Canada, station Toronto City)
 runs along the top. The station only reports melted-down (liquid-equivalent) precipitation, which
 the page never shows: days that stayed at or below about freezing count as snow, with depth
 **estimated** from the water and the day's mean temperature (US National Weather Service
