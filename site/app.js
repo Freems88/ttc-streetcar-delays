@@ -939,7 +939,7 @@
       return `<div class="t-routes"><div class="t-head">${p.r} ${routeNames[p.r] || ""} ${p.d.toLowerCase()}bound: ` +
         `${shortRate(p.inRange, st.days)}</div>` +
         `<div>After <b>${p.name}</b>, sent back instead of going on to ${p.to} (${p.left} km short).</div>` +
-        `<div class="t-dim">${p.n} over ${st.days} day${st.days === 1 ? "" : "s"} · most around ${clock(peak)}` +
+        `<div class="t-dim">${st.days === 1 ? "" : `${p.n} over ${st.days} days · `}most around ${clock(peak)}` +
         (r.runs ? ` · ${pctOf(r.short / r.runs)} of all ${p.r} trips short-turned somewhere` : "") + `</div></div>`;
     };
     const names = [...new Set(g.items.map((p) => p.name))];
