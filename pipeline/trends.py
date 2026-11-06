@@ -113,8 +113,11 @@ def day_rows(d, network, clean, approaches):
                 put(route, "held", f"{split}-{band}", _r(held / passes, 3))
                 put(route, "sig", f"{split}-{band}", _r(extra / passes, 1))
 
-    # Excess wait at stops.
+    # Excess wait at stops. Waits count every vehicle (riders take whatever comes), so a route
+    # run mostly by buses that day (a full bus replacement, like the 503 in Nov 2026) is left out.
     heads = d.get("heads") or {}
+    bus_day = {r for r, c in (d.get("routes") or {}).items()
+               if c.get("bus", 0) > c.get("flex_on", 0) + c.get("flex_off", 0)}
     for band in BANDS:
         hours = _hours(band, weekend)
         if hours is None:
@@ -122,6 +125,8 @@ def day_rows(d, network, clean, approaches):
         sums = {}
         for routes in heads.values():
             for route, by_hour in routes.items():
+                if route in bus_day:
+                    continue
                 acc = sums.setdefault(route, [0] * 10)
                 for h in hours:
                     row = by_hour.get(str(h))
