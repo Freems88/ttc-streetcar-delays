@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Post the bot's drafts to Bluesky (@stuckto.bsky.social) as one thread through the day.
+"""Post the bot's drafts to Bluesky (@stuckin.to) as one thread through the day.
 
 The nightly run writes yesterday's draft (drafts/<day>/draft.json). It goes out in slots,
 each replying to the thread's last post:

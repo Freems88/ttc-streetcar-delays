@@ -32,7 +32,7 @@ flowchart TD
     D --> W[Site build<br>combine days into windows]
     W --> Site[Website on GitHub Pages]
     W --> Dr[Bot drafts]
-    Dr -->|7:45, 12:15, 5:15| Bsky[Bluesky @stuckto]
+    Dr -->|7:45, 12:15, 5:15| Bsky[Bluesky @stuckin.to]
 ```
 
 Step by step, for one streetcar position:
