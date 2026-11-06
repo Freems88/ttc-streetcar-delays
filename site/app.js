@@ -1783,7 +1783,9 @@
   if (CLEAN && params.get("fit") === "1") {
     const b = new maplibregl.LngLatBounds();
     for (const p of visiblePieces()) for (const run of runsOf(p)) for (const c of run) b.extend(c);
-    if (!b.isEmpty()) map.fitBounds(b, {bearing: -17, pitch: 45, duration: 0, padding: {top: 50, bottom: 50, left: 50, right: 50}});
+    // With a tooltip to show (tips=1), the route sits low and the tooltip goes in the space above.
+    const top = params.get("tips") === "1" ? Math.round(innerHeight * 0.45) : 50;
+    if (!b.isEmpty()) map.fitBounds(b, {bearing: -17, pitch: 45, duration: 0, padding: {top, bottom: 50, left: 50, right: 50}});
   }
   if (CLEAN && params.get("fleet") === "1") {
     document.body.classList.add("fleetshot");
@@ -1809,7 +1811,8 @@
         // Beside the column (to the right, or left near the edge), not over it.
         const right = pt.x + 70 + tip.offsetWidth < innerWidth - 16;
         tip.style.left = `${right ? pt.x + 70 : pt.x - 70 - tip.offsetWidth}px`;
-        tip.style.top = `${Math.max(16, Math.min(innerHeight - tip.offsetHeight - 16, pt.y - tip.offsetHeight / 2 - 60))}px`;
+        const y = st ? pt.y - tip.offsetHeight - 40 : pt.y - tip.offsetHeight / 2 - 60;  // short turns: above the route
+        tip.style.top = `${Math.max(16, Math.min(innerHeight - tip.offsetHeight - 16, y))}px`;
       }
       requestAnimationFrame(() => requestAnimationFrame(() => { window.__shotReady = true; }));
     });
