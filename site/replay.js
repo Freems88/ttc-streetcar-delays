@@ -155,6 +155,14 @@
   for (const l of map.getStyle().layers) {
     if (l.type === "symbol" && /poi|housenum/.test(l.id)) map.setLayoutProperty(l.id, "visibility", "none");
   }
+  // The dark style draws streets barely lighter than the ground (#181818 on #0c0c0c); lift
+  // them a few shades so the street grid reads under the trails without brightening the map.
+  const ROADS = {
+    highway_minor: "#2b2b2f", highway_motorway_subtle: "#2b2b2f", highway_major_inner: "#26262a",
+    highway_major_subtle: "#3a3a3e", highway_major_casing: "rgba(80,80,86,0.9)", highway_motorway_casing: "rgba(80,80,86,0.9)",
+  };
+  for (const [id, color] of Object.entries(ROADS)) if (map.getLayer(id)) map.setPaintProperty(id, "line-color", color);
+  if (map.getLayer("highway_name_other")) map.setPaintProperty("highway_name_other", "text-color", "rgb(118,116,116)");
 
   // Pack vertex ranges [[i0, i1), ...] into TripsLayer binary data, in both colourings.
   function pack(ranges) {
