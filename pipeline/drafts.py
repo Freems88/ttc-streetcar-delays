@@ -473,7 +473,67 @@ def capture_image(site, shot, out, size=(1200, 900), scale=1, hash_=""):
         srv.shutdown()
 
 
+STORY_LABELS = {"segment": "Slowest stretch", "shortturn": "Most trips cut short", "signal": "Longest holds at a signal",
+                 "stopwait": "Longest extra wait at a stop", "fleet": "Streetcars in service"}
+
+
+def story_of(p):
+    """One line of the site's first-visit card ("Yesterday on the streetcars") from a finished
+    draft post: a label, the place, a short detail, and the link that opens it on the map
+    (?story=<kind> plus the post's own query and hash; see app.js). None if it doesn't parse."""
+    kind, text, shot = p["kind"], p["text"], p.get("shot") or {}
+    q, place, detail = {"story": kind}, None, None
+    if kind == "segment" and shot.get("piece"):
+        q.update(piece=shot["piece"], b0=shot["b0"], b1=shot["b1"])
+        place, detail = shot.get("title"), (shot.get("sub") or "").split(": ", 1)[-1]
+        p = {**p, "hash": "w=d1&v=delay"}
+    elif kind == "shortturn":
+        m = re.search(r": (\d{3} [^.]+)\. (1 in \d+ trips|\d+% of trips) \(\d+\) were sent back", text)
+        if m:
+            place, detail = m.group(1), f"{m.group(2)} sent back before the end of the line"
+    elif kind == "signal" and shot.get("tipa"):
+        q["tipa"] = shot["tipa"]
+        m = re.search(r"^Most held at a signal, [^:]+: (.+?)\.\n\n(\d+% of streetcars waited 90 s or more)", text)
+        if m:
+            place, detail = m.group(1)[0].upper() + m.group(1)[1:], m.group(2)
+    elif kind == "stopwait" and shot.get("tip"):
+        q["tip"] = shot["tip"]
+        m = re.search(r"^Longest extra wait at a stop, [^:]+: (.+?) \((.+?)\)\.\n", text)
+        e = re.search(r"(\d+\.\d) min extra", text)
+        if m and e:
+            place, detail = m.group(1), f"{e.group(1)} min extra wait ({m.group(2)})"
+    elif kind == "fleet":
+        m = re.search(r"Overall, (\d+%) of scheduled streetcar service ran", text)
+        if m:
+            place, detail = "All streetcar routes", f"{m.group(1)} of scheduled service ran"
+    if not place or not p.get("hash"):
+        return None
+    return {"kind": kind, "label": STORY_LABELS[kind], "place": place, "detail": detail,
+            "q": {k: str(v) for k, v in q.items()}, "hash": p["hash"]}
+
+
+def write_stories():
+    """drafts/stories.json: the newest finished day's posts, for the site's first-visit card."""
+    days = sorted((p.name for p in DRAFTS.iterdir() if len(p.name) == 10 and (p / "draft.json").exists()), reverse=True)
+    if not days:
+        return
+    draft = json.loads((DRAFTS / days[0] / "draft.json").read_text())
+    posts = {p["kind"]: p for p in draft["posts"]}
+    summary = posts.get("summary", {}).get("text", "").split("\n\n")[0]
+    d = date.fromisoformat(days[0])
+    items = [s for s in (story_of(posts[k]) for k in STORY_LABELS if k in posts) if s]
+    (DRAFTS / "stories.json").write_text(json.dumps({
+        "day": days[0], "when": f"{d:%A}, {d:%b} {d.day}",
+        "headline": summary.split(": ", 1)[-1], "items": items}, indent=1))
+
+
 def make(site, force=False, today=False):
+    _make(site, force, today)
+    if not today:
+        write_stories()
+
+
+def _make(site, force=False, today=False):
     if today and not (Path(site) / "data" / "stats-today.json").exists():
         return
     net, recent, yest, timeline, meta = load(site, "today" if today else "yesterday")
