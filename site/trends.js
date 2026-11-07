@@ -247,11 +247,15 @@
 
   // --- hover: values for the nearest day -------------------------------------------------------
   const tip = $("tip");
-  $("charts").addEventListener("mousemove", (e) => {
+  function hideTip() {
+    tip.hidden = true;
+    document.querySelectorAll(".cross").forEach((c) => c.setAttribute("visibility", "hidden"));
+  }
+  function showTip(e) {
     const sec = e.target.closest("[data-chart]"), svg = sec?.querySelector("svg");
-    if (!sec || !svg) { tip.hidden = true; return; }
+    if (!sec || !svg) { hideTip(); return; }
     const {def, lines, xi} = rendered[+sec.dataset.chart];
-    if (!lines.length) { tip.hidden = true; return; }
+    if (!lines.length) { hideTip(); return; }
     const box = svg.getBoundingClientRect(), x = (e.clientX - box.left) / box.width * W;
     const n = xi.length, X = xScale(n);
     const k = n <= 1 ? 0 : Math.max(0, Math.min(n - 1, Math.round((x - ML) / ((W - ML - MR) / (n - 1)))));
@@ -267,11 +271,16 @@
     const tw = tip.offsetWidth, th = tip.offsetHeight;
     tip.style.left = `${Math.min(innerWidth - tw - 8, e.clientX + 14)}px`;
     tip.style.top = `${Math.max(8, Math.min(innerHeight - th - 8, e.clientY - th / 2))}px`;
+  }
+  $("charts").addEventListener("mousemove", showTip);
+  $("charts").addEventListener("mouseleave", hideTip);
+  // Touch has no "mouse left the chart": a tap on a chart shows that day, and a tap anywhere
+  // else, or scrolling, closes it.
+  document.addEventListener("pointerdown", (e) => {
+    if (e.pointerType === "mouse") return;
+    if (e.target.closest("[data-chart] svg")) showTip(e); else hideTip();
   });
-  $("charts").addEventListener("mouseleave", () => {
-    tip.hidden = true;
-    document.querySelectorAll(".cross").forEach((c) => c.setAttribute("visibility", "hidden"));
-  });
+  addEventListener("scroll", () => { if (!tip.hidden && !matchMedia("(hover: hover)").matches) hideTip(); }, {passive: true});
 
   // --- controls ----------------------------------------------------------------------------------
   function renderChips() {

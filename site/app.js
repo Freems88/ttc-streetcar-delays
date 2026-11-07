@@ -306,8 +306,13 @@
   segGroup("dir", "dir");
   segGroup("view", "view");
 
+  const VIEW_NAMES = {delay: "Delay", speed: "Clean-run speed", wait: "Waits", signals: "Signals"};
   function updateViewChrome() {
     const speed = state.view === "speed", wait = state.view === "wait", sigv = state.view === "signals";
+    // The phone bar says what the map shows now (and that it can be changed).
+    const rs = state.routes;
+    document.getElementById("panel-state").textContent = [VIEW_NAMES[state.view], WINDOW_LABELS[state.window],
+      !rs.length ? "All routes" : rs.length <= 2 ? rs.join(", ") : `${rs.length} routes`].join(" · ");
     document.getElementById("delay-note").hidden = state.view !== "delay";
     document.getElementById("speed-note").hidden = !speed;
     document.getElementById("wait-note").hidden = !wait;
