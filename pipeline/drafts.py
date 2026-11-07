@@ -42,6 +42,7 @@ SITE_URL = "https://stuckin.to/"
 VENV_PY = Path.home() / "ttc-streetcars" / "venv" / "bin" / "python"
 CAPTURE = Path(__file__).resolve().parent / "capture.py"
 GRID = -17               # Toronto's street grid, degrees from north
+ANGLE = GRID + 45        # stop and signal images look across the grid, so things along one street don't hide each other
 MIN_PASSES = 30          # a segment needs this many passes yesterday to be named
 MIN_NORMAL_DAYS = 7      # before this, no "usual" comparisons
 POST_LIMIT = 300         # Bluesky's limit, in characters (graphemes)
@@ -389,7 +390,7 @@ def stop_waits_post(when, net, agg):
            f"{w['ewt']:.1f} minutes of excess wait, with how often cars came bunched or with gaps, and a chart of the "
            f"spread of gaps between cars.")
     return {"kind": "stopwait", "text": text, "alt": alt, "shot": {"clean": "1", "theme": "light", "tip": sid},
-            "hash": f"w=d1&v=wait&r={route}&d={d}&c={lon:.5f},{lat:.5f},15.6,-17,45", "size": [960, 720], "scale": 1.25}
+            "hash": f"w=d1&v=wait&r={route}&d={d}&c={lon:.5f},{lat:.5f},15.2,{ANGLE},50", "size": [960, 720], "scale": 1.25}
 
 
 def signal_post(when, day_name, sig):
@@ -410,7 +411,7 @@ def signal_post(when, day_name, sig):
            f"{sig['dir']} approach reads {round(sig['held']['90'] * 100)}% held 90 s+, with a histogram of "
            f"extra time through the approach.")
     return {"kind": "signal", "text": text, "alt": alt, "shot": shot,
-            "hash": f"w=d1&v=signals&c={lon:.5f},{lat:.5f},16.2,-17,40", "size": [960, 720], "scale": 1.25}
+            "hash": f"w=d1&v=signals&c={lon:.5f},{lat:.5f},16.0,{ANGLE},45", "size": [960, 720], "scale": 1.25}
 
 
 def fleet_post(when, net, agg, partial=False):
@@ -477,7 +478,7 @@ STORY_LABELS = {"segment": "Slowest stretch", "shortturn": "Most trips cut short
                  "stopwait": "Longest extra wait at a stop", "fleet": "Streetcars in service"}
 
 
-def story_of(p):
+def story_of(p, net=None, approaches=None):
     """One line of the site's first-visit card ("Yesterday on the streetcars") from a finished
     draft post: a label, the place, a short detail, and the link that opens it on the map
     (?story=<kind> plus the post's own query and hash; see app.js). None if it doesn't parse."""
@@ -486,13 +487,25 @@ def story_of(p):
     if kind == "segment" and shot.get("piece"):
         q.update(piece=shot["piece"], b0=shot["b0"], b1=shot["b1"])
         place, detail = shot.get("title"), (shot.get("sub") or "").split(": ", 1)[-1]
-        p = {**p, "hash": "w=d1&v=delay"}
+        h = "w=d1&v=delay"
+        if net:  # just the routes (and direction) that run through the stretch
+            pi = next((i for i, x in enumerate(net["pieces"]) if x["id"] == shot["piece"]), None)
+            pats = [pt for pt in net["patterns"]
+                    if any(a == pi and shot["b0"] <= b <= shot["b1"] for a, b in pt["slices"])]
+            routes = sorted({pt["route"] for pt in pats})
+            dirs = {"en" if pt["direction"] in ("East", "North") else "ws" for pt in pats}
+            if routes:
+                h += f"&r={','.join(routes)}" + (f"&d={dirs.pop()}" if len(dirs) == 1 else "")
+        p = {**p, "hash": h}
     elif kind == "shortturn":
         m = re.search(r": (\d{3} [^.]+)\. (1 in \d+ trips|\d+% of trips) \(\d+\) were sent back", text)
         if m:
             place, detail = m.group(1), f"{m.group(2)} sent back before the end of the line"
     elif kind == "signal" and shot.get("tipa"):
         q["tipa"] = shot["tipa"]
+        a = next((a for a in approaches or [] if f"{a['piece']}|{a['px']}" == shot["tipa"]), None)
+        if a and a.get("routes") and "&r=" not in p.get("hash", ""):
+            p = {**p, "hash": p["hash"] + f"&r={','.join(sorted(a['routes']))}"}
         m = re.search(r"^Most held at a signal, [^:]+: (.+?)\.\n\n(\d+% of streetcars waited 90 s or more)", text)
         if m:
             place, detail = m.group(1)[0].upper() + m.group(1)[1:], m.group(2)
@@ -512,7 +525,7 @@ def story_of(p):
             "q": {k: str(v) for k, v in q.items()}, "hash": p["hash"]}
 
 
-def write_stories():
+def write_stories(site=None):
     """drafts/stories.json: the newest finished day's posts, for the site's first-visit card."""
     days = sorted((p.name for p in DRAFTS.iterdir() if len(p.name) == 10 and (p / "draft.json").exists()), reverse=True)
     if not days:
@@ -521,7 +534,11 @@ def write_stories():
     posts = {p["kind"]: p for p in draft["posts"]}
     summary = posts.get("summary", {}).get("text", "").split("\n\n")[0]
     d = date.fromisoformat(days[0])
-    items = [s for s in (story_of(posts[k]) for k in STORY_LABELS if k in posts) if s]
+    data = Path(site) / "data" if site else None
+    net = json.loads((data / "network.json").read_text()) if data and (data / "network.json").exists() else None
+    ap = data / "signal-approaches-d1.json" if data else None
+    approaches = json.loads(ap.read_text())["approaches"] if ap and ap.exists() else None
+    items = [s for s in (story_of(posts[k], net, approaches) for k in STORY_LABELS if k in posts) if s]
     (DRAFTS / "stories.json").write_text(json.dumps({
         "day": days[0], "when": f"{d:%A}, {d:%b} {d.day}",
         "headline": summary.split(": ", 1)[-1], "items": items}, indent=1))
@@ -530,7 +547,7 @@ def write_stories():
 def make(site, force=False, today=False):
     _make(site, force, today)
     if not today:
-        write_stories()
+        write_stories(site)
 
 
 def _make(site, force=False, today=False):
