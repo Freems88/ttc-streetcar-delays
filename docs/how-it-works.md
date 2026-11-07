@@ -171,6 +171,13 @@ After the nightly build writes yesterday's drafts, the bot posts them as one thr
 the day. It only posts while the switch file `~/ttc-streetcars/delays/bot-enabled` exists.
 Service-change notes are drafted but not posted.
 
+The same picks greet first-time visitors on the map page: `drafts.py` writes
+`drafts/stories.json` (the newest finished day), and a plain visit (no link to a particular
+view) shows them as a card until it's closed, coming back when there's a new day. Each story
+opens `?story=<kind>` with the post's own view, framing the spot and pinning its tooltip.
+"Yesterday's highlights" reopens the card. Time of day and direction are folded under
+"More filters" unless a link sets them.
+
 ---
 
 ## Data rules

@@ -54,6 +54,7 @@
   // ?fleet=1 shows only the cars-in-service chart (title= sets its heading); ?tips=1 opens the
   // tooltip of the busiest short-turn spot on the picked routes (waits view).
   const CLEAN = params.get("clean") === "1";
+  const PLAIN_VISIT = !location.search && !location.hash;  // not a link to a particular view
   if (CLEAN) document.body.classList.add("clean");
   // ?card=1 (with clean=1): the link-preview image, with the site's title over the map.
   if (CLEAN && params.get("card") === "1") {
@@ -606,6 +607,10 @@
   // updates use replaceState, which doesn't fire this.)
   addEventListener("hashchange", () => location.reload());
   syncControls();
+  // Time of day and direction sit folded under "More filters" unless a link set them.
+  if (!params.get("story") && (state.days !== "all" || state.time !== "all" || state.dir !== "both")) {
+    document.getElementById("more-filters").open = true;
+  }
   await loadWindow(state.window);
   await loadHours(state.window);
   await loadHeads(state.window);
@@ -932,7 +937,7 @@
     return groups;
   }
   function showShortTip(info) {
-    if (!info.object) { tip.hidden = true; return; }
+    if (!info.object) { hideTip(); return; }
     const g = info.object, st = shortTurns[state.window];
     const one = (p) => {
       const peak = p.hours.indexOf(Math.max(...p.hours)), r = st.routes[p.r] || {};
@@ -1146,6 +1151,12 @@
 
   // --- tooltip --------------------------------------------------------------------
   const tip = document.getElementById("tooltip");
+  // A story's tooltip (see ?story= below) stays up until the viewer moves the map or taps;
+  // otherwise hovering empty map would close it straight away.
+  let tipPinned = false;
+  const hideTip = () => { if (!tipPinned) tip.hidden = true; };
+  map.on("movestart", (e) => { if (e.originalEvent) tipPinned = false; });
+  map.getCanvas().addEventListener("pointerdown", () => { tipPinned = false; });
   const mins = (s) => (s == null ? "–" : `${Math.round(s / 60)} min`);
 
   function nearestStop(p, b) {
@@ -1217,7 +1228,7 @@
   }
 
   function showSpeedTip(info) {
-    if (!info.object) { tip.hidden = true; return; }
+    if (!info.object) { hideTip(); return; }
     const {piece: p, bin: b, kmh} = info.object;
     const st = state.stats[state.window].pieces[p.id];
     const stop = nearestStop(p, b);
@@ -1347,7 +1358,7 @@
       `${bars}<line x1="${(4 * bw).toFixed(1)}" x2="${(4 * bw).toFixed(1)}" y1="0" y2="${H - B}"/>${labels}</svg>`;
   }
   function showApproachTip(info) {
-    if (!info.object) { tip.hidden = true; return; }
+    if (!info.object) { hideTip(); return; }
     const a = info.object;
     tip.innerHTML =
       `<div class="t-title">${a.name}</div>` +
@@ -1407,7 +1418,7 @@
   }
 
   function showWaitTip(info) {
-    if (!info.object) { tip.hidden = true; return; }
+    if (!info.object) { hideTip(); return; }
     const c = info.object;
     const off = state.heads[state.window]?.off[c.id] || {};
     const offTxt = Object.entries(off).filter(([r]) => routeOn(r))
@@ -1425,7 +1436,7 @@
   }
 
   function showSignalTip(info) {
-    if (!info.object) { tip.hidden = true; return; }
+    if (!info.object) { hideTip(); return; }
     const s = info.object.signal || info.object; // a turn sign carries its signal
     const esc = (t) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;");
     const bans = (s.turns || []).filter((t) => !banExpired(t)).map((t) => `<div>${esc(t.dir)} ${esc(t.turn.toLowerCase())}` +
@@ -1438,7 +1449,7 @@
   }
 
   function showTooltip(info) {
-    if (!info.object) { tip.hidden = true; return; }
+    if (!info.object) { hideTip(); return; }
     const {piece: p, bin: b} = info.object;
     const st = state.stats[state.window].pieces[p.id];
     const slot = viewOf(p, st);
@@ -1463,7 +1474,7 @@
       `<div class="t-routes t-dim">Clean run: the quickest 10% of daytime trips here, stops included.</div>`;
     placeTip(info);
   }
-  map.getCanvas().addEventListener("mouseleave", () => { tip.hidden = true; });
+  map.getCanvas().addEventListener("mouseleave", hideTip);
 
   // --- route card -----------------------------------------------------------------
   // One section per picked route.
@@ -1787,6 +1798,106 @@
   }
 
   if (SHOT) renderShot(); else render();
+
+  // --- first-visit card -----------------------------------------------------------
+  // Yesterday's stories (the bot's daily picks, drafts/stories.json from drafts.py), shown on
+  // a plain visit until closed; it comes back when there's a new day. "Yesterday's
+  // highlights" reopens it. Each story is a link to ?story=<kind>, handled just below.
+  const intro = document.getElementById("intro");
+  const stories = SHOT || CLEAN ? null : await get("drafts/stories.json").catch(() => null);
+  if (stories?.items?.length) {
+    const SEEN = "stuck-intro-seen";
+    const seen = () => { try { return localStorage.getItem(SEEN); } catch { return null; } };
+    const markSeen = () => { try { localStorage.setItem(SEEN, stories.day); } catch { /* private mode */ } };
+    document.getElementById("intro-when").textContent = stories.when;
+    document.getElementById("intro-head").textContent = stories.headline;
+    const list = document.getElementById("intro-list");
+    for (const s of stories.items) {
+      const a = document.createElement("a");
+      a.href = `?${new URLSearchParams(s.q)}#${s.hash}`;
+      for (const [cls, text] of [["intro-label", s.label], ["intro-place", s.place], ["intro-detail", s.detail]]) {
+        const span = document.createElement("span");
+        span.className = cls;
+        span.textContent = text || "";
+        a.append(span);
+      }
+      a.addEventListener("click", markSeen);
+      const li = document.createElement("li");
+      li.append(a);
+      list.append(li);
+    }
+    const closeIntro = () => { intro.hidden = true; markSeen(); };
+    document.getElementById("intro-close").addEventListener("click", closeIntro);
+    document.getElementById("intro-go").addEventListener("click", closeIntro);
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !intro.hidden) closeIntro(); });
+    const reopen = document.getElementById("intro-open");
+    reopen.hidden = false;
+    reopen.addEventListener("click", () => {
+      intro.hidden = false;
+      if (matchMedia("(max-width: 700px)").matches) panel.classList.add("collapsed");
+    });
+    if (PLAIN_VISIT && seen() !== stories.day) intro.hidden = false;
+  }
+
+  // ?story=<kind>: one of the card's stories. Frame it as the bot's image does and open its
+  // tooltip, then drop the query so the address is an ordinary link to this view.
+  const STORY = SHOT || CLEAN ? null : params.get("story");
+  if (STORY) {
+    history.replaceState(null, "", location.pathname + location.hash);
+    let target = null;  // [show function, picked object, [lon, lat]]
+    if (STORY === "fleet") document.getElementById("fleet-open").click();
+    if (STORY === "segment") {
+      const p = pieces.find((x) => x.id === params.get("piece"));
+      const st = p && state.stats[state.window].pieces[p.id];
+      if (st) {
+        const b0 = +params.get("b0"), b1 = +params.get("b1"), d = viewOf(p, st).d;
+        let best = b0;
+        for (let b = b0; b <= b1; b++) if ((smoothAt(d, b) ?? -1) > (smoothAt(d, best) ?? -1)) best = b;
+        const bounds = new maplibregl.LngLatBounds();
+        for (const c of p.bins.slice(Math.max(0, b0 - 12), b1 + 13)) bounds.extend(c);
+        map.fitBounds(bounds, {bearing: -17, pitch: 50, duration: 0, padding: 100});
+        target = [showTooltip, {piece: p, bin: best}, p.bins[best]];
+      }
+    }
+    if (STORY === "shortturn") {
+      const b = new maplibregl.LngLatBounds();
+      for (const p of visiblePieces()) for (const run of runsOf(p)) for (const c of run) b.extend(c);
+      if (!b.isEmpty()) map.fitBounds(b, {bearing: -17, pitch: 45, duration: 0, padding: 60});
+    }
+    const openStory = () => {
+      if (STORY === "stopwait") {
+        const c = waitCols.find((x) => x.id === params.get("tip"));
+        if (c) target = [showWaitTip, c, c.pos];
+      } else if (STORY === "signal") {
+        const m = signalMarks.find((x) => `${x.piece}|${x.px}` === params.get("tipa"));
+        if (m) target = [showApproachTip, m, m.pos];
+      } else if (STORY === "shortturn") {
+        const sp = shortPoints().sort((a, b) => b.perDay - a.perDay)[0];
+        if (sp) target = [showShortTip, sp, [sp.lon, sp.lat]];
+      }
+      if (!target) return;
+      const [show, object, lonlat] = target, phone = innerWidth <= 700;
+      if (STORY === "stopwait" || STORY === "signal") {
+        // One spot: put it left of centre (on phones, low) so the tooltip fits beside it.
+        map.jumpTo({center: lonlat, zoom: map.getZoom() - (phone ? 1 : 0)});
+        map.panBy(phone ? [0, -Math.round(innerHeight * 0.22)] : [Math.min(220, Math.round((innerWidth - 360) / 4)), 0],
+          {duration: 0});
+      }
+      const pt = map.project(lonlat);
+      show({object, x: pt.x, y: pt.y});
+      if (!phone && (STORY === "stopwait" || STORY === "signal")) {
+        const right = pt.x + 60 + tip.offsetWidth < innerWidth - 16;
+        tip.style.left = `${right ? pt.x + 60 : Math.max(8, pt.x - 60 - tip.offsetWidth)}px`;
+        tip.style.top = `${Math.max(16, Math.min(innerHeight - tip.offsetHeight - 16, pt.y - tip.offsetHeight / 2 - 40))}px`;
+      }
+      tipPinned = true;
+    };
+    // Right away (not on "idle", which waits for every basemap tile); retry briefly in case
+    // the layers aren't drawn yet.
+    let tries = 0;
+    const go = () => { openStory(); if (!tipPinned && STORY !== "fleet" && ++tries < 20) setTimeout(go, 250); };
+    setTimeout(go, 0);  // not requestAnimationFrame: it never fires in a background tab
+  }
   if (CLEAN && params.get("fit") === "1") {
     const b = new maplibregl.LngLatBounds();
     for (const p of visiblePieces()) for (const run of runsOf(p)) for (const c of run) b.extend(c);

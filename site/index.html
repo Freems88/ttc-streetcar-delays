@@ -30,6 +30,17 @@
 <div id="map"></div>
 <div id="loading" class="loading" role="status">Loading streetcar data…</div>
 
+<section id="intro" class="intro" hidden aria-labelledby="intro-when">
+  <button class="intro-x" id="intro-close" aria-label="Close">×</button>
+  <div class="intro-kicker" id="intro-when">Yesterday on Toronto's streetcars</div>
+  <p class="intro-head" id="intro-head"></p>
+  <ul class="intro-list" id="intro-list"></ul>
+  <div class="intro-foot">
+    <button class="intro-go" id="intro-go">Explore the map</button>
+    <span class="intro-note">Measured daily from where the TTC says each streetcar is. <button class="linkish" data-explain>How it works</button></span>
+  </div>
+</section>
+
 <aside id="panel" class="panel">
   <button id="panel-toggle" class="panel-toggle" aria-expanded="true" aria-controls="panel-body">
     <span>Stuck: Toronto's streetcar delays</span><span class="chev" aria-hidden="true"></span>
@@ -44,6 +55,7 @@
     </div>
 
     <nav class="explore" aria-label="More views">
+      <button class="pill pill-intro" id="intro-open" hidden>Yesterday's highlights</button>
       <button class="pill" id="compare-open">Compare routes</button>
       <button class="pill" id="fleet-open">Cars in service</button>
       <button class="pill" id="signals-open">Signals ranked</button>
@@ -75,6 +87,14 @@
           <button data-window="recent" class="on">90 days</button>
         </div>
       </div>
+      <div class="field">
+        <span class="label">Routes <span class="label-note">(pick any)</span></span>
+        <div class="chips route-chips" id="routes" role="group" aria-label="Routes">
+          <button data-route="" class="on" aria-pressed="true">All</button>
+        </div>
+      </div>
+      <details class="more-filters" id="more-filters">
+      <summary>More filters <span class="label-note" id="more-filters-note">time of day, direction</span></summary>
       <div class="field" id="time-field">
         <span class="label">Time of day <span class="label-note" id="time-label"></span></span>
         <div class="seg seg-sm" role="group" aria-label="Days">
@@ -101,12 +121,6 @@
         </details>
       </div>
       <div class="field">
-        <span class="label">Routes <span class="label-note">(pick any)</span></span>
-        <div class="chips route-chips" id="routes" role="group" aria-label="Routes">
-          <button data-route="" class="on" aria-pressed="true">All</button>
-        </div>
-      </div>
-      <div class="field">
         <span class="label">Direction</span>
         <div class="seg" role="group" aria-label="Direction">
           <button data-dir="both" class="on">Both</button>
@@ -114,6 +128,7 @@
           <button data-dir="ws">West / South</button>
         </div>
       </div>
+      </details>
     </div>
 
     <div class="breakdown" id="breakdown-box">
