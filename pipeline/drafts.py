@@ -389,8 +389,10 @@ def stop_waits_post(when, net, agg):
     alt = (f"Map of the streets around {name} in the waits view, a column at each stop. A tooltip for the stop reads "
            f"{w['ewt']:.1f} minutes of excess wait, with how often cars came bunched or with gaps, and a chart of the "
            f"spread of gaps between cars.")
+    # Columns grow with the wait: past 8 min, step back a zoom level per doubling so the column fits.
+    zoom = 15.2 - max(0.0, math.log2(max(w["ewt"], 0.1) / 8))
     return {"kind": "stopwait", "text": text, "alt": alt, "shot": {"clean": "1", "theme": "light", "tip": sid},
-            "hash": f"w=d1&v=wait&r={route}&d={d}&c={lon:.5f},{lat:.5f},15.2,{ANGLE},50", "size": [960, 720], "scale": 1.25}
+            "hash": f"w=d1&v=wait&r={route}&d={d}&c={lon:.5f},{lat:.5f},{zoom:.2f},{ANGLE},50", "size": [960, 720], "scale": 1.25}
 
 
 def signal_post(when, day_name, sig):
