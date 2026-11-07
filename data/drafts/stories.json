@@ -1,0 +1,62 @@
+{
+ "day": "2026-11-06",
+ "when": "Friday, Nov 6",
+ "headline": "Toronto's streetcars lost 969 hours to delays, across all routes.",
+ "items": [
+  {
+   "kind": "segment",
+   "label": "Slowest stretch",
+   "place": "Fleet St westbound, approaching Fort York Blvd",
+   "detail": "1 min 46 s lost per streetcar \u00b7 297 trips",
+   "q": {
+    "story": "segment",
+    "piece": "p7",
+    "b0": "162",
+    "b1": "172"
+   },
+   "hash": "w=d1&v=delay&r=509,511&d=ws"
+  },
+  {
+   "kind": "shortturn",
+   "label": "Most trips cut short",
+   "place": "505 Dundas",
+   "detail": "1 in 7 trips sent back before the end of the line",
+   "q": {
+    "story": "shortturn"
+   },
+   "hash": "w=d1&v=wait&r=505&d=ws"
+  },
+  {
+   "kind": "signal",
+   "label": "Longest holds at a signal",
+   "place": "Eastbound at Fort York Blvd & Fleet St",
+   "detail": "36% of streetcars waited 90 s or more",
+   "q": {
+    "story": "signal",
+    "tipa": "p6|1918"
+   },
+   "hash": "w=d1&v=signals&c=-79.40684,43.63639,16.2,-17,40&r=509,511"
+  },
+  {
+   "kind": "stopwait",
+   "label": "Longest extra wait at a stop",
+   "place": "Broadview Ave at Gerrard St East",
+   "detail": "15.8 min extra wait (504 King westbound)",
+   "q": {
+    "story": "stopwait",
+    "tip": "2673"
+   },
+   "hash": "w=d1&v=wait&r=504&d=ws&c=-79.35279,43.66566,15.6,-17,45"
+  },
+  {
+   "kind": "fleet",
+   "label": "Streetcars in service",
+   "place": "All streetcar routes",
+   "detail": "99% of scheduled service ran",
+   "q": {
+    "story": "fleet"
+   },
+   "hash": "w=d1"
+  }
+ ]
+}

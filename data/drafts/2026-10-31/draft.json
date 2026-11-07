@@ -1,0 +1,35 @@
+{
+ "day": "2026-10-31",
+ "generated": 1793524980,
+ "normal_days": 3,
+ "have_normal": false,
+ "positions": 311021,
+ "posts": [
+  {
+   "kind": "summary",
+   "text": "Yesterday (Sat Oct 31), Toronto streetcars spent 771 hours held up beyond a clean run.\n\nWorst: 501 Queen westbound, a typical trip lost 40 min.\nSmoothest: 512 St Clair eastbound, 11 min lost.\n\nhttps://freems88.github.io/ttc-streetcar-delays/",
+   "chars": 241
+  },
+  {
+   "kind": "segment",
+   "text": "Slowest segment yesterday: Bathurst St northbound approaching Fort York Blvd.\nEach streetcar lost 135 s here on average, over 140 passes: 5.2 hours in all.\nThe signal here has transit priority.",
+   "alt": "3D map of Bathurst St around Fort York Blvd, rotated to Toronto's street grid. Delay is drawn as a coloured ridge above the track, rising where streetcars lose time; the northbound segment at Fort York Blvd is highlighted, peaking at about 135 seconds lost per streetcar.",
+   "shot": {
+    "shot": "1",
+    "win": "yesterday",
+    "piece": "p6",
+    "b0": 57,
+    "b1": 69,
+    "title": "Bathurst St northbound, approaching Fort York Blvd",
+    "sub": "Sat Oct 31: 135 s lost per streetcar \u00b7 140 passes"
+   },
+   "chars": 193,
+   "image": "segment.png"
+  },
+  {
+   "kind": "service",
+   "text": "Service notes, Sat Oct 31:\n\u2022 504 King was often off its usual track: 304 King: Delays between King St West at Bathurst St East\u2026\n\u2022 506 Carlton ran partly with buses: Route change due to City and TTC construction\n+2 more on the map",
+   "chars": 229
+  }
+ ]
+}
