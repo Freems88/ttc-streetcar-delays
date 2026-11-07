@@ -728,7 +728,7 @@
   const TURN_ICONS = Object.fromEntries(Object.keys(TURN_ARROWS).map((k) => [k, turnIcon(k)]));
   const APPROACH = {Northbound: 0, Eastbound: 90, Southbound: 180, Westbound: 270}; // on the street grid
   const turnKind = (t) => {
-    t = t.toLowerCase();
+    t = t.toLowerCase().replace("rgiht", "right");  // a typo in the by-law data
     if (t.includes("u-turn")) return "u";
     if (t.includes("left") && t.includes("right")) return "lr";
     if (t.includes("left")) return "l";
@@ -1444,12 +1444,22 @@
     if (!info.object) { hideTip(); return; }
     const s = info.object.signal || info.object; // a turn sign carries its signal
     const esc = (t) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;");
-    const bans = (s.turns || []).filter((t) => !banExpired(t)).map((t) => `<div>${esc(t.dir)} ${esc(t.turn.toLowerCase())}` +
-      `${/turn/i.test(t.turn) ? "" : " turn"}: <span class="t-dim">${esc(t.when)}</span></div>`).join("");
+    // The by-law's "Turns Prohibited" column says "Left", "Right", "Left and Right", "U-Turns",
+    // "Right into <street>", or "Through"/"Thru" (no going straight across), with the odd typo;
+    // "turn" is added only where it is one, and street names keep their capitals.
+    const banText = (t) => {
+      const s = (t || "turns").replace(/\bRgiht\b/i, "Right").replace(/\bu-?turns?\b/i, "U-turns")
+        .replace(/\b(through|thru)\b/i, "straight through")
+        .replace(/\b(left|right)\b(?![- ]turn)/gi, (m) => `${m.toLowerCase()} turn`)
+        .replace(/^(left|right) turn and (left|right) turn\b/i, "$1 and $2 turns");
+      return s.startsWith("U-") ? s : s[0].toLowerCase() + s.slice(1);
+    };
+    const bans = (s.turns || []).filter((t) => !banExpired(t)).map((t) =>
+      `<div>${esc(t.dir)} ${esc(banText(t.turn))}: <span class="t-dim">${esc(t.when)}</span></div>`).join("");
     tip.innerHTML = `<div class="t-title">${s.midblock ? "Pedestrian signal" : "Traffic signal"}: ${esc(s.name)}</div>` +
       `<div class="t-dim">${s.tsp ? "Has transit signal priority (can extend a green or shorten a red for a streetcar)."
         : "No transit signal priority."}</div>` +
-      (bans ? `<div class="t-routes"><div class="t-head">Turns banned (City by-law)</div>${bans}</div>` : "");
+      (bans ? `<div class="t-routes"><div class="t-head">Banned here (City by-law)</div>${bans}</div>` : "");
     placeTip(info);
   }
 
