@@ -140,8 +140,13 @@ other way. Riders further along lose that car. The live feed says which schedule
 car is on (it matches the schedule about 99% of the time), so for every trip we know where it
 *should* have ended. A trip counts as short-turned when the car got no closer than 1 km to
 that end and then, within 20 minutes, came back past a stop at least 400 m behind the furthest
-one it reached. (A new trip number alone isn't enough: the feed sometimes relabels a car
-mid-route and it just carries on.) The place shown is the last scheduled stop the car reached,
+one it reached, without first carrying on 500 m or more past it. (A new trip number alone
+isn't enough: the feed sometimes moves a car to its next trip early, a couple of kilometres
+before the end of the line, and it finishes the run anyway.) That last check came from Steve
+Munro's suggestion to count cars on either side of common turn spots: the counts agreed at the
+real turn spots but not at Dundas & Parliament, where every car had in fact carried on. Those
+counts mislead where cars join or leave between the two lines (Coxwell, on the way to and from
+Russell carhouse), which is why we check each car's path rather than counting. The place shown is the last scheduled stop the car reached,
 not the exact turning spot, which can be a loop or a block further on. Trips the schedule itself ends early
 aren't short turns. A car that just disappears is counted separately as "ended early" (taken out
 of service, or lost from the feed); one heading for a yard isn't counted at all.
