@@ -151,7 +151,13 @@ before the end of the line, and it finishes the run anyway.) That last check cam
 Munro's suggestion to count cars on either side of common turn spots: the counts agreed at the
 real turn spots but not at Dundas & Parliament, where every car had in fact carried on. Those
 counts mislead where cars join or leave between the two lines (Coxwell, on the way to and from
-Russell carhouse), which is why we check each car's path rather than counting. The place shown is the last scheduled stop the car reached,
+Russell carhouse), which is why we check each car's path rather than counting. Diversions
+aren't short turns either, though the schedule doesn't know about them: a car that goes more
+than 1.5 km off its trip's path before coming back was diverted (turn-back loops seen so far
+go up to about 1.2 km), and a spot where 30% or more of a direction's trips stopped short that
+day was where the line ended that day. That's how the 505's weekend diversion on 7 November
+2026, turning at Bathurst Station via College while buses ran Dundas, stays out of the
+counts (it's counted as "diverted"). The place shown is the last scheduled stop the car reached,
 not the exact turning spot, which can be a loop or a block further on. Trips the schedule itself ends early
 aren't short turns. A car that just disappears is counted separately as "ended early" (taken out
 of service, or lost from the feed); one heading for a yard isn't counted at all.
