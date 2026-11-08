@@ -117,7 +117,10 @@ next car on the same route is the *headway*. From those:
 - **Bunched**: a car under half the scheduled gap behind the one ahead. **Big gap**: over 1.5×.
 
 Only frequent service counts (scheduled every 12 minutes or better). A stop where fewer than a
-third of the scheduled cars showed up that day is treated as diverted and left out.
+third of the scheduled cars showed up that day is treated as diverted and left out. A route's
+waits are shown only at stops on its own streetcar path (the patterns cars actually ran):
+buses filling in among streetcars count, but a replacement-bus routing doesn't show as the
+route, even where it passes another line's stop (the 506B bus up Spadina in November 2026).
 
 ### Signals: held 90 s+
 For every signal and direction, each streetcar's time through the approach (100 m before the
