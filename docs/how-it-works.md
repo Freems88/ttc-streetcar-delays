@@ -182,6 +182,19 @@ snowfall-to-meltwater table: about 10:1 near 0 °C, 15:1 to −7 °C, 20:1 colde
 above freezing are rain in mm; days that crossed freezing are "rain, possibly with some snow".
 ❄ marks days below −15 °C. It covers the 90-day window.
 
+### Service changes
+The schedule doesn't know about detours, so on a detour day a route's numbers describe the
+detour: a "short turn" may be where the diversion turned, a stop's waits may be replacement
+buses. Rather than model every detour, `servicechanges.py` reads the TTC alerts the Pi saves
+and flags a route-day when a detour, no-service or route-change alert covered at least 3 of
+its service hours (6 am to midnight) and the change was temporary: planned for a week or less
+(a weekend diversion) or an incident. Month-long construction changes count as the route's
+normal for now; the observed route patterns already follow them. Subway delays and station
+elevator outages, which list connecting streetcar routes, are skipped. On flagged days the
+bot doesn't name that route for its superlatives (hardest hit, most short-turned, worst stop,
+furthest behind), and the trends page draws that day's point as a hollow ring, with the
+alert in the tooltip.
+
 ### The bot
 After the nightly build writes yesterday's drafts, the bot posts them as one thread spread over
 the day. It only posts while the switch file `~/ttc-streetcars/delays/bot-enabled` exists.
