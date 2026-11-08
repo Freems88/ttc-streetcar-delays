@@ -6,7 +6,9 @@ furthest scheduled stop the car came within NEAR_M of is how far it got. If that
 more than SHORT_KM of the trip undone:
 
   - within NEXT_S the car comes back past a stop of this trip at least BACK_KM behind the
-    furthest one (whatever trip it's signed on to by then)  -> a short turn, at that stop
+    furthest one (whatever trip it's signed on to by then), without first carrying on
+    FWD_KM or more past it                                   -> a short turn, at that stop
+    (a car that carried on was moved to its next trip early by the feed and finished the run)
   - it was last seen near a yard                             -> heading in (not counted)
   - it carried on without turning back                      -> not counted: the feed gave it
                                                                 a new trip number mid-route
@@ -31,6 +33,7 @@ SHORT_KM = 1.0    # more than this of the trip left undone = cut short
 MIN_RUN_KM = 1.0  # a run has to get this far into its trip to count
 NEXT_S = 20 * 60  # the car has this long after its trip ends to show it turned back
 BACK_KM = 0.4     # ...by passing a stop at least this far back along the way it came
+FWD_KM = 0.5      # ...without first carrying on at least this far past the furthest stop
 LOOKAHEAD = 25    # stops checked ahead of the furthest one so far (pings are ~150 m apart)
 
 
@@ -130,7 +133,17 @@ def detect(runs, sched, near_yard):
                 c["early"] += 1
                 continue
             back = [xy[i] for i in range(best) if BACK_KM <= cum[best] - cum[i] <= BACK_KM + 3]
-            if not any(math.hypot(x - bx, y - by) < NEAR_M for _, x, y in later for bx, by in back):
+            ahead = [xy[i] for i in range(best + 1, len(xy)) if FWD_KM <= cum[i] - cum[best] <= FWD_KM + 3]
+            reached = lambda stops: next((t for t, x, y in later
+                                          if any(math.hypot(x - sx, y - sy) < NEAR_M for sx, sy in stops)), None)
+            t_back = reached(back)
+            if t_back is None:
+                continue
+            # Carried on past the spot before coming back: the feed moved the car to its next
+            # trip early, and it finished the run (to the station, say) on that one. Counting
+            # cars either side of a turn spot, as Steve Munro suggested, showed these.
+            t_ahead = reached(ahead)
+            if t_ahead is not None and t_ahead < t_back:
                 continue
             c["short"] += 1
             d, to = _direction(headsign)
