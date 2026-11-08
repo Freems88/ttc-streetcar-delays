@@ -29,11 +29,12 @@ import zipfile
 from collections import defaultdict
 from datetime import datetime, timedelta
 
-from common import NIGHT_TWIN, STATIC_DIR, WORK_DIR
+from common import FLEXITY_IDS, NIGHT_TWIN, STATIC_DIR, WORK_DIR
 
 FREQUENT_S = 720     # scheduled headway at or under this counts as frequent service
 LOG_GAP_S = 300      # no positions fetched for longer than this = a gap in logging
 SAME_CAR_S = 300     # the same vehicle leaving the same stop again this soon is one departure
+MIN_CAR_SHARE = 1 / 3  # under this share of a stop's departures by streetcar that day: buses only, left out
 BUNCHED, GAP = 0.5, 1.5
 DEPART_M = 15        # time a car passes this far beyond the stop: it's moving again by then
 HIST_EDGES = [120, 240, 360, 480, 600, 900, 1200]  # seconds; the spread of gaps shown on the page
@@ -188,7 +189,10 @@ def summarize(day, departures, fetch_times, hour_key, track_stops):
 
     A stop where fewer than a third of the scheduled cars on a route showed up that day was
     most likely off the route (a diversion, or buses off the track); it's left out of the
-    measures for that day, not counted as one very long wait, and listed separately."""
+    measures for that day, not counted as one very long wait, and listed separately. So is
+    one where under MIN_CAR_SHARE of the departures were streetcars: replacement buses ran
+    it that day (the 505's Dundas stops on a weekend diversion), which isn't streetcar service.
+    Buses filling in among streetcars still count."""
     sched = schedule(day)
     if sched is None:
         return None
@@ -202,10 +206,11 @@ def summarize(day, departures, fetch_times, hour_key, track_stops):
             continue
         # One departure per car: drop repeats of the same vehicle (a trip id change, or
         # a stop on two overlapping pieces of track).
-        last_of, kept = {}, []
+        last_of, kept, cars = {}, [], 0
         for t, vid in sorted(departures.get((route, stop), ())):
             if t - last_of.get(vid, -1e9) > SAME_CAR_S:
                 kept.append(t)
+                cars += vid.isdigit() and int(vid) in FLEXITY_IDS
             last_of[vid] = t
 
         def sched_headway(t):
@@ -239,7 +244,7 @@ def summarize(day, departures, fetch_times, hour_key, track_stops):
             row[5] += hs
             row[6] += (h - hs) ** 2
             row[10 + bisect.bisect_right(HIST_EDGES, h)] += 1
-        if sum(r[0] for r in rows.values()) < n_sched / 3:
+        if sum(r[0] for r in rows.values()) < n_sched / 3 or cars < MIN_CAR_SHARE * len(kept):
             off[stop].append(route)
             continue
         out[stop][route] = {h: [round(v) for v in row] for h, row in rows.items()}
