@@ -301,6 +301,7 @@ input[type=range] { accent-color: var(--accent); }
 .tooltip .t-spread rect.held { fill: #f3d36b; }
 .tooltip .t-spread line { stroke: #f3d36b; stroke-width: 1.5; stroke-dasharray: 3 2; }
 .tooltip .t-spread text { fill: #c7c9cc; font-size: 9px; }
+.tooltip .t-spread text.v { fill: #f1f1ef; font-size: 8.5px; }
 .tooltip .t-key { font-size: 11px; }
 .tooltip .t-stale { color: #f3d36b; margin: 2px 0; }
 .tooltip .t-kind { margin: 2px 0 0; color: #f3d36b; font-size: 12px; }

@@ -1251,12 +1251,18 @@
   const minTxt = (m) => `${Math.abs(m) < 0.05 ? "0" : m.toFixed(1)} min`;
   // The spread of gaps between cars as small bars, with the scheduled gap marked.
   const SPREAD_EDGES = [0, 2, 4, 6, 8, 10, 15, 20];
+  // The share a histogram bar stands for, written just above it (the charts are too small for
+  // a y-axis). Under 1% is left blank.
+  const barValue = (share, cx, top) => (share < 0.005 ? ""
+    : `<text class="v" x="${cx.toFixed(1)}" y="${(top - 2).toFixed(1)}" text-anchor="middle">${Math.round(share * 100)}%</text>`);
   function spreadSvg(w) {
     if (!w.spread) return "";
-    const W = 240, H = 58, B = 12, bw = W / 8, max = Math.max(...w.spread, 1);
+    const W = 240, H = 70, B = 12, T = 12, bw = W / 8, max = Math.max(...w.spread, 1);
+    const total = w.spread.reduce((t, c) => t + c, 0) || 1;
     const bars = w.spread.map((c, i) => {
-      const h = c / max * (H - B - 4);
-      return `<rect x="${(i * bw + 1).toFixed(1)}" y="${(H - B - h).toFixed(1)}" width="${(bw - 2).toFixed(1)}" height="${h.toFixed(1)}" rx="1"/>`;
+      const h = c / max * (H - B - T), y = H - B - h;
+      return `<rect x="${(i * bw + 1).toFixed(1)}" y="${y.toFixed(1)}" width="${(bw - 2).toFixed(1)}" height="${h.toFixed(1)}" rx="1"/>` +
+        barValue(c / total, i * bw + bw / 2, y);
     }).join("");
     const labels = SPREAD_EDGES.map((m, i) => `<text x="${(i * bw).toFixed(1)}" y="${H - 2}">${m}</text>`).join("") +
       `<text x="${W}" y="${H - 2}" text-anchor="end">min</text>`;
@@ -1273,7 +1279,7 @@
     if (w.uneven >= 0.1) parts.push(`uneven spacing adds ${minTxt(w.uneven)}`);
     if (w.missing >= 0.1) parts.push(`missing cars add ${minTxt(w.missing)}`);
     return `<div>Cars came every <b>${minTxt(w.obsH)}</b> on average; scheduled every ${minTxt(w.schedH)}</div>` +
-      (w.spread ? `<div class="t-dim">Gaps between cars <span class="t-key">(dashed: scheduled gap)</span></div>${spreadSvg(w)}` : "") +
+      (w.spread ? `<div class="t-dim">Gaps between cars, share of all gaps <span class="t-key">(dashed: scheduled gap)</span></div>${spreadSvg(w)}` : "") +
       `<div>Riders turning up at random waited <b>${minTxt(w.awt)}</b> on average, ` +
       `vs ${minTxt(w.swt)} if cars had come as scheduled` +
       (parts.length ? `: ${parts.join(", ")}` : "") + `</div>` +
@@ -1349,15 +1355,15 @@
   const APPROACH_EDGES = [0, 15, 30, 60, 90, 120, 180];
   function approachSpreadSvg(a) {
     if (!a.spread) return "";
-    const W = 240, H = 58, B = 12, bw = W / 7, max = Math.max(...a.spread, 0.01);
+    const W = 240, H = 70, B = 12, T = 12, bw = W / 7, max = Math.max(...a.spread, 0.01);
     const bars = a.spread.map((v, i) => {
-      const h = v / max * (H - B - 4);
-      return `<rect class="${i >= 4 ? "held" : ""}" x="${(i * bw + 1).toFixed(1)}" y="${(H - B - h).toFixed(1)}" ` +
-        `width="${(bw - 2).toFixed(1)}" height="${h.toFixed(1)}" rx="1"/>`;
+      const h = v / max * (H - B - T), y = H - B - h;
+      return `<rect class="${i >= 4 ? "held" : ""}" x="${(i * bw + 1).toFixed(1)}" y="${y.toFixed(1)}" ` +
+        `width="${(bw - 2).toFixed(1)}" height="${h.toFixed(1)}" rx="1"/>` + barValue(v, i * bw + bw / 2, y);
     }).join("");
     const labels = APPROACH_EDGES.map((e, i) => `<text x="${(i * bw).toFixed(1)}" y="${H - 2}">${e}</text>`).join("") +
       `<text x="${W}" y="${H - 2}" text-anchor="end">s</text>`;
-    return `<div class="t-dim">Extra time at this signal <span class="t-key">(gold: 90 s+)</span></div>` +
+    return `<div class="t-dim">Extra time at this signal, share of streetcars <span class="t-key">(gold: 90 s+)</span></div>` +
       `<svg class="t-spread" viewBox="0 0 ${W} ${H}" role="img" aria-label="Share of streetcars by extra time: ` +
       `${a.spread.map((v, i) => `${Math.round(v * 100)}% ${i < 6 ? `${APPROACH_EDGES[i]} to ${APPROACH_EDGES[i + 1]}` : "over 180"} s`).join(", ")}">` +
       `${bars}<line x1="${(4 * bw).toFixed(1)}" x2="${(4 * bw).toFixed(1)}" y1="0" y2="${H - B}"/>${labels}</svg>`;
