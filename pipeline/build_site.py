@@ -365,11 +365,25 @@ def hour_stats(network, acc):
     return {"pieces": out}
 
 
-def headway_stats(acc):
+def route_stops(network):
+    """{route: stop ids on its (observed) streetcar patterns}. Waits are kept only there: a
+    replacement-bus routing can share a corner with another line's stop (in November 2026 the
+    506B bus went up Spadina, past the 510's College St stop) without being that route."""
+    route_of = {pat["id"]: pat["route"] for pat in network["patterns"]}
+    out = defaultdict(set)
+    for pid, ids in drafts.pattern_stops(network).items():
+        out[route_of[pid]].update(ids)
+    return out
+
+
+def headway_stats(acc, on_route):
     """Per stop, route and hour key: the headway sums from headways.py added up over the
     window's days (only days a saved schedule covered have them), plus how many of those
-    days each stop wasn't served on its route (diverted, or buses off the track)."""
-    return {"days": acc.head_days, "stops": acc.heads, "off": acc.heads_off}
+    days each stop wasn't served on its route (diverted, or buses off the track). Only stops
+    on the route's own streetcar patterns (route_stops)."""
+    keep = lambda per: {s: rs for s, rs in ((s, {r: v for r, v in routes.items() if s in on_route.get(r, ())})
+                                            for s, routes in per.items()) if rs}
+    return {"days": acc.head_days, "stops": keep(acc.heads), "off": keep(acc.heads_off)}
 
 
 def fleet_stats(days):
@@ -714,6 +728,7 @@ def main():
             break
     observed_patterns(network, newest)
     del newest
+    on_route = route_stops(network)
     pat_keys = {pat["id"]: {f"{pi}:{b}" for pi, b in pat["slices"]} for pat in network["patterns"]}
 
     if out.exists():
@@ -799,7 +814,7 @@ def main():
     for w, s in stats.items():
         (data / f"stats-{w}.json").write_text(json.dumps(s, separators=(",", ":")))
         (data / f"hours-{w}.json").write_text(json.dumps(hour_stats(network, accs[w]), separators=(",", ":")))
-        (data / f"headways-{w}.json").write_text(json.dumps(headway_stats(accs[w]), separators=(",", ":")))
+        (data / f"headways-{w}.json").write_text(json.dumps(headway_stats(accs[w], on_route), separators=(",", ":")))
         (data / f"fleet-{w}.json").write_text(json.dumps(fleet_stats(accs[w].days), separators=(",", ":")))
         (data / f"short-turns-{w}.json").write_text(json.dumps(short_turn_stats(accs[w].days), separators=(",", ":")))
 
@@ -887,7 +902,7 @@ def main():
     # Trends page: every finished day in the window, all against today's baseline (trends.py),
     # with the dates new TTC schedules started and the day's Toronto weather (weather.py).
     trend_days = [d["day"] for d in accs["recent"].days if d["day"] != today]
-    tr = trends.build(trend_days, lambda k: load_day(paths[k]), network, clean_recent, ap["approaches"])
+    tr = trends.build(trend_days, lambda k: load_day(paths[k]), network, clean_recent, ap["approaches"], on_route)
     starts = {headways._snapshot_cache(z)["feed_start"]
               for z in headways.STATIC_DIR.glob("surface-routes-and-schedules-for-bustime/*.zip")}
     tr["schedules"] = sorted(f"{s[:4]}-{s[4:6]}-{s[6:]}" for s in starts if len(s) == 8)

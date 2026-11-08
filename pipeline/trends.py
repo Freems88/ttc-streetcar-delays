@@ -45,7 +45,7 @@ def _r(x, n=2):
     return None if x is None else round(x, n)
 
 
-def day_rows(d, network, clean, approaches):
+def day_rows(d, network, clean, approaches, on_route=None):
     """{route: {measure: {band or split: value}}} for one day's processed results `d`."""
     weekend = date.fromisoformat(d["day"]).weekday() >= 5
     pid_of = [p["id"] for p in network["pieces"]]
@@ -123,10 +123,10 @@ def day_rows(d, network, clean, approaches):
         if hours is None:
             continue
         sums = {}
-        for routes in heads.values():
+        for stop, routes in heads.items():
             for route, by_hour in routes.items():
-                if route in bus_day:
-                    continue
+                if route in bus_day or (on_route is not None and stop not in on_route.get(route, ())):
+                    continue  # bus-run day, or a stop off the route's streetcar path (build_site.route_stops)
                 acc = sums.setdefault(route, [0] * 10)
                 for h in hours:
                     row = by_hour.get(str(h))
@@ -163,12 +163,12 @@ def day_rows(d, network, clean, approaches):
     return out
 
 
-def build(days, load, network, clean, approaches):
+def build(days, load, network, clean, approaches, on_route=None):
     """days: sorted day strings; load(day) -> that day's processed results.
     Returns {"days": [...], "routes": {route: {measure: {key: [value per day]}}}}."""
     series = {}
     for i, day in enumerate(days):
-        rows = day_rows(load(day), network, clean, approaches)
+        rows = day_rows(load(day), network, clean, approaches, on_route)
         for route, measures in rows.items():
             for m, vals in measures.items():
                 for k, v in vals.items():
