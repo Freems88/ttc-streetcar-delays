@@ -41,6 +41,7 @@ body.trends { overflow: auto; }
   box-shadow: var(--shadow);
 }
 .tr-tip b { font-weight: 600; }
+.tr-tip .tr-change { margin-top: 5px; max-width: 280px; }
 .tr-tip .row { display: flex; justify-content: space-between; gap: 14px; font-variant-numeric: tabular-nums; }
 .tr-tip .sw { display: inline-block; width: 10px; height: 3px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
 .tr-tip .dim { opacity: 0.75; }

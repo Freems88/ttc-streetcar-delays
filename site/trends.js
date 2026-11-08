@@ -185,7 +185,11 @@
       } else {
         svg += `<path d="${path(pts)}" fill="none" stroke="${c}" stroke-width="1.8"${dash}/>`;
       }
-      svg += pts.map((p) => (p ? `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="${smooth ? 1.8 : 2.8}" fill="${c}"${smooth ? ` opacity="0.6"` : ""}/>` : "")).join("");
+      // Days with a temporary TTC service change on this route (a detour): a hollow ring.
+      const changed = T.changes?.[ln.r] || {};
+      svg += pts.map((p, k) => (!p ? "" : changed[T.days[xi[k]]]
+        ? `<circle class="changed" cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="3.6" fill="var(--surface)" stroke="${c}" stroke-width="1.8"/>`
+        : `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="${smooth ? 1.8 : 2.8}" fill="${c}"${smooth ? ` opacity="0.6"` : ""}/>`)).join("");
     }
     svg += `<line class="cross" x1="0" x2="0" y1="${MT}" y2="${H - MB}" visibility="hidden"/>`;
     return {svg: svg + `</svg>`, lines};
@@ -263,10 +267,14 @@
     cross.setAttribute("x1", X(k)); cross.setAttribute("x2", X(k)); cross.setAttribute("visibility", "visible");
     const day = T.days[xi[k]], w = T.weather?.[day];
     const rows = lines.filter((l) => l.vals[k] != null).sort((a, b) => b.vals[k] - a.vals[k]).map((l) =>
-      `<div class="row"><span><span class="sw" style="background:${colorOf(l.r)}"></span>${nameOf(l.r)}${l.label ? ` <span class="dim">${l.label}</span>` : ""}</span><b>${def.fmt(l.vals[k])}</b></div>`).join("");
+      `<div class="row"><span><span class="sw" style="background:${colorOf(l.r)}"></span>${nameOf(l.r)}${l.label ? ` <span class="dim">${l.label}</span>` : ""}` +
+      `${T.changes?.[l.r]?.[day] ? ` <span class="dim">◌ detour</span>` : ""}</span><b>${def.fmt(l.vals[k])}</b></div>`).join("");
+    const esc = (t) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+    const notes = [...new Set(lines.map((l) => l.r))].filter((r) => T.changes?.[r]?.[day])
+      .map((r) => `<div class="dim tr-change">◌ ${esc(nameOf(r))}: ${esc(T.changes[r][day][0].slice(0, 90))}</div>`).join("");
     const wx = w ? `<div class="dim">${wxText(w)}` +
       `${w.tmin != null ? ` · ${Math.round(w.tmin)}° to ${Math.round(w.tmax)}°C` : ""}</div>` : "";
-    tip.innerHTML = `<div><b>${fmtDay(day, true)}</b></div>${wx}${rows || "<div class='dim'>No data this day</div>"}`;
+    tip.innerHTML = `<div><b>${fmtDay(day, true)}</b></div>${wx}${rows || "<div class='dim'>No data this day</div>"}${notes}`;
     tip.hidden = false;
     const tw = tip.offsetWidth, th = tip.offsetHeight;
     tip.style.left = `${Math.min(innerWidth - tw - 8, e.clientX + 14)}px`;

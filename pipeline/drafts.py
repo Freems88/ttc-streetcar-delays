@@ -35,6 +35,7 @@ from datetime import date
 from pathlib import Path
 
 import fleet
+import servicechanges
 from common import BIN_M, WORK_DIR
 
 DRAFTS = WORK_DIR / "drafts"
@@ -159,9 +160,12 @@ def worst_signal(site):
     return max(rows, key=lambda a: a["held"]["90"] * a["passes"], default=None)
 
 
-def summary_post(when, net, recent, yest, have_normal):
+def summary_post(when, net, recent, yest, have_normal, changed=()):
     pats = {p["id"]: p for p in net["patterns"]}
     loss_y, loss_n = route_losses(net, yest), route_losses(net, recent)
+    # Routes under a temporary service change (servicechanges.py) aren't named: their numbers
+    # describe a detour, not the route.
+    loss_y = {p: v for p, v in loss_y.items() if pats[p]["route"] not in changed}
     if not loss_y:
         return None
     label = lambda pid: f"{pats[pid]['route']} {pats[pid]['name']} {pats[pid]['direction'].lower()}"
@@ -293,7 +297,7 @@ MIN_SHORT_RUNS = 50  # trips a route needs yesterday to be named for short turns
 MIN_SHORT = 5        # ...and at least this many short turns
 
 
-def short_turn_post(when, net, agg):
+def short_turn_post(when, net, agg, changed=()):
     """Yesterday's route with the highest share of trips short-turned (shortturns.py), with a map
     of the route in the waits view: the short-turn marks, and the tooltip of its busiest spot."""
     st = agg.get("short_turns")
@@ -304,7 +308,10 @@ def short_turn_post(when, net, agg):
     total_runs = sum(c["runs"] for c in routes.values())
     if not routes or not total_runs:
         return None
-    route = max(routes, key=lambda r: routes[r]["short"] / routes[r]["runs"])
+    pickable = [r for r in routes if r not in changed]  # not a route on a detour that day
+    if not pickable:
+        return None
+    route = max(pickable, key=lambda r: routes[r]["short"] / routes[r]["runs"])
     c = routes[route]
     if c["short"] < MIN_SHORT:
         return None
@@ -339,7 +346,7 @@ MIN_BUSY_HEADWAYS = 80   # ...and to be the steadiest (a quiet stop is steady by
 MIN_SEEN = 0.75          # share of scheduled cars a stop must have seen to be named at all
 
 
-def stop_waits_post(when, net, agg):
+def stop_waits_post(when, net, agg, changed=()):
     """Yesterday's stop with the longest extra wait (frequent service, not a terminal), with a map
     image of it and its tooltip; the steadiest busy stop as a second line when it fits."""
     heads = agg.get("heads")
@@ -362,7 +369,7 @@ def stop_waits_post(when, net, agg):
             w = stop_wait(hours)
             # Only stops measured reliably: far fewer cars seen than scheduled usually means a
             # detection gap (a loop or junction right beside the stop), not service.
-            if w and (sid, route) in where and w["n"] >= MIN_SEEN * w["ns"]:
+            if w and (sid, route) in where and w["n"] >= MIN_SEEN * w["ns"] and route not in changed:
                 rows.append((sid, route, w))
     worst = [r for r in rows if r[2]["n"] >= MIN_STOP_HEADWAYS]
     if len(worst) < 20:
@@ -416,7 +423,7 @@ def signal_post(when, day_name, sig):
             "hash": f"w=d1&v=signals&c={lon:.5f},{lat:.5f},16.0,{ANGLE},45", "size": [960, 720], "scale": 1.25}
 
 
-def fleet_post(when, net, agg, partial=False):
+def fleet_post(when, net, agg, partial=False, changed=()):
     fl = agg.get("fleet") or {}
     act, sch = fl.get("actual") or {}, fl.get("sched")
     if not sch or not act:
@@ -438,7 +445,7 @@ def fleet_post(when, net, agg, partial=False):
         return None
     # Routes mostly run by buses are left to the service post.
     short = {r: hours(act[r]["car"]) / hours(sch[r]["car"]) for r in sch
-             if r in act and hours(sch[r]["car"]) >= 20 and hours(act[r]["bus"]) < 0.5 * hours(sch[r]["car"])}
+             if r in act and r not in changed and hours(sch[r]["car"]) >= 20 and hours(act[r]["bus"]) < 0.5 * hours(sch[r]["car"])}
     lines = [f"{when}: at the busiest moment ({at}), {cars[peak]:.0f} streetcars were in service, "
              f"against {sched[peak]:.0f} scheduled.",
              f"Overall, {car_h / sched_h:.0%} of scheduled streetcar service ran"
@@ -570,12 +577,13 @@ def _make(site, force=False, today=False):
         when = f"{day_name} so far (to {now.tm_hour % 12 or 12}:{now.tm_min:02d} {'am' if now.tm_hour < 12 else 'pm'})"
     have_normal = meta["windows"]["recent"]["days"] >= MIN_NORMAL_DAYS
     agg = load_agg(day)
-    posts = [p for p in (summary_post(when, net, recent, yest, have_normal),
+    changed = set(servicechanges.flags([day]).get(day, {}))
+    posts = [p for p in (summary_post(when, net, recent, yest, have_normal, changed),
                          segment_post(when, day_name, net, recent, yest, have_normal, today),
-                         short_turn_post(when, net, agg),
+                         short_turn_post(when, net, agg, changed),
                          None if today else signal_post(when, day_name, worst_signal(site)),
-                         fleet_post(when, net, agg, today),
-                         stop_waits_post(when, net, agg),
+                         fleet_post(when, net, agg, today, changed),
+                         stop_waits_post(when, net, agg, changed),
                          service_post(day, when, net, timeline)) if p]
     if today:  # images come from yesterday's window, so so-far drafts go without
         for p in posts:

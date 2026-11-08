@@ -38,6 +38,7 @@ import drafts
 import fleet
 import headways
 import signals
+import servicechanges
 import trends
 import turns
 from common import BIN_M, DATA_DIR, NIGHT_TWIN, SLOT_LABELS, SLOTS, WORK_DIR, service_day
@@ -910,6 +911,13 @@ def main():
     if wfile.exists():
         w = json.loads(wfile.read_text())
         tr["weather"] = {k: w[k] for k in trend_days if k in w}
+    # Temporary TTC service changes (detours, weekend diversions) per route and day, so a jump
+    # on a detour day reads as the detour (servicechanges.py).
+    ch = defaultdict(dict)
+    for day, routes in servicechanges.flags(trend_days).items():
+        for r, titles in routes.items():
+            ch[r][day] = titles
+    tr["changes"] = ch
     (data / "trends.json").write_text(json.dumps(tr, separators=(",", ":")))
 
     def totals(ds):
