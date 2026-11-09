@@ -47,6 +47,7 @@ ANGLE = GRID + 45        # stop and signal images look across the grid, so thing
 MIN_PASSES = 30          # a segment needs this many passes yesterday to be named
 MIN_NORMAL_DAYS = 7      # before this, no "usual" comparisons
 POST_LIMIT = 300         # Bluesky's limit, in characters (graphemes)
+UP_MIN, UP_SHARE = 2.0, 0.10  # "worse than usual": a trip at least this many min and this share above its usual
 TAGS = "#TTC #TransitSky #DataViz"  # on the first post of each day's thread
 KEEP_DAYS = 30
 MIN_HEADWAYS = 20        # per stop and route, as on the page
@@ -169,21 +170,28 @@ def summary_post(when, net, recent, yest, have_normal, changed=()):
     if not loss_y:
         return None
     label = lambda pid: f"{pats[pid]['route']} {pats[pid]['name']} {pats[pid]['direction'].lower()}"
-    if have_normal:
-        # Worst = most above its own usual; smoothest = lowest per km.
-        worst = max((p for p in loss_y if p in loss_n), key=lambda p: loss_y[p] - loss_n[p], default=None)
-    else:
-        worst = max(loss_y, key=loss_y.get)
-    best = min(loss_y, key=lambda p: loss_y[p] / max(1, pats[p]["length"]))
+    km = lambda pid: pats[pid]["length"] / 1000
+    usual = lambda pid: f" (usually {loss_n[pid]:.0f})" if have_normal and pid in loss_n else ""
+    # Slowest and smoothest are both ranked per km, so a long route isn't "worse" just for
+    # being long; the trip length is in the text so the comparison reads.
+    per_km = lambda pid: loss_y[pid] / max(0.5, km(pid))
+    worst, best = max(loss_y, key=per_km), min(loss_y, key=per_km)
     head = f"{when}: Toronto's streetcars lost {hours_lost(yest):,.0f} hours to delays, across all routes."
-    lines = []
-    if worst:
-        usual = f" (usually {loss_n[worst]:.0f})" if have_normal and worst in loss_n else ""
-        lines.append(f"Hardest hit: {label(worst)}, where the typical trip lost {loss_y[worst]:.0f} min{usual}.")
-    lines.append(f"Smoothest: {label(best)}, {loss_y[best]:.0f} min.")
-    text = f"{head}\n\n" + "\n".join(lines) + f"\n\n{TAGS}\n\n{SITE_URL}"
-    if post_len(text) > POST_LIMIT and len(lines) > 1:  # long route names: the smoothest line goes first
-        text = f"{head}\n\n{lines[0]}\n\n{TAGS}\n\n{SITE_URL}"
+    lines = [f"Slowest for its length: {label(worst)}. A typical {km(worst):.1f} km trip lost "
+             f"{loss_y[worst]:.0f} min{usual(worst)}.",
+             f"Smoothest: {label(best)}, {loss_y[best]:.0f} min over {km(best):.1f} km{usual(best)}."]
+    # Worse than usual: only a real jump (a quiet Sunday has none, rather than the least-improved route).
+    if have_normal:
+        up = {p: loss_y[p] - loss_n[p] for p in loss_y if p in loss_n}
+        jump = max(up, key=up.get, default=None)
+        if jump and up[jump] >= max(UP_MIN, UP_SHARE * loss_n[jump]):
+            lines.append(f"Worse than usual: {label(jump)}, {loss_y[jump]:.0f} min against {loss_n[jump]:.0f}.")
+    # Long route names can push it over the limit: drop the last line until it fits.
+    while lines:
+        text = f"{head}\n\n" + "\n".join(lines) + f"\n\n{TAGS}\n\n{SITE_URL}"
+        if post_len(text) <= POST_LIMIT or len(lines) == 1:
+            break
+        lines.pop()
     return {"kind": "summary", "text": text}
 
 
