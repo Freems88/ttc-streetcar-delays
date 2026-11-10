@@ -1403,27 +1403,41 @@
   const sigHours = {};
   const HB_HOURS = [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 0, 1];
   const HB_ROWS = ["under 15 s", "15–30 s", "30–60 s", "60–90 s", "90 s–2 min", "2–3 min", "3 min+"];
-  function hourHeatSvg(hb) {
-    // Drawn at about the width it shows at, so the labels stay readable on a phone.
-    const W = Math.min(460, Math.max(300, innerWidth - 80)), L = 68, CW = (W - L) / HB_HOURS.length;
-    const CH = 13, H = HB_ROWS.length * CH + 16, every = CW < 16 ? 4 : 3;
+  // Single hours when there are enough streetcars in them (most hours HB_MIN+), else 3-hour
+  // blocks (one day of data gives ~10-15 cars an hour at a signal); null if even those are thin.
+  const HB_MIN = 20;
+  function hourHeat(hb) {
     const hr = (h) => (h === 0 ? "12a" : h === 12 ? "12p" : h < 12 ? `${h}a` : `${h - 12}p`);
-    let s = `<svg class="rank-heat-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Share of streetcars by extra time, by hour of day">`;
+    const group = (k) => {
+      const cols = [];
+      for (let i = 0; i < HB_HOURS.length; i += k) {
+        const hs = HB_HOURS.slice(i, i + k), row = HB_ROWS.map((_, r) => hs.reduce((t, h) => t + ((hb[h] || [])[r] || 0), 0));
+        cols.push({hs, row, n: row.reduce((t, x) => t + x, 0)});
+      }
+      const ns = cols.map((c) => c.n).sort((a, b) => a - b);
+      return {k, cols, ok: ns[Math.floor(ns.length / 2)] >= HB_MIN};
+    };
+    const g = [group(1), group(3)].find((x) => x.ok);
+    if (!g) return null;
+    // Drawn at about the width it shows at, so the labels stay readable on a phone.
+    const W = Math.min(460, Math.max(300, innerWidth - 80)), L = 68, CW = (W - L) / g.cols.length;
+    const CH = 13, H = HB_ROWS.length * CH + 16, every = g.k > 1 ? 1 : CW < 16 ? 4 : 3;
+    const span = (c) => (c.hs.length > 1 ? `${hr(c.hs[0])}–${hr((c.hs[c.hs.length - 1] + 1) % 24)}` : hr(c.hs[0]));
+    let svg = `<svg class="rank-heat-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Share of streetcars by extra time, by time of day">`;
     HB_ROWS.forEach((name, r) => {
-      s += `<text x="${L - 6}" y="${(HB_ROWS.length - 1 - r) * CH + CH / 2 + 3.5}" text-anchor="end">${name}</text>`;
+      svg += `<text x="${L - 6}" y="${(HB_ROWS.length - 1 - r) * CH + CH / 2 + 3.5}" text-anchor="end">${name}</text>`;
     });
-    HB_HOURS.forEach((h, i) => {
-      const row = hb[h] || [], n = row.reduce((t, x) => t + x, 0), x = L + i * CW;
+    g.cols.forEach((c, i) => {
+      const x = L + i * CW, thin = c.n < HB_MIN;
       HB_ROWS.forEach((name, r) => {
-        const v = n ? (row[r] || 0) / n : 0, y = (HB_ROWS.length - 1 - r) * CH;
-        const op = n < 20 ? 0 : Math.min(1, v / 0.5);
-        s += `<rect x="${(x + 0.75).toFixed(1)}" y="${y + 0.75}" width="${(CW - 1.5).toFixed(1)}" height="${CH - 1.5}" rx="1.5" ` +
-          `class="${n < 20 ? "hb-none" : "hb-cell"}" fill-opacity="${(0.06 + 0.94 * op).toFixed(2)}">` +
-          `<title>${hr(h)} · ${name}: ${n < 20 ? "too few streetcars" : `${Math.round(v * 100)}% of ${n}`}</title></rect>`;
+        const v = c.n ? c.row[r] / c.n : 0, y = (HB_ROWS.length - 1 - r) * CH, op = thin ? 0 : Math.min(1, v / 0.5);
+        svg += `<rect x="${(x + 0.75).toFixed(1)}" y="${y + 0.75}" width="${(CW - 1.5).toFixed(1)}" height="${CH - 1.5}" rx="1.5" ` +
+          `class="${thin ? "hb-none" : "hb-cell"}" fill-opacity="${(0.06 + 0.94 * op).toFixed(2)}">` +
+          `<title>${span(c)} · ${name}: ${thin ? "too few streetcars" : `${Math.round(v * 100)}% of ${c.n}`}</title></rect>`;
       });
-      if (i % every === 0) s += `<text x="${(x + CW / 2).toFixed(1)}" y="${HB_ROWS.length * CH + 12}" text-anchor="middle">${hr(h)}</text>`;
+      if (i % every === 0) svg += `<text x="${(x + CW / 2).toFixed(1)}" y="${HB_ROWS.length * CH + 12}" text-anchor="middle">${hr(c.hs[0])}</text>`;
     });
-    return s + `</svg>`;
+    return {svg: svg + `</svg>`, blocks: g.k > 1};
   }
 
   function renderSignalRanks() {
@@ -1466,9 +1480,11 @@
             const w = state.window;
             sigHours[w] ||= await get(`signal-hours-${w}.json`).catch(() => ({}));
             const hb = sigHours[w][`${a.piece}|${a.px}`];
-            panel.innerHTML = hb ? hourHeatSvg(hb) +
-              `<div class="rank-heat-key">Darker = more of that hour's streetcars · ${WINDOW_LABELS[w]}, all days</div>`
-              : `<p class="compare-note">No hourly data for this signal yet.</p>`;
+            const heat = hb && hourHeat(hb);
+            panel.innerHTML = heat ? heat.svg +
+              `<div class="rank-heat-key">Darker = more of the streetcars in that ${heat.blocks ? "block" : "hour"} · ` +
+              `${WINDOW_LABELS[w]}, all days${heat.blocks ? " · 3-hour blocks: too few streetcars for single hours" : ""}</div>`
+              : `<p class="compare-note">Too few streetcars here in this period to break down by time of day. Try 7 days or longer.</p>`;
           }
           panel.hidden = !open;
           more.textContent = open ? "▴" : "▾";
