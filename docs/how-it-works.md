@@ -131,6 +131,9 @@ More than 90 s longer means it most likely missed the first green it could have 
 about a typical Toronto cycle, a stand-in, since each signal's real cycle isn't published in
 usable form (shares over 60 s and 120 s are shown too). The **held 90 s+ rate** per approach, and two ranked lists
 (priority that isn't delivering; no priority, held most), show *where* streetcars wait, not *why*.
+Each ranked signal has a "By hour" heat map: the share of each hour's streetcars in each band of
+extra time, all days pooled (`signal-hours-<window>.json`, loaded only when opened). A steady
+band at one wait length through the day points at signal timing rather than traffic.
 Approaches with a stop in them are shown faded and left out of the rankings; a signal within
 ~120 m downstream is flagged, since its queue may spill back.
 

@@ -22,6 +22,7 @@ memory stays flat however long the archive gets. Along the way two data rules ap
 
 Usage: build_site.py OUT_DIR   (copies site/ into OUT_DIR and writes OUT_DIR/data/)
 """
+import bisect
 import gzip
 import hashlib
 import json
@@ -499,6 +500,13 @@ def approach_stats(acc, network, sigs, piece_routes):
                 break
         clean = (clean_b + 0.5) * 10
         delays = sorted(((max(0.0, (b + 0.5) * 10 - clean), c) for b, c in allh.items()))
+        # Extra time by hour of day (all days), in the spread's bins: the "By hour" heat map in
+        # Signals ranked. Moved to its own file (signal-hours-<w>.json), loaded only when opened.
+        by_hour = defaultdict(lambda: [0] * (len(SPREAD_EDGES_S) + 1))
+        for h, buckets in hours.items():
+            row = by_hour[h % 24]
+            for b, c in buckets.items():
+                row[bisect.bisect_right(SPREAD_EDGES_S, max(0.0, (b + 0.5) * 10 - clean))] += c
 
         def pct(q):
             k, run = q * n, 0
@@ -526,6 +534,7 @@ def approach_stats(acc, network, sigs, piece_routes):
             "stop_in_zone": any(lo <= st["along"] <= hi for st in p["stops"]),
             "next_signal_close": bool(nxt),
             "b": b_sig,
+            "hb": {str(h): r for h, r in sorted(by_hour.items())},
         })
     out.sort(key=lambda r: -r["hours_per_day"])
     return {"days": acc.zone_days, "held_thresholds": HELD_S, "approaches": out}
@@ -889,7 +898,9 @@ def main():
     # bot's midday signal post uses yesterday's, d1).
     for w, acc in accs.items():
         out_ap = approach_stats(acc, network, sigs, piece_routes)
+        hb = {f"{r['piece']}|{r['px']}": r.pop("hb") for r in out_ap["approaches"]}
         (data / f"signal-approaches-{w}.json").write_text(json.dumps(out_ap, separators=(",", ":")))
+        (data / f"signal-hours-{w}.json").write_text(json.dumps(hb, separators=(",", ":")))
         if w == "recent":
             ap = out_ap
     clean_ap = [r for r in ap["approaches"] if not r["stop_in_zone"]]
