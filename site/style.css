@@ -242,6 +242,13 @@ input[type=range] { accent-color: var(--accent); }
   border: 1px solid var(--line); background: var(--surface); color: var(--muted); font-size: 13px; line-height: 1;
 }
 .rank-hours:hover, .rank-hours:focus-visible, .rank-hours[aria-expanded="true"] { color: var(--accent); border-color: var(--accent); outline: none; }
+/* Touch screens: a finger-sized target with space between it and the row, so a slightly
+   off tap doesn't hit the row (which goes to the map). */
+@media (pointer: coarse) {
+  .rank-item .compare-row { padding-right: 64px; }
+  .rank-hours { top: 4px; right: 0; width: 50px; height: 56px; border-radius: 12px; font-size: 16px; touch-action: manipulation; }
+  .rank-item .compare-sub { grid-column: 1 / -1; }
+}
 .rank-heat { margin: 4px 0 8px 6px; }
 .rank-heat-svg { display: block; width: 100%; max-width: 460px; height: auto; }
 .rank-heat-svg text { fill: var(--muted); font-size: 9.5px; font-family: inherit; }
@@ -418,6 +425,8 @@ body.shot .legend { bottom: 20px; right: 20px; }
   .legend { left: 8px; right: auto; top: 8px; bottom: auto; width: 210px; padding: 8px 10px 6px; }
   .legend-title { font-size: 11px; }
   .tooltip { left: 8px !important; right: 8px; top: 8px !important; max-width: none; }
-  .intro { top: auto; bottom: 56px; left: 8px; right: 8px; width: auto; transform: none; max-height: calc(100vh - 72px); padding: 14px 16px 12px; }
+  /* Centred in the space above the bottom bar (about 64 px tall), never reaching it. */
+  .intro { top: calc((100dvh - 72px) / 2); bottom: auto; left: 8px; right: 8px; width: auto; transform: translateY(-50%);
+           max-height: calc(100dvh - 96px); padding: 14px 16px 12px; }
   .intro-head { font-size: 16px; }
 }
