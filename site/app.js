@@ -1452,8 +1452,10 @@
         const item = document.createElement("div");
         item.className = "rank-item";
         const more = document.createElement("button");
-        more.className = "linkish rank-hours";
-        more.textContent = "By hour ▾";
+        more.className = "rank-hours";
+        more.textContent = "▾";
+        more.title = "Waits by hour of day";
+        more.setAttribute("aria-label", `Waits by hour at ${a.name}, ${a.dir}`);
         more.setAttribute("aria-expanded", "false");
         const panel = document.createElement("div");
         panel.className = "rank-heat";
@@ -1469,7 +1471,7 @@
               : `<p class="compare-note">No hourly data for this signal yet.</p>`;
           }
           panel.hidden = !open;
-          more.textContent = open ? "By hour ▴" : "By hour ▾";
+          more.textContent = open ? "▴" : "▾";
           more.setAttribute("aria-expanded", String(open));
         });
         item.append(row, more, panel);
