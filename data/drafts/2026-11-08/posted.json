@@ -1,0 +1,18 @@
+{
+ "done": [
+  "summary",
+  "segment",
+  "shortturn",
+  "signal",
+  "fleet",
+  "stopwait"
+ ],
+ "root": {
+  "uri": "at://did:plc:h7k3jadwyj4n57maqoocuv4w/app.bsky.feed.post/3mzuxfbxzic26",
+  "cid": "bafyreiccv77cn3xjnydcbtfw3fjsv5a3ny4ej3eaptmcokl22vlwbw7upm"
+ },
+ "last": {
+  "uri": "at://did:plc:h7k3jadwyj4n57maqoocuv4w/app.bsky.feed.post/3mzvxalf7iu2f",
+  "cid": "bafyreifbhjdryt45znrs2aeuywjirbtxk2glky6qwegncocsmuvsf5jmmy"
+ }
+}

@@ -1,0 +1,62 @@
+{
+ "day": "2026-11-13",
+ "when": "Friday, Nov 13",
+ "headline": "Toronto's streetcars lost 970 hours to delays, across all routes.",
+ "items": [
+  {
+   "kind": "segment",
+   "label": "Slowest stretch",
+   "place": "York St southbound, approaching Adelaide St West",
+   "detail": "2 min 49 s lost per streetcar \u00b7 144 trips",
+   "q": {
+    "story": "segment",
+    "piece": "p23",
+    "b0": "39",
+    "b1": "55"
+   },
+   "hash": "w=d1&v=delay&r=501&d=ws"
+  },
+  {
+   "kind": "shortturn",
+   "label": "Most trips cut short",
+   "place": "512 St Clair",
+   "detail": "1 in 14 trips sent back before the end of the line",
+   "q": {
+    "story": "shortturn"
+   },
+   "hash": "w=d1&v=wait&r=512&d=en"
+  },
+  {
+   "kind": "signal",
+   "label": "Longest holds at a signal",
+   "place": "Eastbound at Fort York Blvd & Fleet St",
+   "detail": "40% of streetcars waited 90 s or more",
+   "q": {
+    "story": "signal",
+    "tipa": "p6|1918"
+   },
+   "hash": "w=d1&v=signals&c=-79.40684,43.63639,16.0,28,45&r=509,511"
+  },
+  {
+   "kind": "stopwait",
+   "label": "Longest extra wait at a stop",
+   "place": "2155 Lake Shore Blvd West",
+   "detail": "6.0 min extra wait (507 Long Branch eastbound)",
+   "q": {
+    "story": "stopwait",
+    "tip": "5895"
+   },
+   "hash": "w=d1&v=wait&r=507&d=en&c=-79.47974,43.62571,15.20,28,50"
+  },
+  {
+   "kind": "fleet",
+   "label": "Streetcars in service",
+   "place": "All streetcar routes",
+   "detail": "99% of scheduled service ran",
+   "q": {
+    "story": "fleet"
+   },
+   "hash": "w=d1"
+  }
+ ]
+}

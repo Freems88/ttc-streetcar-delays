@@ -1,0 +1,110 @@
+{
+ "day": "2026-11-08",
+ "partial": false,
+ "generated": 1794216502,
+ "normal_days": 11,
+ "have_normal": true,
+ "positions": 297957,
+ "posts": [
+  {
+   "kind": "summary",
+   "text": "Sunday, Nov 8: Toronto's streetcars lost 787 hours to delays, across all routes.\n\nSlowest for its length: 510 Spadina southbound. A typical 4.9 km trip lost 11 min (usually 12).\nSmoothest: 507 Long Branch westbound, 10 min over 8.0 km (usually 12).\n\n#TTC #TransitSky #DataViz\n\nhttps://stuckin.to/",
+   "chars": 275
+  },
+  {
+   "kind": "segment",
+   "text": "Sunday's slowest spot: Southbound on Spadina Ave, approaching Queen St West.\nThe average streetcar lost 1 min 51 s here (usually 1 min 41 s). Across 203 trips, that adds up to 6.3 hours.\nThis signal has transit priority.",
+   "alt": "3D map of Spadina Ave around Queen St West, rotated to Toronto's street grid. Delay is drawn as a coloured ridge above the track, rising where streetcars lose time; the southbound stretch at Queen St West is highlighted, peaking at about 1 min 51 s lost per streetcar.",
+   "shot": {
+    "shot": "1",
+    "win": "yesterday",
+    "piece": "p9",
+    "b0": 85,
+    "b1": 96,
+    "title": "Spadina Ave southbound, approaching Queen St West",
+    "sub": "Sunday, Nov 8: 1 min 51 s lost per streetcar \u00b7 203 trips"
+   },
+   "chars": 220,
+   "image": "segment.png"
+  },
+  {
+   "kind": "shortturn",
+   "text": "Most short-turned, Sunday, Nov 8: 512 St Clair. 1 in 15 trips (24) were sent back before the end of the line, most after St Clair Ave West at Lansdowne Ave West Side (westbound, 19), instead of going on to Keele.\n\nAcross all routes, 3% of trips were short-turned.",
+   "alt": "Map of the 512 St Clair route in the waits view: a column at each stop, taller and darker where riders waited longer than scheduled, and yellow warning signs where cars were short-turned. A tooltip on the busiest spot, after St Clair Ave West at Lansdowne Ave West Side, gives how many westbound cars were sent back there instead of going on to Keele.",
+   "shot": {
+    "clean": "1",
+    "theme": "light",
+    "fit": "1",
+    "tips": "1"
+   },
+   "hash": "w=d1&v=wait&r=512&d=ws",
+   "size": [
+    960,
+    720
+   ],
+   "scale": 1.25,
+   "chars": 263,
+   "image": "shortturn.png"
+  },
+  {
+   "kind": "signal",
+   "text": "Most held at a signal, Sunday, Nov 8: westbound at Strachan Ave & Fleet St.\n\n29% of streetcars waited 90 s or more beyond a clean approach, about a full signal cycle, despite transit priority.\nAbout 259 streetcars came through.",
+   "alt": "Map of the streets around Strachan Ave & Fleet St, with arrows for each direction of streetcar travel into each signal, coloured by how often streetcars were held 90 seconds or more. A tooltip for the westbound approach reads 29% held 90 s+, with a histogram of extra time through the approach.",
+   "shot": {
+    "clean": "1",
+    "theme": "light",
+    "tipa": "p7|0571"
+   },
+   "hash": "w=d1&v=signals&c=-79.40963,43.63625,16.0,28,45",
+   "size": [
+    960,
+    720
+   ],
+   "scale": 1.25,
+   "chars": 227,
+   "image": "signal.png"
+  },
+  {
+   "kind": "fleet",
+   "text": "Sunday, Nov 8: at the busiest moment (1:50 pm), 138 streetcars were in service, against 140 scheduled.\nOverall, 98% of scheduled streetcar service ran, and buses ran 859 hours on streetcar routes.",
+   "alt": "Line chart of streetcars in service through Sunday, Nov 8, every 10 minutes from 4 am, against the TTC's schedule (dashed). The busiest moment was 138 streetcars at 1:50 pm, against 140 scheduled; over the day 98% of scheduled streetcar hours ran.",
+   "shot": {
+    "clean": "1",
+    "theme": "light",
+    "fleet": "1",
+    "title": "Streetcars in service, Sunday, Nov 8"
+   },
+   "hash": "w=d1",
+   "size": [
+    960,
+    500
+   ],
+   "scale": 1.25,
+   "chars": 196,
+   "image": "fleet.png"
+  },
+  {
+   "kind": "stopwait",
+   "text": "Longest extra wait at a stop, Sunday, Nov 8: Dundas St West at Sterling Rd (506 Carlton westbound).\n\nRiders waited 8.1 min on average, against 4.9 if cars had come as scheduled: 3.2 min extra. 23% of cars came bunched, and 12 of 129 scheduled cars never came.",
+   "alt": "Map of the streets around Dundas St West at Sterling Rd in the waits view, a column at each stop. A tooltip for the stop reads 3.2 minutes of excess wait, with how often cars came bunched or with gaps, and a chart of the spread of gaps between cars.",
+   "shot": {
+    "clean": "1",
+    "theme": "light",
+    "tip": "8431"
+   },
+   "hash": "w=d1&v=wait&r=506&d=ws&c=-79.44278,43.65068,15.20,28,50",
+   "size": [
+    960,
+    720
+   ],
+   "scale": 1.25,
+   "chars": 259,
+   "image": "stopwait.png"
+  },
+  {
+   "kind": "service",
+   "text": "Service changes, Sunday, Nov 8:\n\u2022 501 Queen, partly by bus: Route changes to accommodate streetcar track renewal on\u2026\n\u2022 504 King, partly by bus: Detour westbound via Church St, Richmond St E\u2026\n+2 more on the map",
+   "chars": 209
+  }
+ ]
+}

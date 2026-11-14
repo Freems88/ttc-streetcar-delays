@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Streetcar Replay</title>
+<meta name="description" content="Every Toronto streetcar's day, replayed from the TTC's live vehicle positions. Pick a car and ride along.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Stuck">
+<meta property="og:title" content="Stuck: replay yesterday's streetcars">
+<meta property="og:description" content="Every Toronto streetcar's day, replayed from the TTC's live vehicle positions. Pick a car and ride along.">
+<meta property="og:url" content="https://stuckin.to/replay.html">
+<meta property="og:image" content="https://stuckin.to/data/card.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="theme-color" content="#0d0e10">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
+<link href="replay.css?v=864c0659ef" rel="stylesheet">
+</head>
+<body>
+<div id="map"></div>
+<div id="loading" class="loading" role="status">Loading yesterday's streetcars…</div>
+
+<aside class="card" id="card">
+  <a class="back" href="./">← Delay map</a>
+  <h1>Replay</h1>
+  <p class="sub" id="day-label">Every streetcar, yesterday</p>
+  <p class="lede">Each streetcar's day, rebuilt from the TTC's live positions. <b>Tap a car to ride along.</b></p>
+  <div class="row">
+    <span class="label">Colour by</span>
+    <div class="seg" role="group" aria-label="Colour cars by">
+      <button data-color="route" class="on">Route</button>
+      <button data-color="speed">Speed</button>
+    </div>
+  </div>
+  <div class="row routes-head">
+    <span class="label">Routes</span>
+    <span class="hint" id="routes-hint">tap to pick</span>
+    <button class="linkish" id="routes-all" hidden>Show all</button>
+  </div>
+  <div id="routes" class="chips" role="group" aria-label="Routes shown"></div>
+  <div id="legend" class="legend speed" hidden></div>
+  <p class="st-count" id="st-count" hidden></p>
+  <button id="random" class="btn">Ride a random car</button>
+</aside>
+
+<aside class="follow" id="follow" hidden>
+  <div class="f-head">
+    <span class="f-dot" id="f-dot"></span>
+    <div>
+      <div class="f-title" id="f-title">Car 4508</div>
+      <div class="f-route" id="f-route">505 Dundas</div>
+    </div>
+    <button class="f-close" id="f-close" aria-label="Stop following">×</button>
+  </div>
+  <div class="f-now" id="f-now"></div>
+  <div class="race" id="race" hidden>
+    <div class="r-head"><span class="r-ghost" aria-hidden="true">👻</span> Racing the ghost
+      <button class="linkish" id="race-stop">End</button></div>
+    <div id="race-body"></div>
+    <div class="r-note">👻 The ghost drives at clean-run pace: the quickest 10% of daytime trips on <i>each</i> stretch, stops included. No real trip manages that everywhere at once. <span class="r-star">★</span> The best real trip is the fastest any car actually covered this stretch that day.</div>
+  </div>
+  <div class="f-stats" id="f-stats"></div>
+  <button id="race-btn" class="btn ghost-btn" hidden><span aria-hidden="true">👻</span> Race the ghost on this trip</button>
+</aside>
+
+<div class="bar" id="bar">
+  <button id="play" class="play" aria-label="Pause">❚❚</button>
+  <div class="clock" id="clock">7:00 am</div>
+  <input id="scrub" type="range" min="0" max="86400" step="30" value="10800" aria-label="Time of day">
+  <div class="seg speeds" role="group" aria-label="Playback speed">
+    <button data-speed="30">½ min/s</button>
+    <button data-speed="120">2 min/s</button>
+    <button data-speed="600" class="on">10 min/s</button>
+  </div>
+</div>
+
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script src="https://unpkg.com/deck.gl@9.1.14/dist.min.js"></script>
+<script src="replay.js?v=77ee85d2c5"></script>
+</body>
+</html>

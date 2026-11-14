@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Streetcar Trends</title>
+<meta name="description" content="How Toronto streetcar delays, signal holds, waits and service change from day to day, by route.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Stuck">
+<meta property="og:title" content="Stuck: streetcar trends">
+<meta property="og:description" content="How Toronto streetcar delays, signal holds, waits and service change from day to day, by route.">
+<meta property="og:image" content="https://stuckin.to/data/card.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="style.css?v=d44916f303" rel="stylesheet">
+<link href="trends.css?v=5674b1b13c" rel="stylesheet">
+</head>
+<body class="trends">
+<main class="tr-page">
+  <header class="tr-head">
+    <a class="back" href="./">← Delay map</a>
+    <h1>Trends</h1>
+    <p class="lede">How each route changes from day to day. Every day is measured against the same
+      baseline (the current clean runs), so days compare fairly; recent values can shift a little
+      while that baseline settles. <span id="span-note"></span></p>
+  </header>
+
+  <section class="tr-controls" aria-label="Filters">
+    <div class="field">
+      <span class="label">Routes <span class="label-note">(pick any)</span></span>
+      <div class="chips route-chips" id="routes" role="group" aria-label="Routes"></div>
+    </div>
+    <div class="tr-row">
+      <div class="field">
+        <span class="label">Period</span>
+        <div class="seg" role="group" aria-label="Period">
+          <button data-period="30">30 days</button>
+          <button data-period="90" class="on">90 days</button>
+        </div>
+      </div>
+      <div class="field">
+        <span class="label">Days</span>
+        <div class="seg" role="group" aria-label="Days">
+          <button data-days="all" class="on">All</button>
+          <button data-days="wd">Weekdays</button>
+          <button data-days="we">Weekends</button>
+        </div>
+      </div>
+      <div class="field">
+        <span class="label">Time of day</span>
+        <div class="seg" role="group" aria-label="Time of day">
+          <button data-band="all" class="on">All day</button>
+          <button data-band="am">AM peak</button>
+          <button data-band="pm">PM peak</button>
+        </div>
+      </div>
+      <label class="check"><input type="checkbox" id="shade-weather"> Shade rainy, snowy and very cold days</label>
+    </div>
+    <p class="field-note">◌ A hollow dot marks a day the TTC ran a temporary detour or route change on that route, so its numbers describe the detour, not the usual route.</p>
+    <p class="field-note" id="band-note" hidden>AM peak is 6–10 am and PM peak 3–7 pm, weekdays only, so weekends drop out.</p>
+  </section>
+
+  <div id="charts" class="tr-charts"></div>
+  <div id="tip" class="tr-tip" hidden></div>
+  <p class="meta" id="meta"></p>
+</main>
+<script src="trends.js?v=227067ede5"></script>
+</body>
+</html>
