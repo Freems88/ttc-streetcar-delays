@@ -221,142 +221,186 @@
   }
   const headColor = (d) => (state.color === "route" ? routeColor(d.p.r) : speedColor(kmh[d.i]));
 
-  // Zoomed in, the dots become cartoon streetcars standing on the track: side on, or end on
-  // with the roof stretching away (coming towards the camera, or going away from it), by which
-  // way they're going on screen. Every TTC streetcar is a Flexity now, so one drawing does,
-  // checked against photos of the real thing: red roof, a white band under it, tall dark
-  // windows, a white belt under them, red down to the rail; full-height black bellows at the
-  // four joints between the five sections; blunt ends where the roof rounds over into the
-  // windscreen, the bumper jutting out a little below. Plus destination sign, lights, glass
-  // doors, roof gear, pantograph and (cartoon) wheels. The glow round it is a mask tinted by
-  // route or speed, like the trails, which stay the legend.
-  // Every frame is 110 tall. Side on: nose right, a 184-long body (30 m) in the bottom 50,
-  // wheels on the rail at y 43 of those. End on: 40 wide, the near end's face at the bottom
-  // (y 64-96) and the roof receding up the frame to the far end's tip at y 7.
+  // Zoomed in, the dots become cartoon streetcars. Every TTC streetcar is a Flexity now, so one
+  // design does, checked against photos: red roof, a white band under it, tall dark windows
+  // that catch the sky, a white belt under them, red down to the rail; black bellows between
+  // the five sections; blunt ends; doors on the right side only (they run one way);
+  // pantograph on the short section behind the cab, grey equipment on the roof.
+  // Each car is five sprites, one per section, placed along its own track, so it bends round
+  // corners by itself. Each section is drawn from whichever of 16 directions it's facing on
+  // screen: a box seen from the camera's tilt (fixed at 50 degrees), its faces shaded, with
+  // the flat drawings below mapped onto them (side art on the sides, the cab and rear faces
+  // on the ends). Sprites are made as they're first needed. A soft halo on the ground under
+  // each car carries the route or speed colour, like the trails, which stay the legend.
+  //
+  // Side art, nose right: the body runs x 8-193 (184 = 30 m), roof y 8, rail y 42.
   const TRAM_BODY_PATH = "M15 8H184Q191.5 8 191.8 16L192 31L193 32.5V40Q193 42 191 42H12Q8 42 8 38V15Q8 8 15 8Z";
-  const TRAM_JOINTS = [54, 76, 124, 146];   // modules of 46, 22, 48, 22, 46
-  const TRAM_END_PATH = "M7 66L10 18Q12 7 20 7Q28 7 30 18L33 66V93Q33 96 30 96H10Q7 96 7 93Z";
-  const TRAM_ROOF_PATH = "M7.6 64L10 18Q12 7 20 7Q28 7 30 18L32.4 64Z";
-  const tramIcon = (inner, mask, w, flip) => ({
-    url: "data:image/svg+xml;charset=utf-8," + encodeURIComponent(
-      `<svg xmlns='http://www.w3.org/2000/svg' width='${2 * w}' height='220' viewBox='0 ${w === 200 ? -60 : 0} ${w} 110'>` +
-      (flip ? `<g transform='translate(${w} 0) scale(-1 1)'>${inner}</g>` : inner) + "</svg>"),
-    // Anchored on the track at the middle of the car: side on, under its centre; end on,
-    // halfway between the near end's wheels (y 96) and where the far end meets the track.
-    width: 2 * w, height: 220, anchorX: w, anchorY: w === 200 ? 206 : 136, mask,
-  });
-  // One drawing per view: R and L side on (going right or left across the screen), F coming
-  // towards the camera, B going away from it. The camera looks up the screen, so a car going
-  // right shows its right side and one going left its left side (mirrored; it can differ).
-  const tramViews = (side, front, back, mask, left = side) => ({R: tramIcon(side, mask, 200, false),
-    L: tramIcon(left, mask, 200, true), F: tramIcon(front, mask, 40, false), B: tramIcon(back, mask, 40, false)});
-  const blur = (w, path) => `<filter id='g' filterUnits='userSpaceOnUse' x='0' y='${w === 200 ? -60 : 0}' width='${w}' height='110'>` +
-    "<feGaussianBlur stdDeviation='3'/></filter>" +
-    `<path d='${path}' fill='#fff' stroke='#fff' stroke-width='5' stroke-linejoin='round' filter='url(#g)'/>`;
-  const TRAM_GLOW = tramViews(blur(200, TRAM_BODY_PATH), blur(40, TRAM_END_PATH), blur(40, TRAM_END_PATH), true);
-  // End on: wheels, red body, the roof in a deeper red with its bellows (narrowing with
-  // distance), grey equipment boxes on the three long sections and the pantograph on the
-  // short section behind the cab (near the front of the roof seen from the front, far along
-  // it seen from behind; py is where); the face has the white band at the roof's edge, the
-  // white belt and the white bumper. Then the front (big windscreen, destination sign,
-  // headlights) or the back (rear window, tail lights).
-  const endJoints = [[49.8, 8.3], [42.9, 8.7], [25.6, 9.6], [19, 10]].map(([y, x]) =>
-    `<path d='M${x} ${y}H${40 - x}' stroke='#1c1c20' stroke-width='2'/>`).join("");
-  const endBase = (py) => "<defs><linearGradient id='w' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='#56606e'/><stop offset='.45' stop-color='#1f232a'/><stop offset='1' stop-color='#121418'/></linearGradient></defs>" +
-    "<circle cx='11' cy='95' r='2.4' fill='#2a2b30'/><circle cx='29' cy='95' r='2.4' fill='#2a2b30'/>" +
-    `<path d='${TRAM_END_PATH}' fill='#da291c'/><path d='${TRAM_ROOF_PATH}' fill='#b51f16'/>` + endJoints +
-    "<rect x='12' y='52' width='16' height='8' rx='1.5' fill='#8e9198' stroke='#5c5f66' stroke-width='.7'/>" +
-    "<rect x='13' y='29' width='14' height='9' rx='1.5' fill='#8e9198' stroke='#5c5f66' stroke-width='.7'/>" +
-    "<rect x='14.2' y='11' width='11.6' height='5.5' rx='1.4' fill='#8e9198' stroke='#5c5f66' stroke-width='.7'/>" +
-    `<path d='M16 ${py + 2.5}L20 ${py - 2.5}L24 ${py + 2.5}M17.2 ${py - 2.5}H22.8' fill='none' stroke='#c4c4cc' stroke-width='1.2' stroke-linejoin='round'/>` +
-    "<path d='M7.4 63.5H32.6V66H7.3Z' fill='#f2f2f2'/><path d='M7 84.5H33V86.5H7Z' fill='#f2f2f2'/>" +
-    "<path d='M7 90.3H33V93H7Z' fill='#f2f2f2'/>";
-  const endGlare = "<path d='M15 66.2H20.5L14.5 84.3H9Z' fill='#fff' fill-opacity='.13'/><path d='M23 66.2H24.8L18.8 84.3H17Z' fill='#fff' fill-opacity='.13'/>";
-  const endOutline = `<path d='${TRAM_END_PATH}' fill='none' stroke='#000' stroke-opacity='.45' stroke-width='.8'/>`;
-  // Side on: wheels, grey roof equipment on the three long sections, the pantograph on the
-  // short section behind the cab, red body, white band under the roof, windows (the
-  // windscreen taller), white belt, bellows, doors, destination sign, lights, glare (kept
-  // inside the body), outline. The cars run one way, with doors on the right side only.
-  const tramSide = (doors) =>
-    "<defs><linearGradient id='w' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='#56606e'/><stop offset='.45' stop-color='#1f232a'/><stop offset='1' stop-color='#121418'/></linearGradient>" +
-    `<clipPath id='c'><path d='${TRAM_BODY_PATH}'/></clipPath></defs>` +
-    [22, 34, 94, 106, 162, 174].map((x) => `<circle cx='${x}' cy='41.5' r='2.2' fill='#2a2b30'/>`).join("") +
-    [[16, 34], [84, 34], [152, 28]].map(([x, w]) =>
-      `<rect x='${x}' y='5' width='${w}' height='3.8' rx='1' fill='#8e9198' stroke='#5c5f66' stroke-width='.7'/>`).join("") +
-    "<path d='M127 8.5L135 2.5L143 8.5M129.5 2.5H140.5' fill='none' stroke='#c4c4cc' stroke-width='1.3' stroke-linejoin='round'/>" +
+  const TRAM_JOINTS = [54, 76, 124, 146];   // sections of 46, 22, 48, 22, 46
+  const GLASS = "<linearGradient id='w' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='#56606e'/>" +
+    "<stop offset='.45' stop-color='#1f232a'/><stop offset='1' stop-color='#121418'/></linearGradient>";
+  // red body, white band under the roof, windows (the windscreen taller), white belt, bellows,
+  // doors, destination sign, lights, glare (kept inside the body by clip #c)
+  const sideArt = (doors) =>
     `<path d='${TRAM_BODY_PATH}' fill='#da291c'/>` +
     "<path d='M8.2 12.2H184.5Q191.3 12.4 191.6 16.6V18.4H8.2Z' fill='#f2f2f2'/>" +
     "<rect x='8.6' y='14.6' width='168' height='14.4' rx='1' fill='url(#w)'/>" +
     "<path d='M177 14H184.5Q191.2 14.2 191.5 18L191.8 30H177Z' fill='url(#w)'/>" +
-    "<path d='M8 29H192V31.3H8Z' fill='#f2f2f2'/>" +
-    TRAM_JOINTS.map((x) => `<rect x='${x - 2}' y='8.3' width='4' height='33.7' fill='#1c1c20'/>`).join("") +
+    "<path d='M8 29H193V31.3H8Z' fill='#f2f2f2'/>" +
+    TRAM_JOINTS.map((x) => `<rect x='${x - 2}' y='8' width='4' height='34' fill='#1c1c20'/>`).join("") +
     (doors ? [28, 60, 96, 152] : []).map((x) => `<rect x='${x}' y='14.6' width='10' height='26' rx='1' fill='url(#w)' stroke='#8d8d96' stroke-width='.8'/>` +
       `<path d='M${x + 5} 15V40.5' stroke='#8d8d96' stroke-width='.6'/>`).join("") +
     "<rect x='179' y='15.6' width='9.5' height='2.4' rx='.5' fill='#ffa31a'/>" +
-    "<rect x='191.3' y='33.4' width='1.8' height='1.6' rx='.5' fill='#fff6d8'/>" +
-    "<rect x='7.9' y='33.4' width='1.6' height='1.6' rx='.5' fill='#ff6a5a'/>" +
-    // glare: the glass nearly always catches the sky
     "<g clip-path='url(#c)'>" +
     [18, 46, 86, 114, 134, 166, 186].map((x) => `<path d='M${x} 14.6H${x + 5}L${x + 1.4} 29H${x - 3.6}Z' fill='#fff' fill-opacity='.13'/>` +
-      `<path d='M${x + 7} 14.6H${x + 8.6}L${x + 5} 29H${x + 3.4}Z' fill='#fff' fill-opacity='.13'/>`).join("") + "</g>" +
-    `<path d='${TRAM_BODY_PATH}' fill='none' stroke='#000' stroke-opacity='.45' stroke-width='.8'/>`;
-  const TRAM_BODY = tramViews(
-    tramSide(true),
-    endBase(46.3) +
+      `<path d='M${x + 7} 14.6H${x + 8.6}L${x + 5} 29H${x + 3.4}Z' fill='#fff' fill-opacity='.13'/>`).join("") + "</g>";
+  // End art, as seen from outside: x 7-33 across the car, y 63.5 (top of the face) to 96 (rail).
+  const endGlare = "<path d='M15 66.2H20.5L14.5 84.3H9Z' fill='#fff' fill-opacity='.13'/><path d='M23 66.2H24.8L18.8 84.3H17Z' fill='#fff' fill-opacity='.13'/>";
+  const endBands = "<rect x='7' y='60' width='26' height='36' fill='#da291c'/><path d='M7 63.5H33V66H7Z' fill='#f2f2f2'/>" +
+    "<path d='M7 84.5H33V86.5H7Z' fill='#f2f2f2'/><path d='M7 90.3H33V93H7Z' fill='#f2f2f2'/>";
+  const frontArt = endBands +   // big windscreen, destination sign, headlights
     "<rect x='8.2' y='66' width='23.6' height='18.5' rx='2' fill='url(#w)'/>" +
     "<rect x='12' y='67.4' width='16' height='2.5' rx='.5' fill='#ffa31a'/>" +
-    "<rect x='9' y='88.3' width='4.5' height='1.8' rx='.9' fill='#fff6d8'/><rect x='26.5' y='88.3' width='4.5' height='1.8' rx='.9' fill='#fff6d8'/>" +
-    endGlare + endOutline,
-    endBase(22.3) +
+    "<rect x='9' y='87.9' width='4.5' height='1.8' rx='.9' fill='#fff6d8'/><rect x='26.5' y='87.9' width='4.5' height='1.8' rx='.9' fill='#fff6d8'/>" + endGlare;
+  const rearArt = endBands +    // rear window, tail lights
     "<rect x='10' y='67' width='20' height='14.5' rx='2' fill='url(#w)'/>" +
-    "<rect x='9' y='88' width='4.5' height='2.2' rx='1' fill='#ff4a3a' stroke='#3a0806' stroke-width='.6'/>" +
-    "<rect x='26.5' y='88' width='4.5' height='2.2' rx='1' fill='#ff4a3a' stroke='#3a0806' stroke-width='.6'/>" +
-    endGlare + endOutline, false, tramSide(false));
-  const ring = (path) => `<path d='${path}' fill='#fff' stroke='#fff' stroke-width='6' stroke-linejoin='round'/>`;
-  const TRAM_RING = tramViews(ring(TRAM_BODY_PATH), ring(TRAM_END_PATH), ring(TRAM_END_PATH), false);
-  const TRAM_M = 30 * 110 / 184;  // frame height in metres, so the side-on body is a Flexity's 30 m
+    "<rect x='9' y='87.6' width='4.5' height='2.2' rx='1' fill='#ff4a3a' stroke='#3a0806' stroke-width='.6'/>" +
+    "<rect x='26.5' y='87.6' width='4.5' height='2.2' rx='1' fill='#ff4a3a' stroke='#3a0806' stroke-width='.6'/>" + endGlare;
+  const TRAM_K = 30 / 184;                       // metres per unit of side art
+  const TRAM_W = 3.8, TRAM_H = 34 * TRAM_K;      // chunky: wider and taller than life
+  // Rear to front: art x from/to, side profile (art units, round from the bottom-left), roof gear.
+  const SECTIONS = [
+    {x0: 8, x1: 54, prof: [[8, 42], [54, 42], [54, 8], [15, 8], [10, 10], [8, 15]], gear: true},
+    {x0: 54, x1: 76},
+    {x0: 76, x1: 124, gear: true},
+    {x0: 124, x1: 146, panto: true},
+    {x0: 146, x1: 193, prof: [[146, 42], [192.5, 42], [192, 16], [188, 9.5], [184, 8], [146, 8]], gear: true},
+  ].map((s) => ({...s, prof: s.prof || [[s.x0, 42], [s.x1, 42], [s.x1, 8], [s.x0, 8]]}));
+  const TRAM_MID = (8 + 193) / 2;                // the car's middle, in art units
+  const TRAM_DIRS = 16, TRAM_PITCH = 50 * Math.PI / 180;
+  const TRAM_PPM = 12, TRAM_FW = 12, TRAM_FH = 13, TRAM_CX = 6, TRAM_CY = 8.5;  // sprite frame, metres
+  const tramSprites = new Map();
+  function tramSprite(si, dir) {
+    // Section si seen heading dir (0 = right across the screen, counting anticlockwise, so
+    // 4 = away from the camera, 12 = towards it). Ground X right, Y away, Z up, in metres;
+    // u along the section (rear to front), w across (to its left), v up.
+    const key = si * TRAM_DIRS + dir;
+    if (tramSprites.has(key)) return tramSprites.get(key);
+    const s = SECTIONS[si], phi = dir / TRAM_DIRS * 2 * Math.PI;
+    const ca = Math.cos(phi), sa = Math.sin(phi), cp = Math.cos(TRAM_PITCH), sp = Math.sin(TRAM_PITCH);
+    const uc = (s.x1 - s.x0) * TRAM_K / 2, W = TRAM_W;
+    const P = (u, w, v) => [(TRAM_CX + (u - uc) * ca - w * sa) * TRAM_PPM,
+      (TRAM_CY - ((u - uc) * sa + w * ca) * cp - v * sp) * TRAM_PPM];
+    const view = [0, sp, -cp], lit = [-0.45, -0.55, 0.7].map((c, _, a) => c / Math.hypot(...a));
+    const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    const pts = (a) => a.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
+    const matrix = (F) => {
+      const o = F(0, 0), fx = F(1, 0), fy = F(0, 1);
+      return `matrix(${[fx[0] - o[0], fx[1] - o[1], fy[0] - o[0], fy[1] - o[1], o[0], o[1]].map((c) => c.toFixed(4)).join(" ")})`;
+    };
+    let out = "", ids = 0;
+    const face = (poly, n, fill, decal = "") => {
+      if (dot(n, view) > -1e-6) return;  // facing away from the camera
+      const dark = ((0.45 - 0.45 * Math.max(0, dot(n, lit))) * 0.8).toFixed(2);
+      out += `<polygon points='${pts(poly)}' fill='${fill}'/>${decal}` +
+        `<polygon points='${pts(poly)}' fill='#000' fill-opacity='${dark}' stroke='#000' stroke-opacity='.35' stroke-width='.7'/>`;
+    };
+    const decal = (F, clip, art) => {
+      const id = "k" + ids++;
+      return `<g transform='${matrix(F)}'><clipPath id='${id}'>${clip}</clipPath><g clip-path='url(#${id})'>${art}</g></g>`;
+    };
+    const prof = s.prof.map(([x, y]) => [(x - s.x0) * TRAM_K, (42 - y) * TRAM_K]);  // (u, v)
+    // The two sides: right (doors) and left.
+    for (const [w, sgn, doors] of [[-W / 2, -1, true], [W / 2, 1, false]]) {
+      const F = (X, Y) => P((X - s.x0) * TRAM_K, w, (42 - Y) * TRAM_K);
+      face(prof.map(([u, v]) => P(u, w, v)), [-sa * sgn, ca * sgn, 0], "#da291c",
+        decal(F, `<polygon points='${pts(s.prof)}'/>`, sideArt(doors)));
+    }
+    // The faces round the profile: cab and rear faces, bellows between sections, roof, bevels.
+    s.prof.forEach((_, i) => {
+      const [u0, v0] = prof[i], [u1, v1] = prof[(i + 1) % prof.length], len = Math.hypot(u1 - u0, v1 - v0);
+      if (len < 1e-6) return;
+      const nu = (v1 - v0) / len, nv = -(u1 - u0) / len, n = [nu * ca, nu * sa, nv];
+      const poly = [P(u0, -W / 2, v0), P(u1, -W / 2, v1), P(u1, W / 2, v1), P(u0, W / 2, v0)];
+      if (Math.abs(nu) > 0.9) {
+        const art = nu > 0 ? si === SECTIONS.length - 1 && frontArt : si === 0 && rearArt;
+        if (!art) return face(poly, n, "#1c1c20");
+        // Seen from outside, the viewer's right is the car's left at the front, its right at the back.
+        const [b, t] = v0 < v1 ? [[u0, v0], [u1, v1]] : [[u1, v1], [u0, v0]], side = nu > 0 ? 1 : -1;
+        const F = (X, Y) => {
+          const f = (96 - Y) / 32.5;
+          return P(b[0] + f * (t[0] - b[0]), side * (X - 20) / 26 * W, b[1] + f * (t[1] - b[1]));
+        };
+        return face(poly, n, "#da291c", decal(F, "<rect x='7' y='63.5' width='26' height='32.5'/>", art));
+      }
+      if (nv > 0.9) {
+        const a = Math.min(u0, u1), z = Math.max(u0, u1), g0 = a + (z - a) * 0.18, g1 = z - (z - a) * 0.18;
+        return face(poly, n, "#c3241a", s.gear ? `<polygon points='${pts([P(g0, -W * 0.28, v0),
+          P(g1, -W * 0.28, v0), P(g1, W * 0.28, v0), P(g0, W * 0.28, v0)])}' fill='#8e9198' stroke='#5c5f66' stroke-width='.6'/>` : "");
+      }
+      face(poly, n, "#c9261b");
+    });
+    if (s.panto) {
+      const u = uc, top = TRAM_H + 1.4, q = (a, b, c) => P(a, b, c).map((x) => x.toFixed(1)).join(",");
+      out += `<polyline points='${q(u - 1.3, 0, TRAM_H)} ${q(u, 0, top)} ${q(u + 1.3, 0, TRAM_H)}' fill='none' stroke='#c4c4cc' stroke-width='1.6' stroke-linejoin='round'/>` +
+        `<polyline points='${q(u, -1, top)} ${q(u, 1, top)}' fill='none' stroke='#c4c4cc' stroke-width='1.6'/>`;
+    }
+    const fw = TRAM_FW * TRAM_PPM, fh = TRAM_FH * TRAM_PPM;
+    const icon = {id: `tram-${si}-${dir}`, width: fw, height: fh, anchorX: TRAM_CX * TRAM_PPM, anchorY: TRAM_CY * TRAM_PPM,
+      url: "data:image/svg+xml;charset=utf-8," + encodeURIComponent(
+        `<svg xmlns='http://www.w3.org/2000/svg' width='${fw}' height='${fh}' viewBox='0 0 ${fw} ${fh}'>` +
+        `<defs>${GLASS}<clipPath id='c'><path d='${TRAM_BODY_PATH}'/></clipPath></defs>${out}</svg>`)};
+    tramSprites.set(key, icon);
+    return icon;
+  }
   // Drawn in metres, so they grow with the map and shrink with distance, but larger than
   // life: 5x where they appear (a side-on car is ~40 px long at zoom 15), easing back to
   // 1.2x when zoomed right in, so they still about double every zoom step and a half.
   const tramScale = (z) => Math.max(1.2, 5 * 0.8 ** (z - 15));
   const ICON_ZOOM = 15;           // dots below this zoom, streetcars above (crossfading over ±0.4)
-  const HEADING_M = 15;           // heading: from 15 m behind the car to 15 m ahead of it
   function posAtKm(p, km) {
-    const [i, f] = findIn(cumKm, p.i0, p.i1 - 1, km);
-    return [lerpAt(pos, i, f, 2, 0), lerpAt(pos, i, f, 2, 1)];
+    // On the trip's track; beyond either end, carried on straight (a car's ends overhang).
+    const k0 = cumKm[p.i0], k1 = cumKm[p.i1 - 1];
+    const on = (k) => {
+      const [i, f] = findIn(cumKm, p.i0, p.i1 - 1, k);
+      return [lerpAt(pos, i, f, 2, 0), lerpAt(pos, i, f, 2, 1)];
+    };
+    if ((km >= k0 && km <= k1) || k1 - k0 < 0.005) return on(Math.max(k0, Math.min(k1, km)));
+    const e = km < k0 ? k0 : k1, ref = km < k0 ? Math.min(k1, k0 + 0.02) : Math.max(k0, k1 - 0.02);
+    const a = on(e), b = on(ref), f = Math.abs(km - e) / Math.abs(e - ref);
+    return [a[0] + (a[0] - b[0]) * f, a[1] + (a[1] - b[1]) * f];
   }
-  function tramView(d, bearing, cosPitch) {
-    // Which way the car is going on screen: across it (side on) or up or down it (end on;
-    // up-down movement is foreshortened by the camera's tilt). A car keeps its view until it
-    // has clearly turned, and when the trip's too short to tell.
+  function tramParts(d, scale, bearing) {
+    // The car's section ends along its track (centred on where it is), and each section's
+    // middle and the direction it faces on screen.
     const km = cumKm[d.lo] + d.f * (cumKm[d.i] - cumKm[d.lo]);
-    const a = posAtKm(d.p, km - HEADING_M / 1000), b = posAtKm(d.p, km + HEADING_M / 1000);
-    const dx = (b[0] - a[0]) * KX, dy = (b[1] - a[1]) * KY;
-    const sx = dx * Math.cos(bearing) - dy * Math.sin(bearing);                // screen right
-    const sy = (dx * Math.sin(bearing) + dy * Math.cos(bearing)) * cosPitch;  // screen up
-    if (Math.hypot(sx, sy) > 0.5) {
-      const cur = d.p.view, k = cur ? 1.3 : 1;
-      const side = cur === "R" || cur === "L" ? Math.abs(sx) * k >= Math.abs(sy) : Math.abs(sx) > Math.abs(sy) * k;
-      d.p.view = side ? (sx < 0 ? "L" : "R") : (sy > 0 ? "B" : "F");
-    }
-    return d.p.view || "R";
+    const at = (x) => posAtKm(d.p, km + (x - TRAM_MID) * TRAM_K * scale / 1000);
+    const ends = [8, ...TRAM_JOINTS, 193].map(at);
+    const secs = SECTIONS.map((s, si) => {
+      const a = ends[si], b = ends[si + 1];
+      const dx = (b[0] - a[0]) * KX, dy = (b[1] - a[1]) * KY;
+      const sx = dx * Math.cos(bearing) - dy * Math.sin(bearing), sy = dx * Math.sin(bearing) + dy * Math.cos(bearing);
+      const dir = ((Math.round(Math.atan2(sy, sx) / (2 * Math.PI) * TRAM_DIRS) % TRAM_DIRS) + TRAM_DIRS) % TRAM_DIRS;
+      return {d, si, dir, pos: at((s.x0 + s.x1) / 2)};
+    });
+    return {d, path: ends, secs};
   }
   function tramLayers(hs, followed, mix) {
     if (!mix) return [];
-    const bearing = map.getBearing() * Math.PI / 180, cosPitch = Math.cos(map.getPitch() * Math.PI / 180);
-    for (const d of hs) d.view = tramView(d, bearing, cosPitch);
-    for (const d of followed) d.view = tramView(d, bearing, cosPitch);
-    const base = {getPosition: (d) => [d.lon, d.lat], sizeUnits: "meters",
-      getSize: TRAM_M * tramScale(map.getZoom()), opacity: mix};
-    const icon = (views) => ({getIcon: (d) => views[d.view]});
+    const scale = tramScale(map.getZoom()), bearing = map.getBearing() * Math.PI / 180;
+    const cars = hs.map((d) => tramParts(d, scale, bearing));
+    const ring = followed.map((d) => tramParts(d, scale, bearing));
+    // Nearer sections are drawn over farther ones (billboards take their anchor's depth).
+    const secs = cars.flatMap((c) => c.secs);
+    const halo = {getPath: (c) => c.path, widthUnits: "meters", capRounded: true, jointRounded: true,
+      opacity: mix, parameters: {depthWriteEnabled: false}};
+    const tint = (a) => ({getColor: (c) => [...headColor(c.d), a], updateTriggers: {getColor: state.color}});
     return [
-      // The glow mustn't hide the cars behind it, so it doesn't write depth.
-      new IconLayer({...base, ...icon(TRAM_GLOW), id: "tram-glow", data: hs, alphaCutoff: 0,
-        parameters: {depthWriteEnabled: false},
-        getColor: (d) => [...headColor(d), 190], updateTriggers: {getColor: state.color}}),
-      new IconLayer({...base, ...icon(TRAM_RING), id: "tram-ring", data: followed}),
-      new IconLayer({...base, ...icon(TRAM_BODY), id: "tram-body", data: hs, pickable: true,
-        onClick: ({object}) => object && follow(object.p.v)}),
+      new PathLayer({...halo, id: "tram-ring", data: ring, getColor: [255, 255, 255, 235], getWidth: TRAM_W * scale * 2.2}),
+      new PathLayer({...halo, ...tint(60), id: "tram-halo", data: cars, getWidth: TRAM_W * scale * 2.8}),
+      new PathLayer({...halo, ...tint(120), id: "tram-halo-core", data: cars, getWidth: TRAM_W * scale * 1.6}),
+      new IconLayer({id: "tram-body", data: secs, getPosition: (s) => s.pos, getIcon: (s) => tramSprite(s.si, s.dir),
+        sizeUnits: "meters", getSize: TRAM_FH * scale, opacity: mix, pickable: true,
+        onClick: ({object}) => object && follow(object.d.p.v)}),
     ];
   }
 

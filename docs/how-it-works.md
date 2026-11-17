@@ -363,12 +363,15 @@ grows a lot (more systems), when the SSD becoming primary starts to make sense.
 - **Turn-ban and transit-priority comparisons** are shown with care: placement isn't random, so
   they describe, they don't prove.
 - **Replay cars** (17 Nov 2026): glowing dots when zoomed out (below zoom 15), where a 30 m car is
-  a pixel or two and drawings would pile up; zoomed in, cartoon Flexitys in TTC livery, upright
-  sprites seen side on, or end on with the roof stretching away (front coming towards the
-  camera, back going away), picked from which way the car is moving on screen (`replay.js`,
-  `tramView`). Drawn from photos: white bands above and below the windows, black bellows,
-  blunt ends, glare on the glass, pantograph on the short section behind the cab, and doors on
-  the right side only (the cars run one way), so a car heading left shows a door-less side. The trails and the glow round each car carry the route or speed colour, so the
-  trails stay the legend. They're sized in metres, so they grow with the map and shrink with
-  distance, but larger than life: 5x at zoom 15, easing to 1.2x zoomed right in
-  (`tramScale`). Following a car flies to zoom 16. No bent drawings for corners.
+  a pixel or two and drawings would pile up; zoomed in, cartoon Flexitys in TTC livery. Each car
+  is five upright sprites, one per section, placed along its own track, so it bends round
+  corners by itself; each section is drawn from whichever of 16 directions it faces on screen,
+  made in the browser as needed by projecting a box at a fixed 50-degree tilt and mapping flat
+  drawings onto its faces (`replay.js`, `tramSprite`). Drawn from photos: white bands above and
+  below the windows, black bellows, blunt ends, glare on the glass, grey roof equipment,
+  pantograph on the short section behind the cab, and doors on the right side only (the cars
+  run one way). A halo on the ground under each car (white under the followed one) and the
+  trails carry the route or speed colour, so the trails stay the legend. They're sized in
+  metres, so they grow with the map and shrink with distance, but larger than life: 5x at
+  zoom 15, easing to 1.2x zoomed right in (`tramScale`); a car's ends carry on straight past
+  the ends of its trip's track. Following a car flies to zoom 16.
