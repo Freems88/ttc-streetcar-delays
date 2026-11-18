@@ -387,5 +387,6 @@ grows a lot (more systems), when the SSD becoming primary starts to make sense.
   run one way). A halo on the ground under each car (white under the followed one) and the
   trails carry the route or speed colour, so the trails stay the legend. They're sized in
   metres, so they grow with the map and shrink with distance, but larger than life: 5x at
-  zoom 15, easing to 1.2x zoomed right in (`tramScale`); a car's ends carry on straight past
+  zoom 15, easing to life size by zoom 18.5 (`tramScale`; any larger and cars queued at a
+  stop overlap, and their tails poke into intersections); a car's ends carry on straight past
   the ends of its trip's track. Following a car flies to zoom 16.

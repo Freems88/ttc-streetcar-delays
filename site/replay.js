@@ -368,8 +368,9 @@
   }
   // Drawn in metres, so they grow with the map and shrink with distance, but larger than
   // life: 5x where they appear (a side-on car is ~40 px long at zoom 15), easing back to
-  // 1.2x when zoomed right in, so they still about double every zoom step and a half.
-  const tramScale = (z) => Math.max(1.2, 5 * 0.8 ** (z - 15));
+  // life size by zoom 18.5, so they still grow on screen every zoom step. Any larger close
+  // in and cars queued at a stop (about 33 m apart, 30 m long) overlap each other.
+  const tramScale = (z) => Math.max(1, 5 * 0.63 ** (z - 15));
   const ICON_ZOOM = 15;           // dots below this zoom, streetcars above (crossfading over ±0.4)
   function posAtKm(p, km) {
     // On the trip's track; beyond either end, carried on straight (a car's ends overhang).
