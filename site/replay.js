@@ -227,8 +227,8 @@
   // the five sections; blunt ends; doors on the right side only (they run one way);
   // pantograph on the short section behind the cab, grey equipment on the roof.
   // Each car is five sprites, one per section, placed along its own track, so it bends round
-  // corners by itself. Each section is drawn from whichever of 16 directions it's facing on
-  // screen: a box seen from the camera's tilt (fixed at 50 degrees), its faces shaded, with
+  // corners by itself. Each section is drawn from the nearest of 24 directions to the one it
+  // faces on screen (and turned by the rest): a box seen from the map's tilt, its faces shaded, with
   // the flat drawings below mapped onto them (side art on the sides, the cab and rear faces
   // on the ends). Sprites are made as they're first needed. A soft halo on the ground under
   // each car carries the route or speed colour, like the trails, which stay the legend.
@@ -276,17 +276,31 @@
     {x0: 146, x1: 193, prof: [[146, 42], [192.5, 42], [192, 16], [188, 9.5], [184, 8], [146, 8]], gear: true},
   ].map((s) => ({...s, prof: s.prof || [[s.x0, 42], [s.x1, 42], [s.x1, 8], [s.x0, 8]]}));
   const TRAM_MID = (8 + 193) / 2;                // the car's middle, in art units
-  const TRAM_DIRS = 16, TRAM_PITCH = 50 * Math.PI / 180;
+  const TRAM_DIRS = 24;
   const TRAM_PPM = 12, TRAM_FW = 12, TRAM_FH = 13, TRAM_CX = 6, TRAM_CY = 8.5;  // sprite frame, metres
-  const tramSprites = new Map();
-  function tramSprite(si, dir) {
+  // Sprites are drawn for the map's tilt, in 10-degree steps: drawn for one tilt and seen at
+  // another, a car's sections no longer line up. At most two steps' sprites are kept; tilting
+  // to a third starts afresh (a new layer, so its texture doesn't keep growing).
+  const TRAM_TILT_STEP = 10;
+  const tramSprites = new Map(), tramTilts = new Set();
+  let tramGen = 0;
+  function tramTilt() {
+    const t = Math.round(map.getPitch() / TRAM_TILT_STEP) * TRAM_TILT_STEP;
+    if (!tramTilts.has(t)) {
+      if (tramTilts.size >= 2) { tramTilts.clear(); tramSprites.clear(); tramGen++; }
+      tramTilts.add(t);
+    }
+    return t;
+  }
+  function tramSprite(si, dir, tilt) {
     // Section si seen heading dir (0 = right across the screen, counting anticlockwise, so
-    // 4 = away from the camera, 12 = towards it). Ground X right, Y away, Z up, in metres;
-    // u along the section (rear to front), w across (to its left), v up.
-    const key = si * TRAM_DIRS + dir;
+    // 6 = away from the camera, 18 = towards it), from a camera tilted tilt degrees from
+    // straight down. Ground X right, Y away, Z up, in metres; u along the section (rear to
+    // front), w across (to its left), v up.
+    const key = `${tilt}-${si}-${dir}`;
     if (tramSprites.has(key)) return tramSprites.get(key);
-    const s = SECTIONS[si], phi = dir / TRAM_DIRS * 2 * Math.PI;
-    const ca = Math.cos(phi), sa = Math.sin(phi), cp = Math.cos(TRAM_PITCH), sp = Math.sin(TRAM_PITCH);
+    const s = SECTIONS[si], phi = dir / TRAM_DIRS * 2 * Math.PI, pitch = tilt * Math.PI / 180;
+    const ca = Math.cos(phi), sa = Math.sin(phi), cp = Math.cos(pitch), sp = Math.sin(pitch);
     const uc = (s.x1 - s.x0) * TRAM_K / 2, W = TRAM_W;
     const P = (u, w, v) => [(TRAM_CX + (u - uc) * ca - w * sa) * TRAM_PPM,
       (TRAM_CY - ((u - uc) * sa + w * ca) * cp - v * sp) * TRAM_PPM];
@@ -345,7 +359,7 @@
         `<polyline points='${q(u, -1, top)} ${q(u, 1, top)}' fill='none' stroke='#c4c4cc' stroke-width='1.6'/>`;
     }
     const fw = TRAM_FW * TRAM_PPM, fh = TRAM_FH * TRAM_PPM;
-    const icon = {id: `tram-${si}-${dir}`, width: fw, height: fh, anchorX: TRAM_CX * TRAM_PPM, anchorY: TRAM_CY * TRAM_PPM,
+    const icon = {id: `tram-${key}`, width: fw, height: fh, anchorX: TRAM_CX * TRAM_PPM, anchorY: TRAM_CY * TRAM_PPM,
       url: "data:image/svg+xml;charset=utf-8," + encodeURIComponent(
         `<svg xmlns='http://www.w3.org/2000/svg' width='${fw}' height='${fh}' viewBox='0 0 ${fw} ${fh}'>` +
         `<defs>${GLASS}<clipPath id='c'><path d='${TRAM_BODY_PATH}'/></clipPath></defs>${out}</svg>`)};
@@ -369,9 +383,14 @@
     const a = on(e), b = on(ref), f = Math.abs(km - e) / Math.abs(e - ref);
     return [a[0] + (a[0] - b[0]) * f, a[1] + (a[1] - b[1]) * f];
   }
-  function tramParts(d, scale, bearing) {
-    // The car's section ends along its track (centred on where it is), and each section's
-    // middle and the direction it faces on screen.
+  // A direction on the ground (radians, 0 = right, anticlockwise) as it looks on screen, seen
+  // from a camera tilted so that ground distances away from it shrink by c.
+  const onScreen = (phi, c) => Math.atan2(Math.sin(phi) * c, Math.cos(phi));
+  function tramParts(d, scale, bearing, cosPitch, cosTilt) {
+    // The car's section ends along its track (centred on where it is); each section sits
+    // between its two ends, drawn from the nearest of the sprite directions and turned on
+    // screen by what's left over, so its sections line up along the track instead of
+    // stepping like stairs.
     const km = cumKm[d.lo] + d.f * (cumKm[d.i] - cumKm[d.lo]);
     const at = (x) => posAtKm(d.p, km + (x - TRAM_MID) * TRAM_K * scale / 1000);
     const ends = [8, ...TRAM_JOINTS, 193].map(at);
@@ -379,16 +398,19 @@
       const a = ends[si], b = ends[si + 1];
       const dx = (b[0] - a[0]) * KX, dy = (b[1] - a[1]) * KY;
       const sx = dx * Math.cos(bearing) - dy * Math.sin(bearing), sy = dx * Math.sin(bearing) + dy * Math.cos(bearing);
-      const dir = ((Math.round(Math.atan2(sy, sx) / (2 * Math.PI) * TRAM_DIRS) % TRAM_DIRS) + TRAM_DIRS) % TRAM_DIRS;
-      return {d, si, dir, pos: at((s.x0 + s.x1) / 2)};
+      const phi = Math.atan2(sy, sx);
+      const dir = ((Math.round(phi / (2 * Math.PI) * TRAM_DIRS) % TRAM_DIRS) + TRAM_DIRS) % TRAM_DIRS;
+      const turn = (onScreen(phi, cosPitch) - onScreen(dir / TRAM_DIRS * 2 * Math.PI, cosTilt)) * 180 / Math.PI;
+      return {d, si, dir, turn: ((turn + 540) % 360) - 180, pos: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]};
     });
     return {d, path: ends, secs};
   }
   function tramLayers(hs, followed, mix) {
     if (!mix) return [];
-    const scale = tramScale(map.getZoom()), bearing = map.getBearing() * Math.PI / 180;
-    const cars = hs.map((d) => tramParts(d, scale, bearing));
-    const ring = followed.map((d) => tramParts(d, scale, bearing));
+    const scale = tramScale(map.getZoom()), bearing = map.getBearing() * Math.PI / 180, tilt = tramTilt();
+    const cosPitch = Math.cos(map.getPitch() * Math.PI / 180), cosTilt = Math.cos(tilt * Math.PI / 180);
+    const cars = hs.map((d) => tramParts(d, scale, bearing, cosPitch, cosTilt));
+    const ring = followed.map((d) => tramParts(d, scale, bearing, cosPitch, cosTilt));
     // Nearer sections are drawn over farther ones (billboards take their anchor's depth).
     const secs = cars.flatMap((c) => c.secs);
     const halo = {getPath: (c) => c.path, widthUnits: "meters", capRounded: true, jointRounded: true,
@@ -398,7 +420,7 @@
       new PathLayer({...halo, id: "tram-ring", data: ring, getColor: [255, 255, 255, 235], getWidth: TRAM_W * scale * 2.2}),
       new PathLayer({...halo, ...tint(60), id: "tram-halo", data: cars, getWidth: TRAM_W * scale * 2.8}),
       new PathLayer({...halo, ...tint(120), id: "tram-halo-core", data: cars, getWidth: TRAM_W * scale * 1.6}),
-      new IconLayer({id: "tram-body", data: secs, getPosition: (s) => s.pos, getIcon: (s) => tramSprite(s.si, s.dir),
+      new IconLayer({id: `tram-body-${tramGen}`, data: secs, getPosition: (s) => s.pos, getIcon: (s) => tramSprite(s.si, s.dir, tilt), getAngle: (s) => s.turn,
         sizeUnits: "meters", getSize: TRAM_FH * scale, opacity: mix, pickable: true,
         onClick: ({object}) => object && follow(object.d.p.v)}),
     ];

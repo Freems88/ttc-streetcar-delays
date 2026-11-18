@@ -365,9 +365,12 @@ grows a lot (more systems), when the SSD becoming primary starts to make sense.
 - **Replay cars** (17 Nov 2026): glowing dots when zoomed out (below zoom 15), where a 30 m car is
   a pixel or two and drawings would pile up; zoomed in, cartoon Flexitys in TTC livery. Each car
   is five upright sprites, one per section, placed along its own track, so it bends round
-  corners by itself; each section is drawn from whichever of 16 directions it faces on screen,
-  made in the browser as needed by projecting a box at a fixed 50-degree tilt and mapping flat
-  drawings onto its faces (`replay.js`, `tramSprite`). Drawn from photos: white bands above and
+  corners by itself; each section is drawn from the nearest of 24 directions to the one it faces
+  on screen, and turned on screen by what's left so the sections line up along the track
+  rather than stepping like stairs. The drawings are made in the browser as needed by
+  projecting a box at the map's tilt (in 10-degree steps; drawn for one tilt and seen at
+  another, a car's sections no longer line up) and mapping flat drawings onto its faces
+  (`replay.js`, `tramSprite`). Only two tilt steps' drawings are kept at once. Drawn from photos: white bands above and
   below the windows, black bellows, blunt ends, glare on the glass, grey roof equipment,
   pantograph on the short section behind the cab, and doors on the right side only (the cars
   run one way). A halo on the ground under each car (white under the followed one) and the
