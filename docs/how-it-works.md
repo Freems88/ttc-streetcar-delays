@@ -82,6 +82,12 @@ streetcars still run it). Each direction of track is a separate *piece*, cut int
 *slices*. Pieces are never changed or deleted once made, so a slice means the same thing
 forever; new track just adds pieces. Track no streetcar has ever used is hidden on the map.
 
+The TTC's shapes run through every stop's pole, which stands at the curb, so the raw line bends
+up to ~15 m sideways at each stop. Only the drawing straightens this (`PathGeom.straightened`,
+used for the page's slices and the replay): on straight track, each point is moved onto the
+line the track follows for 100 m+ either way; curves, corners and the ends of pieces are left
+as they are. Matching and measuring still use the raw line, and the slices stay the same.
+
 ### Clean run and delay
 For each slice, the **clean run** is how fast the quickest 10% of real daytime passes got
 through it, plus a normal stop at the passenger stop if there is one. It's measured from real
@@ -362,6 +368,11 @@ grows a lot (more systems), when the SSD becoming primary starts to make sense.
 - **Bot posts yesterday, not today,** as one thread; no service-change posts.
 - **Turn-ban and transit-priority comparisons** are shown with care: placement isn't random, so
   they describe, they don't prove.
+- **Stop jogs straightened for drawing only** (17 Nov 2026): fixing the pieces themselves
+  would break "pieces never change"; each jog adds only ~2 m of length, which doesn't matter
+  to the delay numbers. A curve-fitting version caught a few more jogs on gentle bends but
+  added wobbles of its own, so it's a straight-line fit. Some jogs are left on bends and near
+  piece ends.
 - **Replay cars** (17 Nov 2026): glowing dots when zoomed out (below zoom 15), where a 30 m car is
   a pixel or two and drawings would pile up; zoomed in, cartoon Flexitys in TTC livery. Each car
   is five upright sprites, one per section, placed along its own track, so it bends round

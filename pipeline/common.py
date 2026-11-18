@@ -99,6 +99,61 @@ class PathGeom:
         t = (a - self.along[lo]) / seg if seg else 0
         return self.x[lo] + t * (self.x[hi] - self.x[lo]), self.y[lo] + t * (self.y[hi] - self.y[lo])
 
+    def straightened(self):
+        """A copy for drawing only: the TTC's shapes bend out to each stop pole at the curb,
+        which puts a sideways jog of up to ~15 m at every stop. On straight track, each
+        vertex is moved onto the line the track runs along there. "along" is kept, so
+        point_at(a) still means the same place on the track; project() on the copy doesn't."""
+        xs, ys = list(self.x), list(self.y)
+        offsets = [k * STRAIGHT_STEP for k in range(-STRAIGHT_WIN // STRAIGHT_STEP,
+                                                     STRAIGHT_WIN // STRAIGHT_STEP + 1)]
+        for i, a in enumerate(self.along):
+            if a < STRAIGHT_WIN or a > self.length - STRAIGHT_WIN:
+                continue  # needs straight track on both sides
+            pts = [(o, *self.point_at(a + o)) for o in offsets]
+            line = _fit_line(pts)
+            # Refit on the points nearest the line, so the jogs themselves don't tilt it.
+            near = sorted(pts, key=lambda p: abs(_off_line(line, p)))[:int(len(pts) * 0.7)]
+            line = _fit_line(near)
+            on = [p for p in pts if abs(_off_line(line, p)) <= STRAIGHT_TOL]
+            if (len(on) < 0.6 * len(pts) or min(p[0] for p in on) > -STRAIGHT_SIDE
+                    or max(p[0] for p in on) < STRAIGHT_SIDE):
+                continue  # a curve or a corner: leave it alone
+            line = _fit_line(on)
+            d = _off_line(line, (0, self.x[i], self.y[i]))
+            if abs(d) <= STRAIGHT_MAX:
+                xs[i] += d * line[3]
+                ys[i] -= d * line[2]
+        g = PathGeom.__new__(PathGeom)
+        g.x, g.y, g.along, g.length = xs, ys, self.along, self.length
+        g.seg_bearing = [bearing_of(xs[i + 1] - xs[i], ys[i + 1] - ys[i]) for i in range(len(xs) - 1)]
+        return g
+
+
+# Straightening the drawn track (PathGeom.straightened).
+STRAIGHT_STEP = 25   # m between the points the local line is fitted to
+STRAIGHT_WIN = 150   # m either side of a vertex looked at
+STRAIGHT_SIDE = 100  # m: the track must be on the line at least this far both ways
+STRAIGHT_TOL = 3     # m: points this close to the line count as on it
+STRAIGHT_MAX = 15    # m: never move a vertex further than this
+
+
+def _fit_line(pts):
+    """Best-fit line through [(_, x, y)]: (cx, cy, ux, uy), a point and unit direction."""
+    n = len(pts)
+    cx, cy = sum(p[1] for p in pts) / n, sum(p[2] for p in pts) / n
+    sxx = sum((p[1] - cx) ** 2 for p in pts)
+    syy = sum((p[2] - cy) ** 2 for p in pts)
+    sxy = sum((p[1] - cx) * (p[2] - cy) for p in pts)
+    th = 0.5 * math.atan2(2 * sxy, sxx - syy)
+    return cx, cy, math.cos(th), math.sin(th)
+
+
+def _off_line(line, p):
+    """Signed sideways distance of point (_, x, y) from the line (left is positive)."""
+    cx, cy, ux, uy = line
+    return (p[2] - cy) * ux - (p[1] - cx) * uy
+
 
 def service_day(ts):
     return (datetime.fromtimestamp(ts) - timedelta(hours=DAY_CUTOFF_HOURS)).strftime("%Y-%m-%d")

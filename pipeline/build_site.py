@@ -42,7 +42,8 @@ import signals
 import servicechanges
 import trends
 import turns
-from common import BIN_M, DATA_DIR, NIGHT_TWIN, SLOT_LABELS, SLOTS, WORK_DIR, service_day
+from common import (BIN_M, DATA_DIR, NIGHT_TWIN, SLOT_LABELS, SLOTS, WORK_DIR, PathGeom,
+                    service_day, to_lonlat)
 from process_day import NB, bucket_mid
 
 WINDOW_DAYS = 90
@@ -319,6 +320,14 @@ def service_per_day(pat, days, n_slices):
     if logged_days < 0.25 or not n_slices or not any("cover" in r for d in finished for r in d["routes"].values()):
         return {"trips_per_day": None}
     return {"trips_per_day": round(covered / n_slices / logged_days, 1)}
+
+
+def drawn_bins(piece):
+    """Where the page draws each slice: on the track's line with the schedule shapes' jogs
+    out to each stop pole taken out (PathGeom.straightened). Same slices, same count."""
+    g = PathGeom(piece["line"]).straightened()
+    return [[round(c, 5) for c in to_lonlat(*g.point_at((i + 0.5) * BIN_M))]
+            for i in range(len(piece["bins"]))]
 
 
 def match_turns(sigs, used):
@@ -883,7 +892,7 @@ def main():
             piece_routes[pi].add(pat["route"])
     lite = {
         "bin_m": BIN_M,
-        "pieces": [{**{k: p[k] for k in ("id", "bins", "stops", "length")},
+        "pieces": [{**{k: p[k] for k in ("id", "stops", "length")}, "bins": drawn_bins(p),
                     "routes": sorted(piece_routes[pi]) if pi in piece_routes else p["routes"],
                     # Track no streetcar has run on in the window (a bus-only routing) isn't drawn.
                     "seen": p["id"] in ago,

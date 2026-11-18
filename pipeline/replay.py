@@ -68,9 +68,10 @@ def clean_secs(clean, a1, a2):
     return s
 
 
-def track_points(m, keep, pi, seq):
-    """[(t, x, y, piece, along)] along piece pi for one pass, following the rails between positions."""
-    g, along = m.geoms[pi], keep[pi]
+def track_points(shown, keep, pi, seq):
+    """[(t, x, y, piece, along)] along piece pi for one pass, following the rails between positions.
+    shown: the pieces as drawn (PathGeom.straightened, so cars don't jog out at every stop)."""
+    g, along = shown[pi], keep[pi]
     out = []
     for i, (t1, a1) in enumerate(seq):
         out.append((t1, *g.point_at(a1), pi, a1))
@@ -96,8 +97,9 @@ def build(day, network=None, clean=None):
         src, opener = DATA_DIR / f"{day}.csv.gz", gzip.open
     network = network or json.loads((WORK_DIR / "network.json").read_text())
     m = Matcher(network)
+    shown = [g.straightened() for g in m.geoms]
     keep = []
-    for g in m.geoms:
+    for g in shown:
         idx = simplify(g.x, g.y, SIMPLIFY_M)
         keep.append([g.along[i] for i in idx])
     clean_of = [(clean or {}).get(p["id"]) for p in m.pieces]
@@ -127,7 +129,7 @@ def build(day, network=None, clean=None):
         pts = []  # (t, x, y, piece or None, along or None)
         on_track = set()
         for pi, s in passes:
-            pts += track_points(m, keep, pi, s)
+            pts += track_points(shown, keep, pi, s)
             on_track.update(t for t, _ in s)
         pts += [(p[0], p[1], p[2], None, None) for p, o in zip(seq, opts) if not o and p[0] not in on_track]
         pts.sort(key=lambda v: v[0])
