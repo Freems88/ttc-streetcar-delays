@@ -1,0 +1,62 @@
+{
+ "day": "2026-11-20",
+ "when": "Friday, Nov 20",
+ "headline": "Toronto's streetcars lost 982 hours to delays, across all routes.",
+ "items": [
+  {
+   "kind": "segment",
+   "label": "Slowest stretch",
+   "place": "Fleet St westbound, approaching Fort York Blvd",
+   "detail": "1 min 49 s lost per streetcar \u00b7 285 trips",
+   "q": {
+    "story": "segment",
+    "piece": "p7",
+    "b0": "162",
+    "b1": "172"
+   },
+   "hash": "w=d1&v=delay&r=509,511&d=ws"
+  },
+  {
+   "kind": "shortturn",
+   "label": "Most trips cut short",
+   "place": "507 Long Branch",
+   "detail": "1 in 19 trips sent back before the end of the line",
+   "q": {
+    "story": "shortturn"
+   },
+   "hash": "w=d1&v=wait&r=507&d=ws"
+  },
+  {
+   "kind": "signal",
+   "label": "Longest holds at a signal",
+   "place": "Eastbound at Fort York Blvd & Fleet St",
+   "detail": "40% of streetcars waited 90 s or more",
+   "q": {
+    "story": "signal",
+    "tipa": "p6|1918"
+   },
+   "hash": "w=d1&v=signals&c=-79.40684,43.63639,16.0,28,45&r=509,511"
+  },
+  {
+   "kind": "stopwait",
+   "label": "Longest extra wait at a stop",
+   "place": "Lake Shore Blvd West at Kipling Ave",
+   "detail": "12.7 min extra wait (507 Long Branch westbound)",
+   "q": {
+    "story": "stopwait",
+    "tip": "1794"
+   },
+   "hash": "w=d1&v=wait&r=507&d=ws&c=-79.51675,43.59833,14.54,28,50"
+  },
+  {
+   "kind": "fleet",
+   "label": "Streetcars in service",
+   "place": "All streetcar routes",
+   "detail": "99% of scheduled service ran",
+   "q": {
+    "story": "fleet"
+   },
+   "hash": "w=d1"
+  }
+ ]
+}

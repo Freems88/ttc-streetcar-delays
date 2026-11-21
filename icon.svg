@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<title>Stuck</title>
+<rect width="64" height="64" rx="13" fill="#8a1c2b"/>
+<rect x="17" y="41" width="3.6" height="13" rx="1" fill="#e0507a"/>
+<rect x="45" y="38" width="4" height="16" rx="1" fill="#e0507a"/>
+<rect x="50.5" y="44" width="4" height="10" rx="1" fill="#f08b3a"/>
+<rect x="56" y="48" width="3.6" height="6" rx="1" fill="#f3c95b"/>
+<path d="M13 12V21" stroke="#f4f4f2" stroke-width="1.5" stroke-linecap="round"/>
+<rect x="11" y="21" width="4" height="33" rx="1" fill="#f4f4f2"/>
+<rect x="8.6" y="27.6" width="8.8" height="4.6" rx="2.3" fill="#f4f4f2"/>
+<g transform="translate(32 54) scale(.78) translate(-32 -53)">
+<path d="M22 9H42M24 9L32 15L40 9" stroke="#f4f4f2" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M18 51V25Q18 16 27 16H37Q46 16 46 25V51Z" fill="#f4f4f2"/>
+<rect x="21" y="18.5" width="22" height="7.5" rx="2" fill="#1d1f22"/>
+<circle cx="27" cy="22.25" r="1.5" fill="#ffc21a"/><circle cx="32" cy="22.25" r="1.5" fill="#ffc21a"/><circle cx="37" cy="22.25" r="1.5" fill="#ffc21a"/>
+<path d="M21 29H43V38Q32 41.5 21 38Z" fill="#1d1f22"/>
+<circle cx="23.5" cy="45.5" r="2" fill="#ffc21a"/><circle cx="40.5" cy="45.5" r="2" fill="#ffc21a"/>
+<rect x="16.5" y="50" width="31" height="3" rx="1.5" fill="#1d1f22"/>
+</g>
+<path d="M4 55H60" stroke="#f4f4f2" stroke-width="2.2" stroke-linecap="round" opacity=".55"/>
+</svg>
