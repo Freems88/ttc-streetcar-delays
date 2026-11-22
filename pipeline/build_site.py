@@ -756,7 +756,7 @@ def main():
     # GitHub Pages lets browsers cache files for 10 minutes; tag the script and stylesheet
     # with a hash of their contents so a changed file is fetched fresh.
     for page, assets in (("index.html", (("app.js", "src"), ("style.css", "href"))),
-                         ("replay.html", (("replay.js", "src"), ("replay.css", "href"))),
+                         ("replay.html", (("replay.js", "src"), ("tour.js", "src"), ("replay.css", "href"))),
                          ("trends.html", (("trends.js", "src"), ("trends.css", "href"), ("style.css", "href")))):
         html = (out / page).read_text(encoding="utf-8")
         for name, attr in assets:

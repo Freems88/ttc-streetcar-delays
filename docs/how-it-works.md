@@ -216,6 +216,36 @@ opens `?story=<kind>` with the post's own view, framing the spot and pinning its
 "Yesterday's highlights" reopens the card. Time of day and direction are folded under
 "More filters" unless a link sets them.
 
+### The replay tour
+`replay.html#tour=1` (or "Yesterday in 40 seconds" on the replay card) plays yesterday's
+picks as a short film (`site/tour.js`), about 35-40 s. It only runs when `stories.json` is
+for the same day as `replay.json`.
+- **Opening (6 s):** the whole network through the whole day, with a counter of hours lost
+  to delays that ends on the summary's figure (`stories.json` `lost_h`).
+- **Spot beats** (the signal, slowest-stretch and stop-wait stories, using `at` from
+  `story_of`): fly to the spot; roll one car up; when it stands still 25 s or more, run 2.5 s
+  in real time with a "Standing still" stopwatch, then speed through the rest; car time
+  against the ghost (clean run) throughout. Where the story has a day total (`at.cars`,
+  `at.total_h`: the segment post's "adds up to" and the signal approach's
+  `hours_per_day`), the clock then sweeps the whole day at the spot while a tally of cars
+  and hours lost climbs. Stop waits have no sweep: their measure is riders' minutes, not car time.
+- **Short turns:** the route alone, its busiest four hours sped through, the "!" markers
+  popping and a count climbing.
+- **End:** the story card (the map page's first-visit card) with "Pick a car" and "Watch again".
+
+Which car: every daytime (06:00-22:00) pass through a 150 m circle round the spot (or along
+the stretch, from its first slice to its last), measured as its time minus the ghost's over
+that range; the tour shows the 90th percentile, a bad but ordinary pass rather than a one-off
+breakdown. Passes losing over 15 min are left out (layovers, breakdowns). Spots are ordered by
+the chosen car's longest stand; a spot within 400 m of one already in is dropped (the slowest
+stretch often ends at the most-held signal); at most two, with the short turns between them.
+
+The tallies' shapes over the day come from the replay (each trip's or pass's loss against the
+ghost), but they're scaled to land exactly on the site's figures, since the replay's
+window-based measure isn't quite the delay map's. The car-against-ghost stopwatch is the
+replay's own measure for that car. Skip is always there; a tap (or space) pauses; Escape skips.
+With reduced motion the camera jumps instead of flying.
+
 ---
 
 ## Data rules

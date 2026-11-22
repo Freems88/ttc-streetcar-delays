@@ -46,6 +46,30 @@
   <div id="legend" class="legend speed" hidden></div>
   <p class="st-count" id="st-count" hidden></p>
   <button id="random" class="btn">Ride a random car</button>
+  <button id="tour-btn" class="btn tour-btn" hidden>▶ Yesterday in 40 seconds</button>
+</aside>
+
+<div class="tour" id="tour" hidden>
+  <div class="tour-shield" id="tour-shield" aria-hidden="true"></div>
+  <div class="tour-top">
+    <div class="tour-prog" id="tour-prog"></div>
+    <button class="tour-skip" id="tour-skip">Skip ›</button>
+  </div>
+  <div class="tour-hud" id="tour-hud" hidden></div>
+  <div class="tour-cap" id="tour-cap" aria-live="polite"></div>
+  <div class="tour-paused" aria-hidden="true">Paused · tap to carry on</div>
+</div>
+
+<aside class="tour-end card" id="tour-end" hidden aria-labelledby="te-head">
+  <button class="f-close te-close" id="te-close" aria-label="Close">×</button>
+  <p class="sub" id="te-when"></p>
+  <h2 id="te-head"></h2>
+  <ul class="te-list" id="te-list"></ul>
+  <div class="te-actions">
+    <button class="btn te-primary" id="te-explore">Pick a car</button>
+    <button class="btn" id="te-again">Watch again</button>
+  </div>
+  <a class="te-map" href="./">See the delay map →</a>
 </aside>
 
 <aside class="follow" id="follow" hidden>
@@ -82,5 +106,6 @@
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <script src="https://unpkg.com/deck.gl@9.1.14/dist.min.js"></script>
 <script src="replay.js"></script>
+<script src="tour.js"></script>
 </body>
 </html>

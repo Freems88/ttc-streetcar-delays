@@ -125,7 +125,11 @@
   for (const r of (h.get("r") || "").split(",")) if (paths.some((p) => p.r === r)) state.routes.add(r);
   if (h.has("car") && byCar.has(h.get("car"))) state.follow = h.get("car");
   state.t = Math.max(tMin, Math.min(tMax, state.t));
+  // The tour (tour.js) drives the clock, camera and a focus car while it plays.
+  const tour = {active: h.get("tour") === "1", tick: null, layers: null};
+  if (tour.active) state.follow = null;
   function writeHash() {
+    if (tour.tick) return;
     const local = (state.t / 3600 + 4) % 24, hh = Math.floor(local), mm = Math.floor((local - hh) * 60);
     const q = new URLSearchParams({t: `${hh}:${String(mm).padStart(2, "0")}`});
     if (state.speed !== 600) q.set("s", state.speed);
@@ -448,7 +452,8 @@
 
   function draw() {
     const hs = heads(state.t);
-    const followed = state.follow ? heads(state.t, byCar.get(state.follow)) : [];
+    const fv = state.follow || state.focus;
+    const followed = fv ? heads(state.t, byCar.get(fv)) : [];
     const mix = Math.max(0, Math.min(1, (map.getZoom() - ICON_ZOOM + 0.4) / 0.8));  // 0 dots .. 1 streetcars
     const dots = 1 - mix;
     const trails = [];
@@ -458,13 +463,13 @@
         id: `trails-${hr}-${state.color}`, data: chunks[hr][state.color], _pathType: "open",
         currentTime: state.t, trailLength: TRAIL_S, fadeTrail: true,
         widthUnits: "pixels", getWidth: 3, widthMinPixels: 2, capRounded: true, jointRounded: true,
-        opacity: state.follow ? 0.4 : 0.9,
+        opacity: fv ? 0.4 : 0.9,
       }));
     }
     overlay.setProps({layers: [
       ...trails,
       followTrips && new TripsLayer({
-        id: `followed-trail-${state.follow}`, data: followTrips[state.color], _pathType: "open",
+        id: `followed-trail-${fv}`, data: followTrips[state.color], _pathType: "open",
         currentTime: state.t, trailLength: 2400, fadeTrail: true,
         widthUnits: "pixels", getWidth: 5, capRounded: true, jointRounded: true,
       }),
@@ -488,6 +493,7 @@
       ...tramLayers(hs, followed, mix),
       ...raceLayers(),
       ...shortLayers(hs),
+      ...(tour.layers ? tour.layers() : []),
     ]});
     if (shortEv.length) {
       const n = shortEv.filter((e) => e.t <= state.t && routeOn(e.r)).length;
@@ -866,11 +872,24 @@
   }
   $("loading").hidden = true;
   map.on("zoom", () => { if (!state.playing) draw(); });  // dots <-> streetcars while paused
+  // What the tour needs from the page (tour.js).
+  window.replayTour = {
+    tour, state, data, paths, byCar, pos, ts, gclk, kmh, cumKm, tMin, tMax, shortEv, map, wide,
+    at, heads, findIn, lerpAt, project, clockText, dur, routeName, routeColor, GHOST_ICON,
+    deck: {ScatterplotLayer, IconLayer, PathLayer, TextLayer},
+    draw, writeHash, setPlaying, setSpeed, follow,
+    setFocus(v) { state.focus = v; if (!state.follow) followTrips = v ? followData(v) : null; },
+    setRoutes(rs) { state.routes = new Set(rs); renderRoutes(); buildChunks(); },
+  };
+  window.dispatchEvent(new Event("replay-ready"));
   let lastFrame = performance.now(), lastHash = 0;
   function frame(now) {
     const dt = Math.min(0.1, (now - lastFrame) / 1000);
     lastFrame = now;
-    if (state.playing) {
+    if (tour.tick) {
+      tour.tick(dt);
+      draw();
+    } else if (state.playing) {
       state.t += dt * state.speed;
       if (state.t > tMax) state.t = tMin;  // loop the day
       draw();

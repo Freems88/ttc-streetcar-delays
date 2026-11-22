@@ -500,13 +500,19 @@ def story_of(p, net=None, approaches=None):
     draft post: a label, the place, a short detail, and the link that opens it on the map
     (?story=<kind> plus the post's own query and hash; see app.js). None if it doesn't parse."""
     kind, text, shot = p["kind"], p["text"], p.get("shot") or {}
-    q, place, detail = {"story": kind}, None, None
+    q, place, detail, at = {"story": kind}, None, None, None
     if kind == "segment" and shot.get("piece"):
         q.update(piece=shot["piece"], b0=shot["b0"], b1=shot["b1"])
         place, detail = shot.get("title"), (shot.get("sub") or "").split(": ", 1)[-1]
         h = "w=d1&v=delay"
         if net:  # just the routes (and direction) that run through the stretch
             pi = next((i for i, x in enumerate(net["pieces"]) if x["id"] == shot["piece"]), None)
+            if pi is not None:
+                bins = net["pieces"][pi]["bins"]
+                at = {"from": bins[shot["b0"]], "to": bins[min(shot["b1"], len(bins) - 1)]}
+                m = re.search(r"Across (\d+) trips, that adds up to ([\d.]+) hours", text)
+                if m:
+                    at.update(cars=int(m.group(1)), total_h=float(m.group(2)))
             pats = [pt for pt in net["patterns"]
                     if any(a == pi and shot["b0"] <= b <= shot["b1"] for a, b in pt["slices"])]
             routes = sorted({pt["route"] for pt in pats})
@@ -518,12 +524,15 @@ def story_of(p, net=None, approaches=None):
         m = re.search(r": (\d{3} [^.]+)\. (1 in \d+ trips|\d+% of trips) \(\d+\) were sent back", text)
         if m:
             place, detail = m.group(1), f"{m.group(2)} sent back before the end of the line"
+            at = {"route": m.group(1).split()[0]}
     elif kind == "signal" and shot.get("tipa"):
         q["tipa"] = shot["tipa"]
         a = next((a for a in approaches or [] if f"{a['piece']}|{a['px']}" == shot["tipa"]), None)
+        if a and a.get("lonlat"):
+            at = {"spot": a["lonlat"], "cars": round(a["per_day"]), "total_h": a["hours_per_day"]}
         if a and a.get("routes") and "&r=" not in p.get("hash", ""):
             p = {**p, "hash": p["hash"] + f"&r={','.join(sorted(a['routes']))}"}
-        m = re.search(r"^Most held at a signal, [^:]+: (.+?)\.\n\n(\d+% of streetcars waited 90 s or more)", text)
+        m = re.search(r"^Most held at a signal, [^:]+: (.+?)\.\n\n((?:\d+%|1 in \d+) (?:of )?streetcars waited 90 s or more)", text)
         if m:
             place, detail = m.group(1)[0].upper() + m.group(1)[1:], m.group(2)
     elif kind == "stopwait" and shot.get("tip"):
@@ -532,14 +541,19 @@ def story_of(p, net=None, approaches=None):
         e = re.search(r"(\d+\.\d) min extra", text)
         if m and e:
             place, detail = m.group(1), f"{e.group(1)} min extra wait ({m.group(2)})"
+        stop = next((s for x in (net or {}).get("pieces", []) for s in x["stops"] if s["id"] == shot["tip"]), None)
+        if stop:
+            at = {"spot": stop["lonlat"]}
     elif kind == "fleet":
         m = re.search(r"Overall, (\d+%) of scheduled streetcar service ran", text)
         if m:
             place, detail = "All streetcar routes", f"{m.group(1)} of scheduled service ran"
     if not place or not p.get("hash"):
         return None
+    # "at": where it happened, for the replay's tour (tour.js) to find the moment: a spot
+    # (signal, stop), a stretch (from, to), or a route (short turns, from replay.json's "st").
     return {"kind": kind, "label": STORY_LABELS[kind], "place": place, "detail": detail,
-            "q": {k: str(v) for k, v in q.items()}, "hash": p["hash"]}
+            "q": {k: str(v) for k, v in q.items()}, "hash": p["hash"], **({"at": at} if at else {})}
 
 
 def write_stories(site=None):
@@ -556,9 +570,11 @@ def write_stories(site=None):
     ap = data / "signal-approaches-d1.json" if data else None
     approaches = json.loads(ap.read_text())["approaches"] if ap and ap.exists() else None
     items = [s for s in (story_of(posts[k], net, approaches) for k in STORY_LABELS if k in posts) if s]
+    lost = re.search(r"lost ([\d,]+) hours to delays", summary)
     (DRAFTS / "stories.json").write_text(json.dumps({
         "day": days[0], "when": f"{d:%A}, {d:%b} {d.day}",
-        "headline": summary.split(": ", 1)[-1], "items": items}, indent=1))
+        "headline": summary.split(": ", 1)[-1], "items": items,
+        **({"lost_h": int(lost.group(1).replace(",", ""))} if lost else {})}, indent=1))
 
 
 def make(site, force=False, today=False):
