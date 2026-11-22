@@ -411,7 +411,8 @@
       `<span class="te-label">${esc(s.label)}</span><span class="te-place">${esc(s.place)}</span>` +
       `<span class="te-detail">${esc(s.detail || "")}</span></a></li>`).join("");
     card.hidden = false;
-    const close = () => { card.hidden = true; };
+    document.body.classList.add("tour-ended");
+    const close = () => { card.hidden = true; document.body.classList.remove("tour-ended"); };
     $("te-explore").onclick = close;
     $("te-close").onclick = close;
     $("te-again").onclick = () => { close(); again(); };

@@ -25,7 +25,7 @@ body {
 }
 .loading[hidden] { display: none; }
 
-.card, .follow, .bar {
+.card, .follow, .bar, .tour-end {
   position: fixed; background: var(--card); border: 1px solid var(--line);
   border-radius: 12px; box-shadow: var(--shadow); backdrop-filter: blur(6px);
 }
@@ -164,6 +164,7 @@ body {
 }
 .tour.paused .tour-paused { display: block; }
 .tour-end { top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(400px, calc(100% - 32px)); z-index: 5; padding: 18px 20px; }
+.tour-end .sub { margin: 0; color: var(--muted); font-size: 13px; }
 .tour-end h2 { margin: 2px 28px 10px 0; font-size: 19px; line-height: 1.3; }
 .te-close { position: absolute; top: 12px; right: 12px; }
 .te-list { list-style: none; margin: 0 0 14px; padding: 0; display: grid; gap: 2px; }
@@ -185,6 +186,10 @@ body {
   .tour-cap { bottom: 36px; width: calc(100% - 24px); }
   .tour-cap b { font-size: 20px; }
   .tour-cap span { font-size: 16px; }
+  /* The end card is a bottom sheet; the replay card and time bar wait until it's closed. */
+  .tour-end { top: auto; bottom: 10px; left: 10px; right: 10px; width: auto; transform: none; padding: 14px 16px;
+    max-height: calc(100% - 20px); overflow-y: auto; }
+  .tour-ended .card, .tour-ended .bar { display: none; }
 }
 
 @media (max-width: 700px) {
