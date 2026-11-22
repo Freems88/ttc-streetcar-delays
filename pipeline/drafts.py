@@ -530,6 +530,13 @@ def story_of(p, net=None, approaches=None):
         a = next((a for a in approaches or [] if f"{a['piece']}|{a['px']}" == shot["tipa"]), None)
         if a and a.get("lonlat"):
             at = {"spot": a["lonlat"], "cars": round(a["per_day"]), "total_h": a["hours_per_day"]}
+            # Which way the approach runs (lon, lat change along the track at the signal): a
+            # circle round a junction also catches cars going the other way.
+            pc = next((x for x in (net or {}).get("pieces", []) if x["id"] == a["piece"]), None)
+            if pc and a.get("b") is not None:
+                bins, b = pc["bins"], a["b"]
+                lo, hi = bins[max(0, b - 2)], bins[min(len(bins) - 1, b + 2)]
+                at["dir"] = [round(hi[0] - lo[0], 6), round(hi[1] - lo[1], 6)]
         if a and a.get("routes") and "&r=" not in p.get("hash", ""):
             p = {**p, "hash": p["hash"] + f"&r={','.join(sorted(a['routes']))}"}
         m = re.search(r"^Most held at a signal, [^:]+: (.+?)\.\n\n((?:\d+%|1 in \d+) (?:of )?streetcars waited 90 s or more)", text)
@@ -551,7 +558,8 @@ def story_of(p, net=None, approaches=None):
     if not place or not p.get("hash"):
         return None
     # "at": where it happened, for the replay's tour (tour.js) to find the moment: a spot
-    # (signal, stop), a stretch (from, to), or a route (short turns, from replay.json's "st").
+    # (signal, with its direction "dir"; stop), a stretch (from, to), or a route (short
+    # turns, from replay.json's "st").
     return {"kind": kind, "label": STORY_LABELS[kind], "place": place, "detail": detail,
             "q": {k: str(v) for k, v in q.items()}, "hash": p["hash"], **({"at": at} if at else {})}
 

@@ -113,7 +113,8 @@
   };
 
   // --- state + hash -------------------------------------------------------------------
-  const state = {t: 3 * 3600, speed: 600, playing: true, color: "route", follow: null, routes: new Set(), race: null};
+  const state = {t: 3 * 3600, speed: 600, playing: true, color: "route", follow: null, routes: new Set(), race: null,
+    dim: 0, focus: null, extra: [], hideShort: false};  // the last four: the tour (tour.js)
   const routeOn = (r) => !state.routes.size || state.routes.has(r);
   const h = new URLSearchParams(location.hash.slice(1));
   if (h.has("t")) {
@@ -397,7 +398,10 @@
     // screen by what's left over, so its sections line up along the track instead of
     // stepping like stairs.
     const km = cumKm[d.lo] + d.f * (cumKm[d.i] - cumKm[d.lo]);
-    const at = (x) => posAtKm(d.p, km + (x - TRAM_MID) * TRAM_K * scale / 1000);
+    const at = (x) => {
+      const q = posAtKm(d.p, km + (x - TRAM_MID) * TRAM_K * scale / 1000);
+      return d.off ? [q[0] + d.off[0], q[1] + d.off[1]] : q;
+    };
     const ends = [8, ...TRAM_JOINTS, 193].map(at);
     const secs = SECTIONS.map((s, si) => {
       const a = ends[si], b = ends[si + 1];
@@ -421,8 +425,8 @@
     const halo = {getPath: (c) => c.path, widthUnits: "meters", capRounded: true, jointRounded: true,
       opacity: mix, parameters: {depthWriteEnabled: false}};
     // The tour dims every car but the one it's following (state.dim, 0..1).
-    const fv = state.follow || state.focus, lit = (d) => (state.dim && d.p.v !== fv ? 1 - state.dim : 1);
-    const trig = {getColor: [state.color, state.dim, fv]};
+    const fv = state.follow || state.focus, lit = (d) => (isLit(d) ? 1 : 1 - state.dim);
+    const trig = {getColor: [state.color, state.dim, fv, state.extra.length]};
     const tint = (a) => ({getColor: (c) => [...headColor(c.d), a * lit(c.d)], updateTriggers: trig});
     return [
       new PathLayer({...halo, id: "tram-ring", data: ring, getColor: [255, 255, 255, 235], getWidth: TRAM_W * scale * 2.2}),
@@ -455,11 +459,24 @@
     ];
   }
 
+  // The tour can add cars drawn at a moment of their own (state.extra: [{p, t, off}], a trip,
+  // a time and an optional [lon, lat] shift), e.g. two passes of the same corner run side by
+  // side, one moved over a lane so they don't draw on top of each other; while it dims the rest
+  // (state.dim), the focus car and those stay lit.
+  const isLit = (d) => !state.dim || d.extra || d.p.v === (state.follow || state.focus);
   function draw() {
     const hs = heads(state.t);
+    for (const x of state.extra) {
+      const a = at(x.p, x.t);
+      // That trip drawn at its own moment instead of the main clock's (never twice).
+      const k = hs.findIndex((d) => d.p === x.p);
+      if (k >= 0) hs.splice(k, 1);
+      const o = x.off || [0, 0];
+      if (a) hs.push({p: x.p, lon: a[0] + o[0], lat: a[1] + o[1], lo: a[2], i: a[3], f: a[4], extra: true, off: x.off});
+    }
     const fv = state.follow || state.focus;
     const followed = fv ? heads(state.t, byCar.get(fv)) : [];
-    const dimOf = (d) => (state.dim && d.p.v !== fv ? 1 - state.dim : 1);
+    const dimOf = (d) => (isLit(d) ? 1 : 1 - state.dim);
     const mix = Math.max(0, Math.min(1, (map.getZoom() - ICON_ZOOM + 0.4) / 0.8));  // 0 dots .. 1 streetcars
     const dots = 1 - mix;
     const trails = [];
@@ -482,13 +499,13 @@
       new ScatterplotLayer({
         id: "glow", data: hs, getPosition: (d) => [d.lon, d.lat], opacity: dots, visible: dots > 0,
         getFillColor: (d) => [...headColor(d), 70 * dimOf(d)], radiusUnits: "pixels", getRadius: 9,
-        updateTriggers: {getFillColor: [state.color, state.dim, fv]},
+        updateTriggers: {getFillColor: [state.color, state.dim, fv, state.extra.length]},
       }),
       new ScatterplotLayer({
         id: "heads", data: hs, pickable: true, getPosition: (d) => [d.lon, d.lat], opacity: dots, visible: dots > 0,
         getFillColor: (d) => [...headColor(d), 255 * dimOf(d)], radiusUnits: "pixels", getRadius: 3.5,
         stroked: true, getLineColor: (d) => [255, 255, 255, 200 * dimOf(d)], lineWidthUnits: "pixels", getLineWidth: 0.8,
-        updateTriggers: {getFillColor: [state.color, state.dim, fv], getLineColor: [state.dim, fv]},
+        updateTriggers: {getFillColor: [state.color, state.dim, fv, state.extra.length], getLineColor: [state.dim, fv, state.extra.length]},
         onClick: ({object}) => object && follow(object.p.v),
       }),
       new ScatterplotLayer({

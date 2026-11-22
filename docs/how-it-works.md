@@ -229,15 +229,23 @@ for the same day as `replay.json`.
   The close comes back to the finished columns.
 - **Spot beats** (the signal and slowest-stretch stories, using `at` from
   `story_of`): only the routes through the spot (the story link's `r`), every car but the
-  one being shown dimmed, and the camera held still, framed between the spot and where the
-  stuck car stands. Two real cars, the same day: first the quickest pass through the spot
-  (same way, about the same distance, within an hour of the stuck car, else three hours, and
-  only if it took at most 60% as long), then the stuck car (the 90th-percentile pass). When
-  that one stands still 25 s or more, 2 s run in real time with a "Standing still"
-  stopwatch, then the rest is sped through; each car's time through the spot is shown. No
-  clean-run baseline on screen: we tried a car-against-ghost stopwatch, but the clean run
-  is a number with nothing to see behind it, and over a few hundred metres the ghost never
-  got far enough ahead to show. Where the story has a day total (`at.cars`,
+  two being shown dimmed. The camera holds still, framed between the spot and where the
+  stuck car stands, from an angle: tilted 52 degrees and turned so the street runs
+  diagonally up the screen with the cars heading away to the right, not looking straight up
+  the road (a step further out on phones). Two real passes of the same day run side by
+  side, each starting the moment it reached the spot (`state.extra` in `replay.js` draws a
+  trip at a moment of its own): the stuck car (the 90th-percentile pass) and the quickest
+  pass the same way over about the same distance, within an hour of it (else three hours,
+  and only if it took at most 60% as long). The quick one runs a lane over so they don't
+  draw on top of each other. Each car is labelled with its number, when it was there and
+  its time through the spot; the quick one's label freezes, ticked, where it left. When the
+  stuck car stands still 25 s or more, 2 s run in real time with a "Standing still" clock,
+  then the rest is sped through. Shown one after the other, the two cars didn't read as a
+  comparison; side by side they do. No clean-run baseline on screen: a car-against-ghost
+  stopwatch was tried, but the clean run is a number with nothing to see behind it, and
+  over a few hundred metres the ghost never got far enough ahead to show. Signal stories
+  carry the approach's direction (`at.dir`): a circle round a junction also catches cars
+  going the other way, and the first version showed them. Where the story has a day total (`at.cars`,
   `at.total_h`: the segment post's "adds up to" and the signal approach's
   `hours_per_day`), the clock then sweeps the whole day at the spot while a tally of cars
   and hours lost climbs and the delay map's columns rise within 450 m, on the chosen car's

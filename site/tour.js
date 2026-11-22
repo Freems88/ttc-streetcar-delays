@@ -10,8 +10,9 @@
   // Captions: short, numbers exactly as on the site, never a dig at the TTC or its staff.
   // Each beat has a few variants, [setup, payoff]; the day picks one (so everyone sees the
   // same words that day, and they change day to day), and "Watch again" moves on a step.
-  // {when} {day} {lost} {place} {placeLc} {detail} {detailLc} {route} {car} (the stuck car;
-  // the quick car is on screen first, so a setup line shouldn't name it)
+  // {when} {day} {lost} {place} {placeLc} {detail} {detailLc} {route} {car} (the stuck car)
+  // {gap} (how far apart in the day the two trips at a spot were). Lines about two cars are
+  // only used when the beat has two (pickTwo).
   const CAPTIONS = {
     open: [
       ["{when}. Every streetcar, all day.", "{lost} hours lost to delays."],
@@ -19,13 +20,13 @@
     ],
     signal: [
       ["Held at a signal: {place}", "{detail}."],
-      ["Same corner, same day: two streetcars.", "{detail}."],
+      ["Same corner, two trips {gap} apart.", "{detail}."],
       ["Two streetcars, {placeLc}.", "Not a one-off: {detailLc}."],
       ["Watch the clock: {placeLc}.", "{detail}."],
     ],
     segment: [
       ["The day's slowest stretch: {place}", "{detail}."],
-      ["Same stretch, same day: two streetcars.", "{detail}."],
+      ["Same stretch, two trips {gap} apart.", "{detail}."],
     ],
     shortturn: [
       ["{place}: trips sent back early", "{detail}."],
@@ -163,10 +164,13 @@
   // percentile: a bad but ordinary day there, not a one-off breakdown.
   // allDay: every pass, any hour, its loss clamped to 0..MAX_LOST (for the day's tally).
   function passes(R, at, allDay = false) {
-    const {paths, ts, gclk, cumKm, project} = R, out = [];
+    const {paths, ts, gclk, cumKm, project, pos} = R, out = [];
     const keep = (p, a, b, minKm) => {
       const lost = (ts[b] - ts[a]) - (gclk[b] - gclk[a]);
       if (cumKm[b] - cumKm[a] <= minKm) return;
+      // Only the story's way through (at.dir, the signal approach's direction): a circle
+      // round a junction also catches cars going the other way.
+      if (at.dir && (pos[2 * b] - pos[2 * a]) * at.dir[0] * MX ** 2 + (pos[2 * b + 1] - pos[2 * a + 1]) * at.dir[1] * MY ** 2 <= 0) return;
       if (allDay) out.push({p, a, b, t: ts[b], lost: Math.max(0, Math.min(MAX_LOST, lost))});
       else if (ts[a] >= DAY_FROM && ts[b] <= DAY_TO && lost > 0 && lost < MAX_LOST) out.push({p, a, b, lost});
     };
@@ -323,6 +327,7 @@
       R.setFocus(null);
       R.setRoutes([]);
       state.dim = 0;
+      state.extra = [];
       state.hideShort = false;
       document.removeEventListener("keydown", onKey, true);
       ui.hidden = true;
@@ -380,21 +385,26 @@
       };
     }
 
-    // Two real cars at the story's spot, the same day: first one that went straight through,
-    // then the one that got stuck (the 90th-percentile pass), its wait felt in real time and
-    // then sped through. No clean-run baseline on screen: the quick car is the comparison,
-    // and the sweep after shows how often it happened.
+    // Two real cars at the story's spot, the same day, run side by side: each starts the
+    // moment it reached the spot, so they roll up together; the quick one goes straight
+    // through and on, the stuck one (the 90th-percentile pass) stops, its wait felt in real
+    // time and then sped through. Each car carries its own label and time. No clean-run
+    // baseline on screen: the quick car is the comparison, and the sweep after shows how
+    // often it happened.
     function spotBeat({s, m}) {
       const q = m.quick;
-      const v = {...vars, place: s.place, placeLc: lc(s.place), detail: s.detail, detailLc: lc(s.detail), car: m.p.v};
-      const [c0, c1] = capsFor(s.kind);
-      const lead = 20, hasHold = m.hold && m.hold[1] - m.hold[0] >= 25;
+      const apart = q ? Math.round(Math.abs(q.tA - m.tA) / 60) : 0;
+      const v = {...vars, place: s.place, placeLc: lc(s.place), detail: s.detail, detailLc: lc(s.detail), car: m.p.v,
+        gap: apart < 60 ? `${apart} minutes` : `${Math.floor(apart / 60)} h ${apart % 60} min`};
+      let [c0, c1] = capsFor(s.kind);
+      if (!q && /two/i.test(c0)) [c0, c1] = CAPTIONS[s.kind][0];  // one car: no "two" lines
+      const lead = 15, hasHold = m.hold && m.hold[1] - m.hold[0] >= 25;
       const h0 = hasHold ? m.hold[0] : (m.tA + m.tB) / 2, h1 = hasHold ? m.hold[1] : h0;
-      // Phases, real seconds: fly, the quick car, a beat, the stuck car's approach, its wait
-      // in real time, sped through, pay off, and (when the site gives a day total for the
-      // spot) a sweep through the whole day there.
+      // Phases, real seconds: fly, both roll up (the quick one through and away), the stuck
+      // one's wait in real time, sped through, pay off, and (when the site gives a day total
+      // for the spot) a sweep through the whole day there.
       const day = m.day, sweep = s.at.total_h && day.length >= 5;
-      const P = [1.3, q ? 1.8 : 0, q ? 0.6 : 0, ...(hasHold ? [1.0, 2.0, 1.5, 1.8] : [2.0, 0, 0, 2.0]), sweep ? 3.0 : 0];
+      const P = [1.3, ...(hasHold ? [3.0, 2.0, 1.5, 1.8] : [3.5, 0, 0, 1.5]), sweep ? 3.0 : 0];
       const ends = P.reduce((acc, d) => [...acc, (acc.at(-1) || 0) + d], []);
       const dur = ends.at(-1);
       // The sweep's tally: the cars through, and their time lost, in the replay's own measure,
@@ -412,68 +422,112 @@
       const clock = (sec) => R.dur(Math.max(0, sec));
       // Just the routes through the spot (the story's own link names them), the rest dimmed.
       const routes = (new URLSearchParams(s.hash).get("r") || m.p.r).split(",");
+      // The way the cars go through the spot (east, north), for the columns and the camera.
+      const dx = pos[2 * m.b] - pos[2 * m.a], dy = pos[2 * m.b + 1] - pos[2 * m.a + 1];
       // The columns round the spot, on the cars' side of the street only (the tally is one direction).
-      const local = peaks && sweep ? peaks.near(spot, 450,
-        [pos[2 * m.b] - pos[2 * m.a], pos[2 * m.b + 1] - pos[2 * m.a + 1]]) : null;
-      // Framed between the spot and where the stuck car stands (it often waits back in the queue).
+      const local = peaks && sweep ? peaks.near(spot, 450, [dx, dy]) : null;
+      // Framed between the spot and where the stuck car stands (it often waits back in the
+      // queue), from an angle: the street runs diagonally up the screen, cars heading away
+      // to the right, rather than the camera looking straight up the road.
       const stand = R.heads(h0, R.byCar.get(m.p.v))[0];
       const view = stand ? [lerp(spot[0], stand.lon, 0.6), lerp(spot[1], stand.lat, 0.6)] : spot;
-      const row = (car, t0, secs, cls = "") =>
-        `<div class="th-row ${cls}"><span>Car ${esc(car)}, ${esc(R.clockText(t0))}</span><b>${clock(secs)}</b></div>`;
+      const road = Math.atan2(dx * MX, dy * MY) * 180 / Math.PI;   // compass heading of the street
+      const bearing = ((road - 60 + 540) % 360) - 180;
+      // The quick car runs on its own clock, lined up with the stuck car's at the spot.
+      const quickT = (t) => q.tA + (t - m.tA);
+      // The quick car runs a lane over (to the right of travel, by about a drawn car's width
+      // at this zoom), so when the two are level they sit side by side, not on top.
+      const len = Math.hypot(dx * MX, dy * MY) || 1, lane = R.wide ? 16 : 22;
+      const off = [lane * (dy * MY / len) / MX, -lane * (dx * MX / len) / MY];
+      // Phones see less street across: a step further out so both cars stay in frame.
+      const spotZoom = R.wide ? 16.2 : 15.5;
+      // The stuck car's label sits above it, the quick car's below: they start together.
+      const label = (txt, at, hot, below = false) => ({txt, at, hot, below});
       return {
         dur,
         enter() {
-          state.t = q ? q.tA - 8 : m.tA - lead;
+          state.t = m.tA - lead;
           R.setRoutes(routes);
-          R.setFocus(q ? q.p.v : m.p.v);
+          R.setFocus(m.p.v);
+          state.extra = q ? [{p: q.p, t: quickT(state.t), off}] : [];
           state.dim = 0.65;
-          R.tour.layers = null;
           map.stop();
-          move({center: view, zoom: 16.2, pitch: 55, bearing: map.getBearing()}, P[0] * 1000);
+          move({center: view, zoom: spotZoom, pitch: 52, bearing}, P[0] * 1000);
+          R.tour.layers = () => {
+            const ls = labels();
+            return [new deck.TextLayer({
+              id: "tour-car-labels", data: ls, getPosition: (l) => l.at, getText: (l) => l.txt,
+              getSize: 13, getColor: (l) => (l.hot ? [255, 255, 255, 255] : [200, 200, 205, 255]),
+              getPixelOffset: (l) => (l.below ? [0, 40] : [0, -44]), fontFamily: "Inter, system-ui, sans-serif", fontWeight: 600,
+              characterSet: "auto", lineHeight: 1.25, background: true,
+              getBackgroundColor: (l) => (l.hot ? [20, 21, 24, 235] : [20, 21, 24, 190]), backgroundPadding: [6, 3],
+              updateTriggers: {getText: Math.round(state.t), getColor: ls.map((l) => l.hot).join(),
+                getBackgroundColor: ls.map((l) => l.hot).join()},
+            })];
+          };
         },
         tick(f, sec) {
-          const [eFly, eQuick, eGap, eIn, eWait, eFast, ePay] = ends;
-          if (sec >= ePay && sweep) return sweepTick((sec - ePay) / P[7]);
-          let t, stuck = sec >= eGap;
-          if (sec < eFly) t = q ? q.tA - 8 : m.tA - lead;
-          else if (sec < eQuick) t = lerp(q.tA - 8, q.tB + 4, (sec - eFly) / P[1]);
-          else if (sec < eGap) t = q.tB + 4;
-          else if (sec < eIn) t = lerp(m.tA - lead, h0, (sec - eGap) / P[3]);
+          const [eFly, eIn, eWait, eFast, ePay] = ends;
+          if (sec >= ePay && sweep) return sweepTick((sec - ePay) / P[5]);
+          let t;
+          if (sec < eFly) t = m.tA - lead;
+          else if (sec < eIn) t = lerp(m.tA - lead, hasHold ? h0 : tEnd, (sec - eFly) / P[1]);
           else if (sec < eWait) t = h0 + (sec - eIn);
-          else if (sec < eFast) t = lerp(h0 + P[4], h1, easeIn((sec - eWait) / P[5]));
-          else t = lerp(hasHold ? h1 : h0, tEnd, easeOut(Math.min(1, (sec - eFast) / P[6])));
-          if (stuck && state.focus !== m.p.v) R.setFocus(m.p.v);
+          else if (sec < eFast) t = lerp(h0 + P[2], h1, easeIn((sec - eWait) / P[3]));
+          else t = lerp(hasHold ? h1 : tEnd, tEnd, easeOut(Math.min(1, (sec - eFast) / P[4])));
           state.speed = 120;
           state.t = t;
-          // The camera holds still on the spot; if a slow device cut the flight short, ease
-          // it the rest of the way.
+          if (q) state.extra = [{p: q.p, t: quickT(t), off}];
+          // The camera holds still; if a slow device cut the flight short, ease it the rest of the way.
           if (sec >= eFly && !map.isMoving()) {
             const c = map.getCenter();
             map.jumpTo({center: [lerp(c.lng, view[0], 0.08), lerp(c.lat, view[1], 0.08)],
-              zoom: lerp(map.getZoom(), 16.2, 0.08), pitch: lerp(map.getPitch(), 55, 0.08)});
+              zoom: lerp(map.getZoom(), spotZoom, 0.08), pitch: lerp(map.getPitch(), 52, 0.08),
+              bearing: map.getBearing() + (((bearing - map.getBearing() + 540) % 360) - 180) * 0.08});
           }
-          const waiting = stuck && hasHold && t >= h0 && t <= h1;
+          const waiting = hasHold && t >= h0 && t <= h1;
           caption(fill(c0, v), sec >= eFast ? fill(c1, v) : "");
-          // Once the stuck car is on, the quick car's time stays at its final figure (the
-          // clock has moved to the other car's moment, which may be earlier in the day).
-          const quickRow = q && sec >= eFly ? row(q.p.v, q.tA, stuck ? q.tB - q.tA : Math.min(t, q.tB) - q.tA, stuck ? "done" : "") : "";
-          const stuckRow = stuck && t >= m.tA ? row(m.p.v, m.tA, Math.min(t, m.tB) - m.tA) : "";
-          showHud((waiting ? `<div class="th-big">Standing still ${clock(t - h0)}</div>` : "") + quickRow + stuckRow);
+          // Once the quick car is through, its time also goes up here: on a phone its label
+          // may have left the frame with it.
+          const done = q && quickT(t) >= q.tB;
+          showHud((waiting ? `<div class="th-big">Standing still ${clock(t - h0)}</div>` : "") +
+            (done && (waiting || t < m.tB) ? `<div class="th-row done"><span>Car ${esc(q.p.v)}, ${esc(R.clockText(q.tA))}, went through in</span><b>${clock(q.tB - q.tA)}</b></div>` : ""));
         },
-        leave() { R.tour.layers = null; R.setRoutes([]); state.dim = 0; },
+        leave() { R.tour.layers = null; R.setRoutes([]); state.dim = 0; state.extra = []; },
       };
+      // Each car's label: which car and when, and its time through the spot so far; the quick
+      // car's freezes where it left the spot, ticked.
+      function labels() {
+        const t = state.t, out = [];
+        const me = R.at(m.p, Math.min(Math.max(t, m.p.t0), m.p.t1));
+        if (me && t >= m.tA - lead) {
+          out.push(label(`${m.p.v} · ${R.clockText(m.tA)}\n${t <= m.tB ? clock(t - m.tA) : `${clock(m.tB - m.tA)}`}`,
+            [me[0], me[1]], true));
+        }
+        if (q) {
+          const qt = quickT(t);
+          if (qt >= q.tB) {
+            out.push(label(`${q.p.v} · ${R.clockText(q.tA)}\n✓ ${clock(q.tB - q.tA)}`, [pos[2 * q.b] + off[0], pos[2 * q.b + 1] + off[1]], false, true));
+          } else {
+            const a = R.at(q.p, Math.max(qt, q.p.t0));
+            if (a) out.push(label(`${q.p.v} · ${R.clockText(q.tA)}\n${clock(qt - q.tA)}`, [a[0] + off[0], a[1] + off[1]], true, true));
+          }
+        }
+        return out;
+      }
       // Every car there that day, sped through, the tally climbing as each one passes and
       // the delay map's columns rising round the spot.
       function sweepTick(f) {
         if (state.focus) {
           R.setFocus(null);
+          state.extra = [];
           state.dim = 0.5;
           R.tour.layers = local && local.length ? () => [peaksLayer(peaks, local, state.t, 170, 1, "tour-peaks-local", 0)] : null;
           map.stop();
           move({center: spot, zoom: 15.4, pitch: 55, bearing: map.getBearing()}, 900);
         }
         state.t = lerp(s0, s1, ease(Math.min(1, f)));
-        state.speed = (s1 - s0) / P[7];
+        state.speed = (s1 - s0) / P[5];
         const [cars, h] = f >= 1 ? [s.at.cars, s.at.total_h] : tallyAt(state.t);
         caption(fill(c0, v), fill(c1, v));
         showHud(`<div class="th-big">${h.toFixed(1)} hours lost here</div>` +
