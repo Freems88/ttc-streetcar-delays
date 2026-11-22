@@ -52,10 +52,111 @@
     let stories = null;
     try { stories = await (await fetch("data/drafts/stories.json", {cache: "no-cache"})).json(); } catch { /* none */ }
     if (!stories || stories.day !== R.data.day || !stories.items?.length) return;
+    // The delay map's figures for the day, for the peaks (optional: the tour runs without).
+    let peaks = null;
+    try {
+      const get = async (f) => (await fetch(`data/${f}`, {cache: "no-cache"})).json();
+      const [net, stats] = await Promise.all([get("network.json"), get("stats-d1.json")]);
+      peaks = buildPeaks(R, net, stats);
+    } catch (e) { console.warn("tour: no peaks", e); }
     const btn = document.getElementById("tour-btn");
     btn.hidden = false;
-    btn.addEventListener("click", () => play(R, stories));
-    if (R.tour.active) play(R, stories);
+    btn.addEventListener("click", () => play(R, stories, peaks));
+    if (R.tour.active) play(R, stories, peaks);
+  }
+
+  // --- peaks: the delay map, built up over the day --------------------------------------
+  // Each 25 m slice's time lost that day, as on the delay map (yesterday's view: seconds
+  // lost per 100 m per pass x passes; summed over the network that's the headline's hours).
+  // When it was lost comes from the replay: every stretch where a car fell behind the ghost
+  // is put on the nearest slice of track running the same way, in half-hour steps. A
+  // slice's column grows on that timing and ends on its delay-map total.
+  const PEAK_STEP = 1800, PEAK_NEAR_M = 30, CELL_M = 50, MX = 80660, MY = 110540;
+  function buildPeaks(R, net, stats) {
+    const {paths, pos, ts, gclk} = R, BIN = net.bin_m;
+    const sl = [];
+    for (const p of net.pieces) {
+      const st = stats.pieces[p.id];
+      if (!st) continue;
+      const {d, n} = st.slots.all, L = p.bins.length;
+      for (let b = 0; b < L; b++) {
+        const total = d[b] && n[b] ? d[b] * BIN / 100 * n[b] : 0;
+        if (total < 1) continue;
+        const q = p.bins[Math.min(b + 1, L - 1)], o = p.bins[Math.max(b - 1, 0)];
+        sl.push({pos: p.bins[b], dx: (q[0] - o[0]) * MX, dy: (q[1] - o[1]) * MY, total, cum: null});
+      }
+    }
+    const grid = new Map();
+    sl.forEach((x, i) => {
+      const k = Math.floor(x.pos[0] * MX / CELL_M) * 1e6 + Math.floor(x.pos[1] * MY / CELL_M);
+      (grid.get(k) || grid.set(k, []).get(k)).push(i);
+    });
+    const NB = Math.ceil((R.tMax + 1) / PEAK_STEP) + 1, hist = new Map();
+    for (const p of paths) {
+      if (!p.ghost) continue;
+      let ddx = 0, ddy = 0;
+      for (let k = p.i0 + 1; k < p.i1; k++) {
+        const lon = pos[2 * k - 2], lat = pos[2 * k - 1];
+        const mx = (pos[2 * k] - lon) * MX, my = (pos[2 * k + 1] - lat) * MY;
+        if (Math.hypot(mx, my) > 2) { ddx = mx; ddy = my; }
+        const inc = (ts[k] - ts[k - 1]) - (gclk[k] - gclk[k - 1]);
+        if (inc <= 0 || (!ddx && !ddy)) continue;
+        const cx = Math.floor(lon * MX / CELL_M), cy = Math.floor(lat * MY / CELL_M);
+        let best = -1, bd = PEAK_NEAR_M;
+        for (let gx = cx - 1; gx <= cx + 1; gx++) for (let gy = cy - 1; gy <= cy + 1; gy++) {
+          for (const i of grid.get(gx * 1e6 + gy) || []) {
+            const x = sl[i];
+            if (x.dx * ddx + x.dy * ddy <= 0) continue;  // track running the other way
+            const dist = Math.hypot((x.pos[0] - lon) * MX, (x.pos[1] - lat) * MY);
+            if (dist < bd) { bd = dist; best = i; }
+          }
+        }
+        if (best < 0) continue;
+        const h = hist.get(best) || hist.set(best, new Float32Array(NB)).get(best);
+        h[Math.min(NB - 1, Math.max(0, Math.floor(ts[k - 1] / PEAK_STEP)))] += inc;
+      }
+    }
+    // Cumulative shares per slice (slices the replay never matched take the network's shape).
+    const all = new Float64Array(NB);
+    for (const h of hist.values()) for (let j = 0; j < NB; j++) all[j] += h[j];
+    const share = (h) => {
+      const c = new Float32Array(NB + 1);
+      for (let j = 0; j < NB; j++) c[j + 1] = c[j] + h[j];
+      const z = c[NB] || 1;
+      for (let j = 0; j <= NB; j++) c[j] /= z;
+      return c;
+    };
+    const net0 = share(all);
+    sl.forEach((x, i) => { x.cum = hist.has(i) ? share(hist.get(i)) : net0; });
+    const frac = (c, t) => {
+      const u = Math.max(0, Math.min(NB, t / PEAK_STEP)), j = Math.min(NB - 1, Math.floor(u));
+      return c[j] + (c[j + 1] - c[j]) * (u - j);
+    };
+    const sum = sl.reduce((a, x) => a + x.total, 0);
+    return {
+      slices: sl, frac, matched: hist.size,
+      // Share of the network's day total lost by time t.
+      lostShare: (t) => sl.reduce((a, x) => a + x.total * frac(x.cum, t), 0) / sum,
+      // Slices within m metres of c, on track running the way [dx, dy] points (if given).
+      near: (c, m, dir) => sl.filter((x) => Math.hypot((x.pos[0] - c[0]) * MX, (x.pos[1] - c[1]) * MY) < m &&
+        (!dir || x.dx * dir[0] * MX + x.dy * dir[1] * MY > 0)),
+    };
+  }
+  // The columns: height is time lost so far (the `rank`th tallest reaching `top` metres),
+  // colour by the day's total there, yellow to red.
+  function peaksLayer(P, list, t, top, opacity = 1, id = "tour-peaks", rank = 5) {
+    if (!list.ref) list.ref = list.map((x) => x.total).sort((a, b) => b - a)[Math.min(list.length - 1, rank)] || 1;
+    const ref = list.ref;
+    return new deck.ColumnLayer({
+      id, data: list, getPosition: (x) => x.pos, diskResolution: 6, radius: top / 60,
+      extruded: true, opacity, material: false,
+      getFillColor: (x) => {
+        const f = Math.min(1, x.total / ref);
+        return [255, Math.round(215 - 175 * f), Math.round(90 - 60 * f), 235];
+      },
+      getElevation: (x) => x.total * P.frac(x.cum, t) / ref * top,
+      updateTriggers: {getElevation: Math.round(t / 60)},
+    });
   }
 
   // --- finding the moment ---------------------------------------------------------------
@@ -113,7 +214,7 @@
   }
 
   // --- the tour -------------------------------------------------------------------------
-  function play(R, stories) {
+  function play(R, stories, peaks) {
     const {state, map, ts, gclk, pos, findIn, lerpAt} = R;
     const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
     const $ = (id) => document.getElementById(id);
@@ -152,8 +253,9 @@
     if (st) mids.splice(1, 0, shortBeat(st));
     beats.push(...mids, closeBeat());
 
-    // UI
+    // UI (the map's credits fold into their (i) button, clear of the captions)
     document.body.classList.add("touring");
+    document.querySelectorAll(".maplibregl-ctrl-attrib").forEach((e) => e.classList.remove("maplibregl-compact-show"));
     R.follow(null);
     R.setPlaying(true);
     const ui = $("tour"), cap = $("tour-cap"), hud = $("tour-hud"), prog = $("tour-prog");
@@ -205,6 +307,7 @@
       R.tour.active = false;
       R.setFocus(null);
       R.setRoutes([]);
+      state.dim = 0;
       document.removeEventListener("keydown", onKey, true);
       ui.hidden = true;
       document.body.classList.remove("touring");
@@ -213,40 +316,48 @@
       R.setPlaying(true);
       map.stop();
       move(home, 1200);
-      endCard(R, stories, () => play(R, stories));
+      endCard(R, stories, () => play(R, stories, peaks));
       R.writeHash();
     }
 
-    // Time-lapse of the whole network through the morning rush.
-    // The whole day sped through, with the day's time lost to delays adding up. The counter
-    // ends on the site's figure (stories.lost_h); its shape over the day comes from the replay:
-    // each trip's time lost against the ghost, spread over the trip.
+    // The whole day sped through: the trails fade back and the delay map rises out of the
+    // streets, slice by slice, as the time is lost; a counter adds it up. Both end on the
+    // site's figures (the peaks on the delay map's, the counter on stories.lost_h).
     function openBeat() {
-      const t0 = R.tMin, t1 = R.tMax, dur = 6, STEP = 60;
+      const t0 = R.tMin, t1 = R.tMax, grow = 6, dur = grow + 1.5, STEP = 60;
+      // Without the peaks' data, the counter's shape comes from each trip's time lost.
       const curve = new Float64Array(Math.ceil((t1 - t0) / STEP) + 2);
-      for (const p of R.paths) {
-        if (!p.ghost || p.t1 <= p.t0) continue;
-        const lost = Math.max(0, (p.t1 - p.t0) - (gclk[p.i1 - 1] - gclk[p.i0]));
-        const k0 = Math.floor((p.t0 - t0) / STEP), k1 = Math.floor((p.t1 - t0) / STEP);
-        for (let k = k0; k <= k1; k++) curve[k + 1] += lost / (k1 - k0 + 1);
+      if (!peaks) {
+        for (const p of R.paths) {
+          if (!p.ghost || p.t1 <= p.t0) continue;
+          const lost = Math.max(0, (p.t1 - p.t0) - (gclk[p.i1 - 1] - gclk[p.i0]));
+          const k0 = Math.floor((p.t0 - t0) / STEP), k1 = Math.floor((p.t1 - t0) / STEP);
+          for (let k = k0; k <= k1; k++) curve[k + 1] += lost / (k1 - k0 + 1);
+        }
+        for (let k = 1; k < curve.length; k++) curve[k] += curve[k - 1];
       }
-      for (let k = 1; k < curve.length; k++) curve[k] += curve[k - 1];
-      const total = curve[curve.length - 1] || 1;
       const lostBy = (t) => {
+        if (peaks) return stories.lost_h * peaks.lostShare(t);
         const x = Math.max(0, Math.min(curve.length - 1.001, (t - t0) / STEP)), k = Math.floor(x);
-        return stories.lost_h * lerp(curve[k], curve[k + 1], x - k) / total;
+        return stories.lost_h * lerp(curve[k], curve[k + 1], x - k) / (curve[curve.length - 1] || 1);
       };
       return {
         dur,
-        enter() { map.stop(); map.jumpTo(home); R.setFocus(null); R.tour.layers = null; },
-        tick(f) {
-          state.t = lerp(t0, t1, f);
-          state.speed = (t1 - t0) / dur;
-          caption(fill(openCap[f < 0.5 ? 0 : 1], vars));
+        enter() {
+          map.stop(); map.jumpTo(home); R.setFocus(null);
+          state.dim = peaks ? 0.7 : 0;
+          R.tour.layers = peaks ? () => [peaksLayer(peaks, peaks.slices, state.t, 1400)] : null;
+        },
+        tick(f, sec) {
+          const g = Math.min(1, sec / grow);
+          state.t = lerp(t0, t1, g);
+          state.speed = sec < grow ? (t1 - t0) / grow : 0;
+          caption(fill(openCap[g < 0.5 ? 0 : 1], vars));
           showHud(!stories.lost_h ? "" :
-            `<div class="th-big">${Math.round(f >= 1 ? stories.lost_h : lostBy(state.t)).toLocaleString("en-CA")} hours</div>` +
+            `<div class="th-big">${Math.round(g >= 1 ? stories.lost_h : lostBy(state.t)).toLocaleString("en-CA")} hours</div>` +
             `<div class="th-row"><span>lost to delays by ${esc(R.clockText(state.t))}</span></div>`);
         },
+        leave() { R.tour.layers = null; },
       };
     }
 
@@ -278,29 +389,26 @@
       const spot = centre(s);
       const clock = (sec) => R.dur(Math.max(0, sec));
       const ghostTotal = gclk[m.b] - gclk[m.a];
-      const ghostAt = (t) => {
-        const [i, f] = findIn(gclk, m.a, m.b, gclk[m.a] + Math.max(0, t - m.tA));
-        return [lerpAt(pos, i, f, 2, 0), lerpAt(pos, i, f, 2, 1)];
-      };
-      let cam = null;
+      // Just the routes through the spot (the story's own link names them), the rest dimmed.
+      // The ghost stays off the map: over a few hundred metres it never gets far ahead, so
+      // the clean run is a time in the stopwatch instead.
+      const routes = (new URLSearchParams(s.hash).get("r") || m.p.r).split(",");
+      // The columns round the spot, on the hero's side of the street only (the tally is one direction).
+      const local = peaks && sweep ? peaks.near(spot, 450,
+        [pos[2 * m.b] - pos[2 * m.a], pos[2 * m.b + 1] - pos[2 * m.a + 1]]) : null;
+      // Framed between the spot and where the car stands (it often waits back in the queue).
+      const stand = R.heads(h0, R.byCar.get(m.p.v))[0];
+      const view = stand ? [lerp(spot[0], stand.lon, 0.6), lerp(spot[1], stand.lat, 0.6)] : spot;
       return {
         dur,
         enter() {
           state.t = m.tA - lead;
+          R.setRoutes(routes);
           R.setFocus(m.p.v);
+          state.dim = 0.65;
+          R.tour.layers = null;
           map.stop();
-          cam = null;
-          move({center: spot, zoom: 16.2, pitch: 55, bearing: map.getBearing()}, P[0] * 1000);
-          R.tour.layers = () => {
-            if (state.t < m.tA) return [];
-            const g = ghostAt(state.t), {IconLayer, ScatterplotLayer} = R.deck;
-            return [
-              new ScatterplotLayer({id: "tour-ghost-glow", data: [g], getPosition: (d) => d,
-                getFillColor: [200, 190, 255, 60], radiusUnits: "pixels", getRadius: 18}),
-              new IconLayer({id: "tour-ghost", data: [g], getPosition: (d) => d, getIcon: () => R.GHOST_ICON,
-                getSize: 30, sizeUnits: "pixels"}),
-            ];
-          };
+          move({center: view, zoom: 16.2, pitch: 55, bearing: map.getBearing()}, P[0] * 1000);
         },
         tick(f, sec) {
           let t;
@@ -312,15 +420,12 @@
           else return sweepTick((sec - ends[4]) / P[5]);
           state.speed = 120;
           state.t = t;
-          // Camera rides with the car once it has arrived.
-          if (sec >= ends[0]) {
-            const a = R.heads(t, R.byCar.get(m.p.v))[0];
-            if (a) {
-              // Once the flight is over (or if a slow device cut it short), ease the centre onto
-              // the car and the zoom and tilt to where the flight was going.
-              cam = cam ? [lerp(cam[0], a.lon, 0.12), lerp(cam[1], a.lat, 0.12)] : map.getCenter().toArray();
-              if (!map.isMoving()) map.jumpTo({center: cam, zoom: lerp(map.getZoom(), 16.2, 0.08), pitch: lerp(map.getPitch(), 55, 0.08)});
-            }
+          // The camera holds still on the spot; if a slow device cut the flight short, ease
+          // it the rest of the way.
+          if (sec >= ends[0] && !map.isMoving()) {
+            const c = map.getCenter();
+            map.jumpTo({center: [lerp(c.lng, view[0], 0.08), lerp(c.lat, view[1], 0.08)],
+              zoom: lerp(map.getZoom(), 16.2, 0.08), pitch: lerp(map.getPitch(), 55, 0.08)});
           }
           const carS = Math.min(t, m.tB) - m.tA, ghostS = Math.min(Math.max(0, t - m.tA), ghostTotal);
           const waiting = hasHold && t >= h0 && t <= h1;
@@ -330,15 +435,17 @@
             `<div class="th-row"><span>Car ${esc(m.p.v)}</span><b>${clock(carS)}</b></div>` +
             `<div class="th-row ghost"><span>👻 Clean run</span><b>${clock(ghostS)}</b></div>`);
         },
-        leave() { R.tour.layers = null; },
+        leave() { R.tour.layers = null; R.setRoutes([]); state.dim = 0; },
       };
-      // Every car there that day, sped through, the tally climbing as each one passes.
+      // Every car there that day, sped through, the tally climbing as each one passes and
+      // the delay map's columns rising round the spot.
       function sweepTick(f) {
         if (state.focus) {
           R.setFocus(null);
-          R.tour.layers = null;
+          state.dim = 0.5;
+          R.tour.layers = local && local.length ? () => [peaksLayer(peaks, local, state.t, 170, 1, "tour-peaks-local", 0)] : null;
           map.stop();
-          move({center: spot, zoom: 15.4, pitch: 50, bearing: map.getBearing()}, 900);
+          move({center: spot, zoom: 15.4, pitch: 55, bearing: map.getBearing()}, 900);
         }
         state.t = lerp(s0, s1, ease(Math.min(1, f)));
         state.speed = (s1 - s0) / P[5];
@@ -394,7 +501,11 @@
     function closeBeat() {
       return {
         dur: 3,
-        enter() { R.setFocus(null); R.tour.layers = null; map.stop(); move(home, 2000); },
+        enter() {
+          R.setFocus(null); map.stop(); move(home, 2000);
+          state.dim = peaks ? 0.55 : 0;
+          R.tour.layers = peaks ? () => [peaksLayer(peaks, peaks.slices, R.tMax, 1400, 0.9)] : null;
+        },
         tick(f, sec, dt) { state.t = Math.min(R.tMax, state.t + dt * 600); state.speed = 600; caption(fill(closeCap[0], vars)); },
       };
     }

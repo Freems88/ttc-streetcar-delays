@@ -220,15 +220,22 @@ opens `?story=<kind>` with the post's own view, framing the spot and pinning its
 `replay.html#tour=1` (or "Yesterday in 40 seconds" on the replay card) plays yesterday's
 picks as a short film (`site/tour.js`), about 35-40 s. It only runs when `stories.json` is
 for the same day as `replay.json`.
-- **Opening (6 s):** the whole network through the whole day, with a counter of hours lost
-  to delays that ends on the summary's figure (`stories.json` `lost_h`).
+- **Opening (6 s, then 1.5 s held):** the whole network through the whole day. The trails fade
+  back and the delay map rises out of the streets as 3D columns, one per slice, while a
+  counter of hours lost climbs to the summary's figure (`stories.json` `lost_h`).
+  The close comes back to the finished columns.
 - **Spot beats** (the signal, slowest-stretch and stop-wait stories, using `at` from
-  `story_of`): fly to the spot; roll one car up; when it stands still 25 s or more, run 2.5 s
-  in real time with a "Standing still" stopwatch, then speed through the rest; car time
-  against the ghost (clean run) throughout. Where the story has a day total (`at.cars`,
+  `story_of`): only the routes through the spot (the story link's `r`), every car but the
+  chosen one dimmed, and the camera held still, framed between the spot and where the car
+  stands. Roll the car up; when it stands still 25 s or more, run 2.5 s in real time with a
+  "Standing still" stopwatch, then speed through the rest; car time against the clean run
+  throughout, as numbers only (the ghost isn't drawn: over a few hundred metres it never
+  gets far enough ahead to show anything). Where the story has a day total (`at.cars`,
   `at.total_h`: the segment post's "adds up to" and the signal approach's
   `hours_per_day`), the clock then sweeps the whole day at the spot while a tally of cars
-  and hours lost climbs. Stop waits have no sweep: their measure is riders' minutes, not car time.
+  and hours lost climbs and the delay map's columns rise within 450 m, on the chosen car's
+  side of the street (the tally is one direction). Stop waits have no sweep: their measure
+  is riders' minutes, not car time.
 - **Short turns:** the route alone, its busiest four hours sped through, the "!" markers
   popping and a count climbing.
 - **End:** the story card (the map page's first-visit card) with "Pick a car" and "Watch again".
@@ -239,6 +246,15 @@ that range; the tour shows the 90th percentile, a bad but ordinary pass rather t
 breakdown. Passes losing over 15 min are left out (layovers, breakdowns). Spots are ordered by
 the chosen car's longest stand; a spot within 400 m of one already in is dropped (the slowest
 stretch often ends at the most-held signal); at most two, with the short turns between them.
+
+The columns (`buildPeaks`): each slice's height ends on its delay-map total for the day
+(`stats-d1.json`: seconds lost per 100 m per pass x passes; summed over the network that's the
+headline's hours exactly). When it grows comes from the replay: every step where a car fell
+behind the ghost is put on the nearest slice within 30 m on track running the same way, in
+half-hour steps; slices the replay never matched take the network's overall timing. The
+weekday time-of-day slots would be site data, but weekends have only one daytime slot, too
+coarse to animate. The network view scales the sixth-tallest column to 1,400 m; the sweep's
+local view scales its tallest to 170 m.
 
 The tallies' shapes over the day come from the replay (each trip's or pass's loss against the
 ghost), but they're scaled to land exactly on the site's figures, since the replay's

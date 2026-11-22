@@ -420,12 +420,16 @@
     const secs = cars.flatMap((c) => c.secs);
     const halo = {getPath: (c) => c.path, widthUnits: "meters", capRounded: true, jointRounded: true,
       opacity: mix, parameters: {depthWriteEnabled: false}};
-    const tint = (a) => ({getColor: (c) => [...headColor(c.d), a], updateTriggers: {getColor: state.color}});
+    // The tour dims every car but the one it's following (state.dim, 0..1).
+    const fv = state.follow || state.focus, lit = (d) => (state.dim && d.p.v !== fv ? 1 - state.dim : 1);
+    const trig = {getColor: [state.color, state.dim, fv]};
+    const tint = (a) => ({getColor: (c) => [...headColor(c.d), a * lit(c.d)], updateTriggers: trig});
     return [
       new PathLayer({...halo, id: "tram-ring", data: ring, getColor: [255, 255, 255, 235], getWidth: TRAM_W * scale * 2.2}),
       new PathLayer({...halo, ...tint(60), id: "tram-halo", data: cars, getWidth: TRAM_W * scale * 2.8}),
       new PathLayer({...halo, ...tint(120), id: "tram-halo-core", data: cars, getWidth: TRAM_W * scale * 1.6}),
       new IconLayer({id: `tram-body-${tramGen}`, data: secs, getPosition: (s) => s.pos, getIcon: (s) => tramSprite(s.si, s.dir, tilt), getAngle: (s) => s.turn,
+        getColor: (s) => [255, 255, 255, 255 * lit(s.d)], updateTriggers: trig,
         sizeUnits: "meters", getSize: TRAM_FH * scale, opacity: mix, pickable: true,
         onClick: ({object}) => object && follow(object.d.p.v)}),
     ];
@@ -454,6 +458,7 @@
     const hs = heads(state.t);
     const fv = state.follow || state.focus;
     const followed = fv ? heads(state.t, byCar.get(fv)) : [];
+    const dimOf = (d) => (state.dim && d.p.v !== fv ? 1 - state.dim : 1);
     const mix = Math.max(0, Math.min(1, (map.getZoom() - ICON_ZOOM + 0.4) / 0.8));  // 0 dots .. 1 streetcars
     const dots = 1 - mix;
     const trails = [];
@@ -463,7 +468,7 @@
         id: `trails-${hr}-${state.color}`, data: chunks[hr][state.color], _pathType: "open",
         currentTime: state.t, trailLength: TRAIL_S, fadeTrail: true,
         widthUnits: "pixels", getWidth: 3, widthMinPixels: 2, capRounded: true, jointRounded: true,
-        opacity: fv ? 0.4 : 0.9,
+        opacity: (fv ? 0.4 : 0.9) * (1 - (state.dim || 0)),
       }));
     }
     overlay.setProps({layers: [
@@ -475,14 +480,14 @@
       }),
       new ScatterplotLayer({
         id: "glow", data: hs, getPosition: (d) => [d.lon, d.lat], opacity: dots, visible: dots > 0,
-        getFillColor: (d) => [...headColor(d), 70], radiusUnits: "pixels", getRadius: 9,
-        updateTriggers: {getFillColor: state.color},
+        getFillColor: (d) => [...headColor(d), 70 * dimOf(d)], radiusUnits: "pixels", getRadius: 9,
+        updateTriggers: {getFillColor: [state.color, state.dim, fv]},
       }),
       new ScatterplotLayer({
         id: "heads", data: hs, pickable: true, getPosition: (d) => [d.lon, d.lat], opacity: dots, visible: dots > 0,
-        getFillColor: (d) => [...headColor(d), 255], radiusUnits: "pixels", getRadius: 3.5,
-        stroked: true, getLineColor: [255, 255, 255, 200], lineWidthUnits: "pixels", getLineWidth: 0.8,
-        updateTriggers: {getFillColor: state.color},
+        getFillColor: (d) => [...headColor(d), 255 * dimOf(d)], radiusUnits: "pixels", getRadius: 3.5,
+        stroked: true, getLineColor: (d) => [255, 255, 255, 200 * dimOf(d)], lineWidthUnits: "pixels", getLineWidth: 0.8,
+        updateTriggers: {getFillColor: [state.color, state.dim, fv], getLineColor: [state.dim, fv]},
         onClick: ({object}) => object && follow(object.p.v),
       }),
       new ScatterplotLayer({

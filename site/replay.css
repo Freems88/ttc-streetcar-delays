@@ -153,16 +153,14 @@ body {
 .th-row b { font-size: 17px; }
 .th-row.ghost { color: #cfc4ff; }
 .tour-cap {
-  position: fixed; left: 50%; bottom: 40px; transform: translateX(-50%); width: min(640px, calc(100% - 32px));
+  position: fixed; left: 50%; bottom: 56px; transform: translateX(-50%); width: min(640px, calc(100% - 32px));
   z-index: 4; pointer-events: none; text-align: center; text-shadow: 0 2px 12px rgba(0, 0, 0, 0.9);
 }
 .tour-cap b { display: block; font-size: 26px; line-height: 1.2; font-weight: 700; letter-spacing: -0.01em; }
 .tour-cap span { display: block; margin-top: 8px; font-size: 19px; color: #ffd3d9; font-weight: 500; }
-.tour-paused {
-  display: none; position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 4; pointer-events: none;
-  padding: 10px 18px; border-radius: 999px; background: var(--card); border: 1px solid var(--line); font-weight: 600;
-}
+.tour-paused { display: none; flex: 1; font-weight: 600; font-size: 14px; text-shadow: 0 1px 8px rgba(0, 0, 0, 0.9); }
 .tour.paused .tour-paused { display: block; }
+.tour.paused .tour-prog { display: none; }
 .tour-end { top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(400px, calc(100% - 32px)); z-index: 5; padding: 18px 20px; }
 .tour-end .sub { margin: 0; color: var(--muted); font-size: 13px; }
 .tour-end h2 { margin: 2px 28px 10px 0; font-size: 19px; line-height: 1.3; }
@@ -183,7 +181,7 @@ body {
   .tour-top { top: 10px; width: calc(100% - 20px); }
   .tour-hud { top: 52px; min-width: 250px; padding: 8px 12px; }
   .th-big { font-size: 19px; }
-  .tour-cap { bottom: 36px; width: calc(100% - 24px); }
+  .tour-cap { bottom: 64px; width: calc(100% - 24px); }
   .tour-cap b { font-size: 20px; }
   .tour-cap span { font-size: 16px; }
   /* The end card is a bottom sheet; the replay card and time bar wait until it's closed. */
