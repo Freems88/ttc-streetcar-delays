@@ -7,15 +7,45 @@
   const begin = () => setup(window.replayTour);
   if (window.replayTour) begin(); else window.addEventListener("replay-ready", begin, {once: true});
 
-  // Captions: short, numbers exactly as on the site. {place} {detail} {when} {headline} {route}.
+  // Captions: short, numbers exactly as on the site, never a dig at the TTC or its staff.
+  // Each beat has a few variants, [setup, payoff]; the day picks one (so everyone sees the
+  // same words that day, and they change day to day), and "Watch again" moves on a step.
+  // {when} {day} {lost} {place} {placeLc} {detail} {route} {car} {clean}
   const CAPTIONS = {
-    open: ["{when}. Every streetcar, all day.", "{headline}"],
-    signal: ["Held at a signal: {place}", "{detail}."],
-    segment: ["The day's slowest stretch: {place}", "{detail}."],
-    stopwait: ["The longest extra wait at a stop: {place}", "{detail}."],
-    shortturn: ["{place}: trips sent back early", "{detail}."],
-    close: ["Now pick a car and ride along."],
+    open: [
+      ["{when}. Every streetcar, all day.", "{lost} hours lost to delays."],
+      ["Every streetcar on {day}, from the TTC's live positions.", "Together they lost {lost} hours to delays."],
+    ],
+    signal: [
+      ["Held at a signal: {place}", "{detail}."],
+      ["Clean run through here: {clean}. Now watch car {car}.", "{detail}."],
+      ["Car {car}, {placeLc}.", "Not alone: {detailLc}."],
+      ["Watch the clock: {placeLc}.", "{detail}."],
+    ],
+    segment: [
+      ["The day's slowest stretch: {place}", "{detail}."],
+      ["The ghost is a clean run. Watch it pull away.", "{detail}."],
+    ],
+    stopwait: [
+      ["Longest extra wait at a stop: {place}", "{detail}."],
+      ["Riders at {place} waited longest beyond the schedule.", "{detail}."],
+      ["{place}: where the minutes went missing.", "{detail}."],
+    ],
+    shortturn: [
+      ["{place}: trips sent back early", "{detail}."],
+      ["Each ⚠ is a streetcar turned back before its last stop.", "{detail}."],
+      ["{place}. Not every trip reaches the end.", "{detail}."],
+      ["{place}, where the end of the line moves.", "{detail}."],
+    ],
+    close: [["Now pick a car and ride along."], ["Your turn: tap any streetcar."], ["Every car's day is here. Pick one."]],
   };
+  const KINDS = Object.keys(CAPTIONS);
+  let round = 0;  // times watched on this visit
+  const pick = (kind, day) => {
+    const list = CAPTIONS[kind], n = Math.floor(Date.parse(day) / 864e5) + round + KINDS.indexOf(kind);
+    return list[((n % list.length) + list.length) % list.length];
+  };
+  const lc = (x) => (x ? x[0].toLowerCase() + x.slice(1) : "");
   const fill = (s, v) => s.replace(/\{(\w+)\}/g, (_, k) => v[k] ?? "");
 
   async function setup(R) {
@@ -87,7 +117,12 @@
     const {state, map, ts, gclk, pos, findIn, lerpAt} = R;
     const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
     const $ = (id) => document.getElementById(id);
-    const vars = {when: stories.when, headline: stories.headline};
+    const vars = {when: stories.when, day: stories.when.split(",")[0],
+      lost: stories.lost_h ? stories.lost_h.toLocaleString("en-CA") : ""};
+    const capsFor = (kind) => pick(kind, stories.day);
+    const openCap = stories.lost_h ? capsFor("open") : ["{when}. Every streetcar, all day.", stories.headline];
+    const closeCap = capsFor("close");
+    round++;
     const home = {center: R.wide ? [-79.40, 43.660] : [-79.40, 43.655], zoom: R.wide ? 12.3 : 11.2, pitch: 45, bearing: -17};
     const ease = (f) => f * f * (3 - 2 * f), easeIn = (f) => f * f * f, easeOut = (f) => 1 - (1 - f) ** 3;
     const lerp = (a, b, f) => a + (b - a) * f;
@@ -207,7 +242,7 @@
         tick(f) {
           state.t = lerp(t0, t1, f);
           state.speed = (t1 - t0) / dur;
-          caption(...(f < 0.5 ? [fill(CAPTIONS.open[0], vars)] : [fill(CAPTIONS.open[1], vars)]));
+          caption(fill(openCap[f < 0.5 ? 0 : 1], vars));
           showHud(!stories.lost_h ? "" :
             `<div class="th-big">${Math.round(f >= 1 ? stories.lost_h : lostBy(state.t)).toLocaleString("en-CA")} hours</div>` +
             `<div class="th-row"><span>lost to delays by ${esc(R.clockText(state.t))}</span></div>`);
@@ -218,8 +253,9 @@
     // One car at the story's spot: fly in, roll up, feel the wait in real time, then speed
     // through the rest of it and show what it cost against the ghost.
     function spotBeat({s, m}) {
-      const v = {...vars, place: s.place, detail: s.detail};
-      const [c0, c1] = CAPTIONS[s.kind];
+      const v = {...vars, place: s.place, placeLc: lc(s.place), detail: s.detail, detailLc: lc(s.detail),
+        car: m.p.v, clean: R.dur(gclk[m.b] - gclk[m.a])};
+      const [c0, c1] = capsFor(s.kind);
       const lead = 45, hasHold = m.hold && m.hold[1] - m.hold[0] >= 25;
       const h0 = hasHold ? m.hold[0] : (m.tA + m.tB) / 2, h1 = hasHold ? m.hold[1] : h0;
       // Phases, real seconds: fly, approach, feel (real time), speed through, pay off, and
@@ -329,7 +365,7 @@
       const lons = ev.map((e) => e.lon), lats = ev.map((e) => e.lat);
       const pad = R.wide ? 160 : 70;
       const v = {...vars, place: s.place, detail: s.detail, route: s.at.route};
-      const [c0, c1] = CAPTIONS.shortturn;
+      const [c0, c1] = capsFor("shortturn");
       const dur = 7;
       return {
         dur,
@@ -359,7 +395,7 @@
       return {
         dur: 3,
         enter() { R.setFocus(null); R.tour.layers = null; map.stop(); move(home, 2000); },
-        tick(f, sec, dt) { state.t = Math.min(R.tMax, state.t + dt * 600); state.speed = 600; caption(fill(CAPTIONS.close[0], vars)); },
+        tick(f, sec, dt) { state.t = Math.min(R.tMax, state.t + dt * 600); state.speed = 600; caption(fill(closeCap[0], vars)); },
       };
     }
   }

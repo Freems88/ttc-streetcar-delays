@@ -243,7 +243,11 @@ stretch often ends at the most-held signal); at most two, with the short turns b
 The tallies' shapes over the day come from the replay (each trip's or pass's loss against the
 ghost), but they're scaled to land exactly on the site's figures, since the replay's
 window-based measure isn't quite the delay map's. The car-against-ghost stopwatch is the
-replay's own measure for that car. Skip is always there; a tap (or space) pauses; Escape skips.
+replay's own measure for that car. Captions (`CAPTIONS` in `tour.js`) come in a few variants
+per beat (plain, before/after, wry, explaining what's on screen); the day picks which, so
+everyone sees the same words that day, and "Watch again" moves on a step. Rules for new
+ones: ten words or so, numbers exactly as on the site (no conversions like "40 days": tried,
+not obvious), never a dig at the TTC or its staff. Skip is always there; a tap (or space) pauses; Escape skips.
 With reduced motion the camera jumps instead of flying.
 
 ---
