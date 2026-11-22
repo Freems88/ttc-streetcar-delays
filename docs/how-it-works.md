@@ -229,11 +229,15 @@ for the same day as `replay.json`.
   The close comes back to the finished columns.
 - **Spot beats** (the signal and slowest-stretch stories, using `at` from
   `story_of`): only the routes through the spot (the story link's `r`), every car but the
-  chosen one dimmed, and the camera held still, framed between the spot and where the car
-  stands. Roll the car up; when it stands still 25 s or more, run 2.5 s in real time with a
-  "Standing still" stopwatch, then speed through the rest; car time against the clean run
-  throughout, as numbers only (the ghost isn't drawn: over a few hundred metres it never
-  gets far enough ahead to show anything). Where the story has a day total (`at.cars`,
+  one being shown dimmed, and the camera held still, framed between the spot and where the
+  stuck car stands. Two real cars, the same day: first the quickest pass through the spot
+  (same way, about the same distance, within an hour of the stuck car, else three hours, and
+  only if it took at most 60% as long), then the stuck car (the 90th-percentile pass). When
+  that one stands still 25 s or more, 2 s run in real time with a "Standing still"
+  stopwatch, then the rest is sped through; each car's time through the spot is shown. No
+  clean-run baseline on screen: we tried a car-against-ghost stopwatch, but the clean run
+  is a number with nothing to see behind it, and over a few hundred metres the ghost never
+  got far enough ahead to show. Where the story has a day total (`at.cars`,
   `at.total_h`: the segment post's "adds up to" and the signal approach's
   `hours_per_day`), the clock then sweeps the whole day at the spot while a tally of cars
   and hours lost climbs and the delay map's columns rise within 450 m, on the chosen car's

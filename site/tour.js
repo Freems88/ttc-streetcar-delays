@@ -1,8 +1,8 @@
 // Tour: yesterday in about 40 seconds, played on the replay (replay.html#tour=1).
-// A time-lapse of the whole network, then one beat per story from the bot's picks
-// (data/drafts/stories.json, see drafts.py story_of): the camera flies to the spot, the
-// replay runs at the moment it happened, and a stopwatch sets the car against the ghost
-// (the clean run). Ends on the story card. Skip is always there; a tap pauses.
+// The whole day with the delay map rising, then one beat per story from the bot's picks
+// (data/drafts/stories.json, see drafts.py story_of): the camera flies to the spot and the
+// replay shows a car that went straight through, then one that got stuck there that day.
+// Ends on the story card. Skip is always there; a tap pauses.
 (function () {
   const begin = () => setup(window.replayTour);
   if (window.replayTour) begin(); else window.addEventListener("replay-ready", begin, {once: true});
@@ -10,7 +10,8 @@
   // Captions: short, numbers exactly as on the site, never a dig at the TTC or its staff.
   // Each beat has a few variants, [setup, payoff]; the day picks one (so everyone sees the
   // same words that day, and they change day to day), and "Watch again" moves on a step.
-  // {when} {day} {lost} {place} {placeLc} {detail} {route} {car} {clean}
+  // {when} {day} {lost} {place} {placeLc} {detail} {detailLc} {route} {car} (the stuck car;
+  // the quick car is on screen first, so a setup line shouldn't name it)
   const CAPTIONS = {
     open: [
       ["{when}. Every streetcar, all day.", "{lost} hours lost to delays."],
@@ -18,12 +19,13 @@
     ],
     signal: [
       ["Held at a signal: {place}", "{detail}."],
-      ["Clean run through here: {clean}. Now watch car {car}.", "{detail}."],
-      ["Car {car}, {placeLc}.", "Not alone: {detailLc}."],
+      ["Same corner, same day: two streetcars.", "{detail}."],
+      ["Two streetcars, {placeLc}.", "Not a one-off: {detailLc}."],
       ["Watch the clock: {placeLc}.", "{detail}."],
     ],
     segment: [
       ["The day's slowest stretch: {place}", "{detail}."],
+      ["Same stretch, same day: two streetcars.", "{detail}."],
     ],
     shortturn: [
       ["{place}: trips sent back early", "{detail}."],
@@ -204,7 +206,24 @@
     }
     // The whole day there, in time order, for the sweep's tally.
     const day = passes(R, at, true).sort((x, y) => x.t - y.t);
-    return {...m, tA: ts[m.a], tB: ts[m.b], hold, n: all.length, day};
+    // The car to set it against: the quickest pass through the same spot, the same way, over
+    // about the same distance (not a pass clipped by a gap in the feed), as close in time as
+    // gives a real contrast (well under the stuck car's time): within an hour, else three.
+    const {pos} = R, dir = (q) => [pos[2 * q.b] - pos[2 * q.a], pos[2 * q.b + 1] - pos[2 * q.a + 1]];
+    const [hx, hy] = dir(m), km = cumKm[m.b] - cumKm[m.a];
+    let quick = null;
+    for (const within of [3600, 3 * 3600]) {
+      for (const q of day) {
+        const [qx, qy] = dir(q), qkm = cumKm[q.b] - cumKm[q.a];
+        if (q.p === m.p || qx * hx + qy * hy <= 0 || Math.abs(ts[q.a] - ts[m.a]) > within ||
+            ts[q.a] < DAY_FROM || Math.abs(qkm - km) > 0.3 * km) continue;
+        if (!quick || ts[q.b] - ts[q.a] < ts[quick.b] - ts[quick.a]) quick = q;
+      }
+      if (quick && ts[quick.b] - ts[quick.a] <= 0.6 * (ts[m.b] - ts[m.a])) break;
+      quick = null;
+    }
+    return {...m, tA: ts[m.a], tB: ts[m.b], hold, n: all.length, day,
+      quick: quick && {...quick, tA: ts[quick.a], tB: ts[quick.b]}};
   }
 
   // --- the tour -------------------------------------------------------------------------
@@ -361,19 +380,22 @@
       };
     }
 
-    // One car at the story's spot: fly in, roll up, feel the wait in real time, then speed
-    // through the rest of it and show what it cost against the ghost.
+    // Two real cars at the story's spot, the same day: first one that went straight through,
+    // then the one that got stuck (the 90th-percentile pass), its wait felt in real time and
+    // then sped through. No clean-run baseline on screen: the quick car is the comparison,
+    // and the sweep after shows how often it happened.
     function spotBeat({s, m}) {
-      const v = {...vars, place: s.place, placeLc: lc(s.place), detail: s.detail, detailLc: lc(s.detail),
-        car: m.p.v, clean: R.dur(gclk[m.b] - gclk[m.a])};
+      const q = m.quick;
+      const v = {...vars, place: s.place, placeLc: lc(s.place), detail: s.detail, detailLc: lc(s.detail), car: m.p.v};
       const [c0, c1] = capsFor(s.kind);
-      const lead = 45, hasHold = m.hold && m.hold[1] - m.hold[0] >= 25;
+      const lead = 20, hasHold = m.hold && m.hold[1] - m.hold[0] >= 25;
       const h0 = hasHold ? m.hold[0] : (m.tA + m.tB) / 2, h1 = hasHold ? m.hold[1] : h0;
-      // Phases, real seconds: fly, approach, feel (real time), speed through, pay off, and
-      // (when the site gives a day total for the spot) sweep through the whole day there.
+      // Phases, real seconds: fly, the quick car, a beat, the stuck car's approach, its wait
+      // in real time, sped through, pay off, and (when the site gives a day total for the
+      // spot) a sweep through the whole day there.
       const day = m.day, sweep = s.at.total_h && day.length >= 5;
-      const P = [...(hasHold ? [1.5, 1.3, 2.5, 1.8, 2.2] : [1.5, 2.5, 0, 0, 2.5]), sweep ? 3.4 : 0];
-      const ends = P.reduce((a, d) => [...a, (a.at(-1) || 0) + d], []);
+      const P = [1.3, q ? 1.8 : 0, q ? 0.6 : 0, ...(hasHold ? [1.0, 2.0, 1.5, 1.8] : [2.0, 0, 0, 2.0]), sweep ? 3.0 : 0];
+      const ends = P.reduce((acc, d) => [...acc, (acc.at(-1) || 0) + d], []);
       const dur = ends.at(-1);
       // The sweep's tally: the cars through, and their time lost, in the replay's own measure,
       // scaled so it lands on the site's figures for the day (cars, total_h).
@@ -385,55 +407,56 @@
         while (k < day.length && day[k].t <= t) k++;
         return [Math.round(s.at.cars * k / day.length), s.at.total_h * cum[k] / (cum.at(-1) || 1)];
       };
-      const tEnd = m.tB + 25;
+      const tEnd = m.tB + 15;
       const spot = centre(s);
       const clock = (sec) => R.dur(Math.max(0, sec));
-      const ghostTotal = gclk[m.b] - gclk[m.a];
       // Just the routes through the spot (the story's own link names them), the rest dimmed.
-      // The ghost stays off the map: over a few hundred metres it never gets far ahead, so
-      // the clean run is a time in the stopwatch instead.
       const routes = (new URLSearchParams(s.hash).get("r") || m.p.r).split(",");
-      // The columns round the spot, on the hero's side of the street only (the tally is one direction).
+      // The columns round the spot, on the cars' side of the street only (the tally is one direction).
       const local = peaks && sweep ? peaks.near(spot, 450,
         [pos[2 * m.b] - pos[2 * m.a], pos[2 * m.b + 1] - pos[2 * m.a + 1]]) : null;
-      // Framed between the spot and where the car stands (it often waits back in the queue).
+      // Framed between the spot and where the stuck car stands (it often waits back in the queue).
       const stand = R.heads(h0, R.byCar.get(m.p.v))[0];
       const view = stand ? [lerp(spot[0], stand.lon, 0.6), lerp(spot[1], stand.lat, 0.6)] : spot;
+      const row = (car, t0, secs, cls = "") =>
+        `<div class="th-row ${cls}"><span>Car ${esc(car)}, ${esc(R.clockText(t0))}</span><b>${clock(secs)}</b></div>`;
       return {
         dur,
         enter() {
-          state.t = m.tA - lead;
+          state.t = q ? q.tA - 8 : m.tA - lead;
           R.setRoutes(routes);
-          R.setFocus(m.p.v);
+          R.setFocus(q ? q.p.v : m.p.v);
           state.dim = 0.65;
           R.tour.layers = null;
           map.stop();
           move({center: view, zoom: 16.2, pitch: 55, bearing: map.getBearing()}, P[0] * 1000);
         },
         tick(f, sec) {
-          let t;
-          if (sec < ends[0]) t = m.tA - lead;
-          else if (sec < ends[1]) t = lerp(m.tA - lead, h0, (sec - ends[0]) / P[1]);
-          else if (sec < ends[2]) t = h0 + (sec - ends[1]);
-          else if (sec < ends[3]) t = lerp(h0 + P[2], h1, easeIn((sec - ends[2]) / P[3]));
-          else if (sec < ends[4] || !sweep) t = lerp(hasHold ? h1 : h0, tEnd, easeOut(Math.min(1, (sec - ends[3]) / P[4])));
-          else return sweepTick((sec - ends[4]) / P[5]);
+          const [eFly, eQuick, eGap, eIn, eWait, eFast, ePay] = ends;
+          if (sec >= ePay && sweep) return sweepTick((sec - ePay) / P[7]);
+          let t, stuck = sec >= eGap;
+          if (sec < eFly) t = q ? q.tA - 8 : m.tA - lead;
+          else if (sec < eQuick) t = lerp(q.tA - 8, q.tB + 4, (sec - eFly) / P[1]);
+          else if (sec < eGap) t = q.tB + 4;
+          else if (sec < eIn) t = lerp(m.tA - lead, h0, (sec - eGap) / P[3]);
+          else if (sec < eWait) t = h0 + (sec - eIn);
+          else if (sec < eFast) t = lerp(h0 + P[4], h1, easeIn((sec - eWait) / P[5]));
+          else t = lerp(hasHold ? h1 : h0, tEnd, easeOut(Math.min(1, (sec - eFast) / P[6])));
+          if (stuck && state.focus !== m.p.v) R.setFocus(m.p.v);
           state.speed = 120;
           state.t = t;
           // The camera holds still on the spot; if a slow device cut the flight short, ease
           // it the rest of the way.
-          if (sec >= ends[0] && !map.isMoving()) {
+          if (sec >= eFly && !map.isMoving()) {
             const c = map.getCenter();
             map.jumpTo({center: [lerp(c.lng, view[0], 0.08), lerp(c.lat, view[1], 0.08)],
               zoom: lerp(map.getZoom(), 16.2, 0.08), pitch: lerp(map.getPitch(), 55, 0.08)});
           }
-          const carS = Math.min(t, m.tB) - m.tA, ghostS = Math.min(Math.max(0, t - m.tA), ghostTotal);
-          const waiting = hasHold && t >= h0 && t <= h1;
-          caption(fill(c0, v), sec >= ends[3] ? fill(c1, v) : "");
-          showHud(t < m.tA ? "" :
-            (waiting ? `<div class="th-big">Standing still ${clock(t - h0)}</div>` : "") +
-            `<div class="th-row"><span>Car ${esc(m.p.v)}</span><b>${clock(carS)}</b></div>` +
-            `<div class="th-row ghost"><span>👻 Clean run</span><b>${clock(ghostS)}</b></div>`);
+          const waiting = stuck && hasHold && t >= h0 && t <= h1;
+          caption(fill(c0, v), sec >= eFast ? fill(c1, v) : "");
+          const quickRow = q && sec >= eFly ? row(q.p.v, q.tA, Math.min(t, q.tB) - q.tA, stuck ? "done" : "") : "";
+          const stuckRow = stuck && t >= m.tA ? row(m.p.v, m.tA, Math.min(t, m.tB) - m.tA) : "";
+          showHud((waiting ? `<div class="th-big">Standing still ${clock(t - h0)}</div>` : "") + quickRow + stuckRow);
         },
         leave() { R.tour.layers = null; R.setRoutes([]); state.dim = 0; },
       };
@@ -448,7 +471,7 @@
           move({center: spot, zoom: 15.4, pitch: 55, bearing: map.getBearing()}, 900);
         }
         state.t = lerp(s0, s1, ease(Math.min(1, f)));
-        state.speed = (s1 - s0) / P[5];
+        state.speed = (s1 - s0) / P[7];
         const [cars, h] = f >= 1 ? [s.at.cars, s.at.total_h] : tallyAt(state.t);
         caption(fill(c0, v), fill(c1, v));
         showHud(`<div class="th-big">${h.toFixed(1)} hours lost here</div>` +
