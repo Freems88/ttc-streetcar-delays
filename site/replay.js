@@ -440,6 +440,7 @@
   const followData = (v) => pack(byCar.get(v).map((p) => [p.i0, p.i1]));
 
   function shortLayers(hs) {
+    if (state.hideShort) return [];  // the tour counts them instead
     // Ride along with the car: the marker sits over it (or where it turned, if it's gone).
     const marks = activeShort().map((e) => {
       const h = hs.find((d) => d.p.v === e.v);

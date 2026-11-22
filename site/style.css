@@ -115,6 +115,11 @@ h1 { font-size: 19px; line-height: 1.25; margin: 0 0 6px; font-weight: 700; lett
 .intro-x:hover { color: var(--ink); }
 .intro-kicker { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent); padding-right: 24px; }
 .intro-head { font-size: 18px; font-weight: 700; line-height: 1.3; margin: 6px 0 12px; }
+.intro-tour {
+  display: inline-block; margin: -4px 0 12px; padding: 7px 12px; border-radius: 8px; border: 1px solid var(--accent);
+  color: var(--accent); font-weight: 600; font-size: 13.5px; text-decoration: none;
+}
+.intro-tour:hover, .intro-tour:focus-visible { background: var(--accent); color: #fff; }
 .intro-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
 .intro-list a {
   display: block; padding: 9px 22px 9px 0; border-bottom: 1px solid var(--line); color: inherit; text-decoration: none; position: relative;

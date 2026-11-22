@@ -158,7 +158,7 @@ body {
 }
 .tour-cap b { display: block; font-size: 26px; line-height: 1.2; font-weight: 700; letter-spacing: -0.01em; }
 .tour-cap span { display: block; margin-top: 8px; font-size: 19px; color: #ffd3d9; font-weight: 500; }
-.tour-paused { display: none; flex: 1; font-weight: 600; font-size: 14px; text-shadow: 0 1px 8px rgba(0, 0, 0, 0.9); }
+.tour-paused { display: none; flex: 1; font-weight: 600; font-size: 13px; white-space: nowrap; text-shadow: 0 1px 8px rgba(0, 0, 0, 0.9); }
 .tour.paused .tour-paused { display: block; }
 .tour.paused .tour-prog { display: none; }
 .tour-end { top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(400px, calc(100% - 32px)); z-index: 5; padding: 18px 20px; }

@@ -1919,6 +1919,7 @@
       li.append(a);
       list.append(li);
     }
+    document.getElementById("intro-tour").addEventListener("click", markSeen);  // the replay's tour (tour.js)
     const closeIntro = () => { intro.hidden = true; markSeen(); };
     document.getElementById("intro-close").addEventListener("click", closeIntro);
     document.getElementById("intro-go").addEventListener("click", closeIntro);

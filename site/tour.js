@@ -308,6 +308,7 @@
       R.setFocus(null);
       R.setRoutes([]);
       state.dim = 0;
+      state.hideShort = false;
       document.removeEventListener("keydown", onKey, true);
       ui.hidden = true;
       document.body.classList.remove("touring");
@@ -324,7 +325,7 @@
     // streets, slice by slice, as the time is lost; a counter adds it up. Both end on the
     // site's figures (the peaks on the delay map's, the counter on stories.lost_h).
     function openBeat() {
-      const t0 = R.tMin, t1 = R.tMax, grow = 6, dur = grow + 1.5, STEP = 60;
+      const t0 = R.tMin, t1 = R.tMax, grow = 6, dur = grow + 2, STEP = 60;
       // Without the peaks' data, the counter's shape comes from each trip's time lost.
       const curve = new Float64Array(Math.ceil((t1 - t0) / STEP) + 2);
       if (!peaks) {
@@ -346,18 +347,21 @@
         enter() {
           map.stop(); map.jumpTo(home); R.setFocus(null);
           state.dim = peaks ? 0.7 : 0;
+          state.hideShort = true;  // dozens of warning signs at once: a count instead
           R.tour.layers = peaks ? () => [peaksLayer(peaks, peaks.slices, state.t, 1400)] : null;
         },
         tick(f, sec) {
           const g = Math.min(1, sec / grow);
           state.t = lerp(t0, t1, g);
           state.speed = sec < grow ? (t1 - t0) / grow : 0;
-          caption(fill(openCap[g < 0.5 ? 0 : 1], vars));
+          // The total comes in only once the counter has got there.
+          caption(fill(openCap[g < 1 ? 0 : 1], vars));
           showHud(!stories.lost_h ? "" :
             `<div class="th-big">${Math.round(g >= 1 ? stories.lost_h : lostBy(state.t)).toLocaleString("en-CA")} hours</div>` +
-            `<div class="th-row"><span>lost to delays by ${esc(R.clockText(state.t))}</span></div>`);
+            `<div class="th-row"><span>lost to delays by ${esc(R.clockText(state.t))}</span></div>` +
+            (R.shortEv.length ? `<div class="th-row"><span>⚠ Trips sent back early</span><b>${R.shortEv.filter((e) => e.t <= state.t).length}</b></div>` : ""));
         },
-        leave() { R.tour.layers = null; },
+        leave() { R.tour.layers = null; state.hideShort = false; },
       };
     }
 
@@ -504,6 +508,7 @@
         enter() {
           R.setFocus(null); map.stop(); move(home, 2000);
           state.dim = peaks ? 0.55 : 0;
+          state.hideShort = true;
           R.tour.layers = peaks ? () => [peaksLayer(peaks, peaks.slices, R.tMax, 1400, 0.9)] : null;
         },
         tick(f, sec, dt) { state.t = Math.min(R.tMax, state.t + dt * 600); state.speed = 600; caption(fill(closeCap[0], vars)); },

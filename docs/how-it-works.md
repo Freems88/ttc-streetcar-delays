@@ -217,12 +217,15 @@ opens `?story=<kind>` with the post's own view, framing the spot and pinning its
 "More filters" unless a link sets them.
 
 ### The replay tour
-`replay.html#tour=1` (or "Yesterday in 40 seconds" on the replay card) plays yesterday's
+`replay.html#tour=1` (or "Yesterday in 40 seconds" on the replay card, or "Watch yesterday in
+40 seconds" on the map page's highlights card) plays yesterday's
 picks as a short film (`site/tour.js`), about 35-40 s. It only runs when `stories.json` is
 for the same day as `replay.json`.
-- **Opening (6 s, then 1.5 s held):** the whole network through the whole day. The trails fade
+- **Opening (6 s, then 2 s held):** the whole network through the whole day. The trails fade
   back and the delay map rises out of the streets as 3D columns, one per slice, while a
-  counter of hours lost climbs to the summary's figure (`stories.json` `lost_h`).
+  counter of hours lost climbs to the summary's figure (`stories.json` `lost_h`), with a
+  count of short turns beside it (their warning signs stay off here: dozens at once is noise);
+  the caption gives the total only once the counter lands.
   The close comes back to the finished columns.
 - **Spot beats** (the signal, slowest-stretch and stop-wait stories, using `at` from
   `story_of`): only the routes through the spot (the story link's `r`), every car but the
