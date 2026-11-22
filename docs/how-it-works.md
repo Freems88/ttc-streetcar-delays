@@ -217,9 +217,9 @@ opens `?story=<kind>` with the post's own view, framing the spot and pinning its
 "More filters" unless a link sets them.
 
 ### The replay tour
-`replay.html#tour=1` (or "Yesterday in 40 seconds" on the replay card, or "Watch yesterday in
-40 seconds" on the map page's highlights card) plays yesterday's
-picks as a short film (`site/tour.js`), about 35-40 s. It only runs when `stories.json` is
+`replay.html#tour=1` (or "Yesterday in 30 seconds" on the replay card, or "Watch yesterday in
+30 seconds" on the map page's highlights card) plays yesterday's
+picks as a short film (`site/tour.js`), about 30 s. It only runs when `stories.json` is
 for the same day as `replay.json`.
 - **Opening (6 s, then 2 s held):** the whole network through the whole day. The trails fade
   back and the delay map rises out of the streets as 3D columns, one per slice, while a

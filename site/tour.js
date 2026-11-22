@@ -1,4 +1,4 @@
-// Tour: yesterday in about 40 seconds, played on the replay (replay.html#tour=1).
+// Tour: yesterday in about 30 seconds, played on the replay (replay.html#tour=1).
 // The whole day with the delay map rising, then one beat per story from the bot's picks
 // (data/drafts/stories.json, see drafts.py story_of): the camera flies to the spot and the
 // replay shows a car that went straight through, then one that got stuck there that day.
