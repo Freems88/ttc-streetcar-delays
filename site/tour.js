@@ -24,12 +24,6 @@
     ],
     segment: [
       ["The day's slowest stretch: {place}", "{detail}."],
-      ["The ghost is a clean run. Watch it pull away.", "{detail}."],
-    ],
-    stopwait: [
-      ["Longest extra wait at a stop: {place}", "{detail}."],
-      ["Riders at {place} waited longest beyond the schedule.", "{detail}."],
-      ["{place}: where the minutes went missing.", "{detail}."],
     ],
     shortturn: [
       ["{place}: trips sent back early", "{detail}."],
@@ -230,7 +224,9 @@
     const move = (opts, ms) => (reduced ? map.jumpTo(opts) : map.flyTo({...opts, duration: ms, essential: true}));
 
     // Spot beats, most time lost first; at most two, with the short turns between them.
-    const spots = [], kinds = ["signal", "segment", "stopwait"];
+    // Not the stop-wait story: its number is riders' waiting time, and a car standing at a
+    // stop doesn't show that.
+    const spots = [], kinds = ["signal", "segment"];
     for (const s of stories.items) {
       if (!kinds.includes(s.kind) || !s.at) continue;
       const m = moment(R, s.at);

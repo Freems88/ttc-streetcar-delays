@@ -227,7 +227,7 @@ for the same day as `replay.json`.
   count of short turns beside it (their warning signs stay off here: dozens at once is noise);
   the caption gives the total only once the counter lands.
   The close comes back to the finished columns.
-- **Spot beats** (the signal, slowest-stretch and stop-wait stories, using `at` from
+- **Spot beats** (the signal and slowest-stretch stories, using `at` from
   `story_of`): only the routes through the spot (the story link's `r`), every car but the
   chosen one dimmed, and the camera held still, framed between the spot and where the car
   stands. Roll the car up; when it stands still 25 s or more, run 2.5 s in real time with a
@@ -237,8 +237,8 @@ for the same day as `replay.json`.
   `at.total_h`: the segment post's "adds up to" and the signal approach's
   `hours_per_day`), the clock then sweeps the whole day at the spot while a tally of cars
   and hours lost climbs and the delay map's columns rise within 450 m, on the chosen car's
-  side of the street (the tally is one direction). Stop waits have no sweep: their measure
-  is riders' minutes, not car time.
+  side of the street (the tally is one direction). The stop-wait story isn't in the tour:
+  its number is riders' waiting time, and a car standing at a stop doesn't show that.
 - **Short turns:** the route alone, its busiest four hours sped through, the "!" markers
   popping and a count climbing.
 - **End:** the story card (the map page's first-visit card) with "Pick a car" and "Watch again".
