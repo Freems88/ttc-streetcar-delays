@@ -454,7 +454,9 @@
           }
           const waiting = stuck && hasHold && t >= h0 && t <= h1;
           caption(fill(c0, v), sec >= eFast ? fill(c1, v) : "");
-          const quickRow = q && sec >= eFly ? row(q.p.v, q.tA, Math.min(t, q.tB) - q.tA, stuck ? "done" : "") : "";
+          // Once the stuck car is on, the quick car's time stays at its final figure (the
+          // clock has moved to the other car's moment, which may be earlier in the day).
+          const quickRow = q && sec >= eFly ? row(q.p.v, q.tA, stuck ? q.tB - q.tA : Math.min(t, q.tB) - q.tA, stuck ? "done" : "") : "";
           const stuckRow = stuck && t >= m.tA ? row(m.p.v, m.tA, Math.min(t, m.tB) - m.tA) : "";
           showHud((waiting ? `<div class="th-big">Standing still ${clock(t - h0)}</div>` : "") + quickRow + stuckRow);
         },
