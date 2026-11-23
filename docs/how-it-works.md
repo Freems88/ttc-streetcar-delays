@@ -229,6 +229,12 @@ opens `?story=<kind>` with the post's own view, framing the spot and pinning its
 30 seconds" on the map page's highlights card) plays yesterday's
 picks as a short film (`site/tour.js`), about 30 s. It only runs when `stories.json` is
 for the same day as `replay.json`.
+
+Phones keep their screen on while it plays (the Screen Wake Lock API, in `replay.js`: Chrome
+on Android, Safari 16.4+; other browsers ignore it). The tour holds the lock unless it's
+paused. The replay plays on load and loops the day, so it holds it only for 10 minutes after
+the viewer last touched the page. The browser drops the lock when the tab is hidden, and the
+page asks again when it's back; a refused request waits for the next tap.
 - **Opening (6 s, then 2 s held):** the whole network through the whole day. The trails fade
   back and the delay map rises out of the streets as 3D columns, one per slice, while a
   counter of hours lost climbs to the summary's figure (`stories.json` `lost_h`), with a

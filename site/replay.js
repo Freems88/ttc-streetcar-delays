@@ -127,7 +127,7 @@
   if (h.has("car") && byCar.has(h.get("car"))) state.follow = h.get("car");
   state.t = Math.max(tMin, Math.min(tMax, state.t));
   // The tour (tour.js) drives the clock, camera and a focus car while it plays.
-  const tour = {active: h.get("tour") === "1", tick: null, layers: null};
+  const tour = {active: h.get("tour") === "1", tick: null, layers: null, paused: false};
   if (tour.active) state.follow = null;
   function writeHash() {
     if (tour.tick) return;
@@ -907,8 +907,32 @@
     setRoutes(rs) { state.routes = new Set(rs); renderRoutes(); buildChunks(); },
   };
   window.dispatchEvent(new Event("replay-ready"));
+  // Keep a phone's screen on while something plays (Screen Wake Lock: Chrome on Android,
+  // Safari 16.4+; elsewhere nothing happens). The tour holds it unless paused. The replay
+  // plays on load and loops the day, so it only holds it for AWAKE_IDLE after the viewer last
+  // touched the page. The browser drops the lock when the tab is hidden; we ask again once
+  // it's back. A refused request (some browsers want a tap first) waits for the next touch.
+  const AWAKE_IDLE = 10 * 60e3;
+  let wakeLock = null, wakeAsking = false, lastTouch = performance.now(), wakeRefused = -1, lastAwakeCheck = 0;
+  for (const ev of ["pointerdown", "keydown", "wheel"]) addEventListener(ev, () => { lastTouch = performance.now(); }, {passive: true});
+  function keepAwake(now) {
+    const want = !document.hidden && ((tour.tick && !tour.paused) || (!tour.tick && state.playing && now - lastTouch < AWAKE_IDLE));
+    if (want && !wakeLock && !wakeAsking && "wakeLock" in navigator && lastTouch > wakeRefused) {
+      wakeAsking = true;
+      navigator.wakeLock.request("screen").then((l) => {
+        wakeLock = l;
+        l.addEventListener("release", () => { if (wakeLock === l) wakeLock = null; });
+      }).catch(() => { wakeRefused = performance.now(); }).finally(() => { wakeAsking = false; });
+    } else if (!want && wakeLock) {
+      const l = wakeLock;
+      wakeLock = null;
+      l.release().catch(() => {});
+    }
+  }
+  addEventListener("visibilitychange", () => keepAwake(performance.now()));
   let lastFrame = performance.now(), lastHash = 0;
   function frame(now) {
+    if (now - lastAwakeCheck > 1000) { keepAwake(now); lastAwakeCheck = now; }
     const dt = Math.min(0.1, (now - lastFrame) / 1000);
     lastFrame = now;
     if (tour.tick) {

@@ -365,6 +365,7 @@
     const shield = $("tour-shield");
     const togglePause = () => {
       paused = !paused;
+      R.tour.paused = paused;  // replay.js lets the screen sleep while the tour is paused
       ui.classList.toggle("paused", paused);
     };
     shield.onclick = togglePause;
@@ -382,6 +383,7 @@
       R.tour.tick = null;
       R.tour.layers = null;
       R.tour.active = false;
+      R.tour.paused = false;
       R.setFocus(null);
       R.setRoutes([]);
       state.dim = 0;
