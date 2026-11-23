@@ -36,6 +36,7 @@ from pathlib import Path
 
 import fleet
 import servicechanges
+import walk
 from common import BIN_M, WORK_DIR
 
 DRAFTS = WORK_DIR / "drafts"
@@ -622,7 +623,27 @@ def write_stories(site=None):
     (DRAFTS / "stories.json").write_text(json.dumps({
         "day": days[0], "when": f"{d:%A}, {d:%b} {d.day}",
         "headline": summary.split(": ", 1)[-1], "items": items,
-        **({"lost_h": int(lost.group(1).replace(",", ""))} if lost else {})}, indent=1))
+        **({"lost_h": int(lost.group(1).replace(",", ""))} if lost else {}),
+        **({"walk": w} if (w := walk_story(data, net, days[0])) else {})}, indent=1))
+
+
+def walk_story(data, net, day):
+    """The tour's slower-than-walking stretch (walk.py), from the day's replay; None without one."""
+    rp = data / "replay.json" if data else None
+    if not net or not rp or not rp.exists():
+        return None
+    try:
+        replay = json.loads(rp.read_text())
+        if replay.get("day") != day:
+            return None
+        try:
+            changed = set(servicechanges.flags([day]).get(day, {}))
+        except Exception:
+            changed = set()
+        return walk.pick(replay, net, changed)
+    except Exception as e:
+        print(f"walk story failed: {type(e).__name__}: {e}", file=sys.stderr)
+        return None
 
 
 def make(site, force=False, today=False):

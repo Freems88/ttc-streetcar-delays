@@ -1,7 +1,8 @@
 // Tour: yesterday in about 30 seconds, played on the replay (replay.html#tour=1).
-// The whole day with the delay map rising, then one beat per story from the bot's picks
+// The whole day with the delay map rising, then someone on foot racing a streetcar
+// (stories.json "walk", see walk.py), then a beat per story from the bot's picks
 // (data/drafts/stories.json, see drafts.py story_of): the camera flies to the spot and the
-// replay shows a car that went straight through, then one that got stuck there that day.
+// replay shows a car that went straight through beside one that got stuck there that day.
 // Ends on the story card. Skip is always there; a tap pauses.
 (function () {
   const begin = () => setup(window.replayTour);
@@ -37,6 +38,13 @@
       ["{place}, where the end of the line moves.", "Where cars turn back early, the next one is a long way off: gaps of up to {gap} min."],
     ],
     close: [["Now pick a car and ride along."], ["Your turn: tap any streetcar."], ["Every car's day is here. Pick one."]],
+    // The walking beat: {street} {a} {b} {route} {m} (metres) {kmh} {walk} {ride} (m:ss)
+    // {n} of {of} (streetcars there slower than walking, of all that way that day).
+    walk: [
+      ["{street}, {a} to {b}: walk, or ride the {route}?", "Walking won. {n} of {of} streetcars here were slower."],
+      ["Race a streetcar on foot: {a} to {b}.", "On foot: {walk}. By streetcar: {ride}."],
+      ["{m} m along {street}, walked at an easy {kmh} km/h.", "Faster than {n} of {of} streetcars that way on {day}."],
+    ],
   };
   const KINDS = Object.keys(CAPTIONS);
   const SHORT_NO_GAPS = ["{place}: trips sent back early", "{detail}."];  // no network file: no columns to explain
@@ -47,6 +55,36 @@
   };
   const lc = (x) => (x ? x[0].toLowerCase() + x.slice(1) : "");
   const fill = (s, v) => s.replace(/\{(\w+)\}/g, (_, k) => v[k] ?? "");
+
+  // The walker, side on, in the Flexity's flat style: a November coat (mustard, so it shows on
+  // the dark map), a red toque, a pale outline. Frames 0-3 are a stride, 4 is standing;
+  // `left` mirrors it for walking leftward on screen. Drawn much bigger than life, like the
+  // cars: a person to scale would be a couple of pixels.
+  const WALK_POSE = [[24, -22, -24], [8, -6, -8], [-22, 24, 22], [-6, 8, 6], [3, -3, 4]];  // front leg, back leg, front arm (degrees)
+  const walkerIcons = new Map();
+  function walkerIcon(frame, left) {
+    const id = `walker-${frame}${left ? "l" : "r"}`;
+    if (walkerIcons.has(id)) return walkerIcons.get(id);
+    const [fl, bl, fa] = WALK_POSE[frame], rad = Math.PI / 180;
+    const limb = (x, y, len, deg) => [x + len * Math.sin(deg * rad), y + len * Math.cos(deg * rad)];
+    const line = ([x0, y0], [x1, y1], c, wd) => `<path d='M${x0} ${y0}L${x1.toFixed(1)} ${y1.toFixed(1)}' stroke='${c}' stroke-width='${wd}' stroke-linecap='round'/>`;
+    const hip = [20, 41], sh = [20, 24];
+    const legs = (deg, c, more = 0) => line(hip, limb(...hip, 20, deg), c, 5.2 + more);
+    const arm = (deg, c, more = 0) => line(sh, limb(...sh, 14, deg), c, 4.4 + more);
+    const figure = (o) =>   // o: outline pass (thicker, pale) or the figure itself
+      (o ? [legs(bl, o, 3), legs(fl, o, 3), arm(-fa, o, 3), arm(fa, o, 3)].join("") +
+        `<rect x='13' y='19' width='14' height='26' rx='6' fill='${o}' stroke='${o}' stroke-width='3'/><circle cx='21' cy='12' r='7.4' fill='${o}'/>`
+        : legs(bl, "#2b2f3a") + arm(-fa, "#a87a14") + "<rect x='13' y='19' width='14' height='26' rx='6' fill='#f0b429'/>" +
+          legs(fl, "#3a4050") + arm(fa, "#d9a01f") +
+          "<circle cx='21' cy='12' r='5.6' fill='#e8b48c'/><path d='M15.2 11.2Q15.6 4.6 21 4.4Q26.4 4.6 26.8 11.2Z' fill='#d8433a'/>" +
+          "<rect x='14.6' y='10' width='12.8' height='2.6' rx='1.3' fill='#f2f2f2'/>");
+    const body = figure("rgba(255,255,255,0.85)") + figure(null);
+    const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='40' height='68' viewBox='0 0 40 68'>` +
+      `<g${left ? " transform='translate(40 0) scale(-1 1)'" : ""}>${body}</g></svg>`;
+    const icon = {id, url: "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg), width: 40, height: 68, anchorY: 63};
+    walkerIcons.set(id, icon);
+    return icon;
+  }
 
   async function setup(R) {
     let stories = null;
@@ -304,10 +342,14 @@
     const lerp = (a, b, f) => a + (b - a) * f;
     const move = (opts, ms) => (reduced ? map.jumpTo(opts) : map.flyTo({...opts, duration: ms, essential: true}));
 
+    // The walking beat (stories.walk, from walk.py) takes the slowest stretch's place: someone
+    // on foot beating a streetcar says "delay" without needing minutes explained. Without it
+    // (no pick that day, or its trip not in the replay), the slowest stretch is back in.
+    const walkB = stories.walk ? walkBeat(stories.walk) : null;
     // Spot beats, most time lost first; at most two, with the short turns between them.
     // Not the stop-wait story: its number is riders' waiting time, and a car standing at a
     // stop doesn't show that.
-    const spots = [], kinds = ["signal", "segment"];
+    const spots = [], kinds = walkB ? ["signal"] : ["signal", "segment"];
     for (const s of stories.items) {
       if (!kinds.includes(s.kind) || !s.at) continue;
       const m = moment(R, s.at);
@@ -326,7 +368,9 @@
     const st = stories.items.find((s) => s.kind === "shortturn" && s.at?.route &&
       R.shortEv.filter((e) => e.r === s.at.route).length >= 3);
     const beats = [openBeat()];
-    const mids = spots.slice(0, st ? 2 : 3).map(spotBeat);
+    // Walking first (the plainest picture of delay), then short turns, then the signal.
+    const mids = spots.slice(0, (st ? 2 : 3) - (walkB ? 1 : 0)).map(spotBeat);
+    if (walkB) mids.unshift(walkB);
     if (st) mids.splice(1, 0, shortBeat(st));
     beats.push(...mids, closeBeat());
 
@@ -593,6 +637,133 @@
         caption(fill(c0, v), fill(c1, v));
         showHud(`<div class="th-big">${h.toFixed(1)} hours lost here</div>` +
           `<div class="th-row"><span>Streetcars by ${esc(R.clockText(state.t))}</span><b>${cars}</b></div>`);
+      }
+    }
+
+    // Someone on foot against a real streetcar (stories.walk: the stretch where most cars were
+    // slower than walking, and the middle such ride there). Both leave stop A together; the
+    // walker keeps a steady pace on the sidewalk the whole way and the car does what it did
+    // that day. Each carries a label with its time so far; the walker's freezes, ticked, at B.
+    // The clock runs straight through (no real-time hold): the walker's even pace is the
+    // yardstick, so the car's stops show against it.
+    function walkBeat(w) {
+      const p = (R.byCar.get(w.v) || []).find((x) => x.t0 <= w.tA && w.tB <= x.t1);
+      if (!p) return null;
+      const kmAt = (t) => { const a = R.at(p, t); return a ? lerp(R.cumKm[a[2]], R.cumKm[a[3]], a[4]) : null; };
+      const kmA = kmAt(w.tA), kmB = kmAt(w.tB);
+      if (kmA === null || kmB === null || kmB <= kmA) return null;
+      const tW = w.tA + w.walk_s;   // the walker reaches B
+      // The walker: along the car's own track (the street), offset to the right of travel onto
+      // the sidewalk, at the steady pace that covers A to B in walk_s.
+      const SIDE = R.wide ? 11 : 15;
+      const walkerAt = (t) => {
+        const km = kmA + (kmB - kmA) * Math.max(0, Math.min(1, (t - w.tA) / w.walk_s));
+        const [i, f] = findIn(R.cumKm, p.i0, p.i1 - 1, km);
+        // The street's direction there: the next vertex at least 2 m away.
+        let j = i + 1;
+        while (j < p.i1 - 1 && Math.hypot((pos[2 * j] - pos[2 * i]) * MX, (pos[2 * j + 1] - pos[2 * i + 1]) * MY) < 2) j++;
+        const dx = (pos[2 * j] - pos[2 * i]) * MX, dy = (pos[2 * j + 1] - pos[2 * i + 1]) * MY, L = Math.hypot(dx, dy) || 1;
+        const lon = lerpAt(pos, i, f, 2, 0), lat = lerpAt(pos, i, f, 2, 1);
+        return [lon + SIDE * (dy / L) / MX, lat - SIDE * (dx / L) / MY, dx / MX, dy / MY];
+      };
+      const A = R.at(p, w.tA), B = R.at(p, w.tB);
+      const dx = B[0] - A[0], dy = B[1] - A[1];
+      const road = Math.atan2(dx * MX, dy * MY) * 180 / Math.PI;
+      // Angled across the street, as the spot beats; on a phone, turned so the street runs more
+      // up the tall screen than across it, else a kilometre only fits zoomed out to dots.
+      const bearing = ((road - (R.wide ? 60 : 25) + 540) % 360) - 180;
+      const mmss = (s) => R.dur(s);
+      const diff = Math.round((w.ride_s - w.walk_s) / 60);
+      const v = {...vars, street: w.street, a: w.a, b: w.b, route: w.route, n: w.n, of: w.of,
+        m: w.m.toLocaleString("en-CA"), kmh: String(w.kmh), walk: mmss(w.walk_s), ride: mmss(w.ride_s),
+        diff: diff <= 1 ? "a minute" : `${diff} min`};
+      const [c0, c1] = capsFor("walk");
+      const lead = 8;
+      const P = [1.4, 6.5, 0.5, 2.4];   // fly, the race, the car's last metres, pay off
+      const ends = P.reduce((acc, d) => [...acc, (acc.at(-1) || 0) + d], []);
+      const runSpeed = (w.tB - w.tA + lead) / P[1];
+      const label = (txt, at, hot, below) => ({txt, at, hot, below});
+      let cam = null;
+      // Fits A and B in the frame as seen tilted (cameraForBounds frames it flat): try the
+      // camera, see where they land on screen, adjust zoom and centre, a few times, then put
+      // the camera back. Jumps within one task never reach the screen.
+      const camFor = () => {
+        const el = map.getContainer(), W = el.clientWidth, H = el.clientHeight;
+        const box = R.wide ? {l: 140, r: W - 140, t: H * 0.3, b: H * 0.72} : {l: 50, r: W - 50, t: H * 0.2, b: H * 0.76};
+        const was = {center: map.getCenter(), zoom: map.getZoom(), pitch: map.getPitch(), bearing: map.getBearing()};
+        let cam = {center: [(A[0] + B[0]) / 2, (A[1] + B[1]) / 2], zoom: 15, pitch: 52, bearing};
+        for (let k = 0; k < 4; k++) {
+          map.jumpTo(cam);
+          const a = map.project([A[0], A[1]]), b = map.project([B[0], B[1]]);
+          const sw = Math.abs(a.x - b.x) || 1, sh = Math.abs(a.y - b.y) || 1;
+          const zoom = Math.min(16.2, cam.zoom + Math.log2(Math.min((box.r - box.l) / sw, (box.b - box.t) / sh)));
+          // Shift so the pair's middle sits mid-box.
+          const mid = map.unproject([(a.x + b.x) / 2 - (box.l + box.r) / 2 + W / 2, (a.y + b.y) / 2 - (box.t + box.b) / 2 + H / 2]);
+          cam = {...cam, center: [mid.lng, mid.lat], zoom};
+        }
+        map.jumpTo(was);
+        return cam;
+      };
+      return {
+        dur: ends.at(-1),
+        enter() {
+          state.t = w.tA - lead;
+          R.setRoutes([w.route]);
+          R.setFocus(p.v);
+          state.extra = [];
+          state.dim = 0.65;
+          map.stop();
+          cam = camFor();
+          move(cam, P[0] * 1000);
+          R.tour.layers = () => {
+            const t = state.t, wk = walkerAt(t), walking = t > w.tA && t < tW;
+            // Which way the walker faces on screen.
+            const s0 = map.project([wk[0], wk[1]]), s1 = map.project([wk[0] + wk[2] * 1e-3, wk[1] + wk[3] * 1e-3]);
+            const icon = walkerIcon(walking ? Math.floor(performance.now() / 130) % 4 : 4, s1.x < s0.x);
+            return [
+              new deck.ScatterplotLayer({id: "tour-walker-ground", data: [wk], getPosition: (d) => [d[0], d[1]],
+                getRadius: 3, radiusUnits: "pixels", radiusMinPixels: 4, getFillColor: [255, 255, 255, 90]}),
+              new deck.IconLayer({id: "tour-walker", data: [wk], getPosition: (d) => [d[0], d[1]], getIcon: () => icon,
+                getSize: R.wide ? 46 : 38, sizeUnits: "pixels", billboard: true,
+                updateTriggers: {getIcon: icon.id}}),
+              new deck.TextLayer({
+                id: "tour-walk-labels", data: labels(t, wk), getPosition: (l) => l.at, getText: (l) => l.txt,
+                getSize: 13, getColor: (l) => (l.hot ? [255, 255, 255, 255] : [200, 200, 205, 255]),
+                getPixelOffset: (l) => (l.below ? [0, 24] : [0, -44]), fontFamily: "Inter, system-ui, sans-serif", fontWeight: 600,
+                characterSet: "auto", lineHeight: 1.25, background: true,
+                getBackgroundColor: (l) => (l.hot ? [20, 21, 24, 235] : [20, 21, 24, 190]), backgroundPadding: [6, 3],
+                updateTriggers: {getText: Math.round(t), getColor: t >= tW, getBackgroundColor: t >= tW}}),
+            ];
+          };
+        },
+        tick(f, sec) {
+          const [eFly, eRun, eLast] = ends;
+          let t;
+          if (sec < eFly) t = w.tA - lead;
+          else if (sec < eRun) t = lerp(w.tA - lead, w.tB, (sec - eFly) / P[1]);
+          else t = lerp(w.tB, w.tB + 20, easeOut(Math.min(1, (sec - eRun) / P[2])));
+          state.speed = runSpeed;
+          state.t = t;
+          // The camera holds still; if a slow device cut the flight short, ease it the rest of the way.
+          if (sec >= eFly && !map.isMoving()) {
+            const c = map.getCenter(), cc = cam.center.lng !== undefined ? [cam.center.lng, cam.center.lat] : cam.center;
+            map.jumpTo({center: [lerp(c.lng, cc[0], 0.08), lerp(c.lat, cc[1], 0.08)],
+              zoom: lerp(map.getZoom(), cam.zoom, 0.08), pitch: lerp(map.getPitch(), 52, 0.08),
+              bearing: map.getBearing() + (((bearing - map.getBearing() + 540) % 360) - 180) * 0.08});
+          }
+          caption(fill(c0, v), t >= w.tB ? fill(c1, v) : "");
+          showHud((t >= tW ? `<div class="th-row done"><span>On foot, ${esc(v.m)} m at ${esc(v.kmh)} km/h</span><b>${esc(v.walk)}</b></div>` : "") +
+            (t >= w.tB ? `<div class="th-row"><span>Streetcar ${esc(w.route)}, car ${esc(w.v)}</span><b>${esc(v.ride)}</b></div>` +
+              `<div class="th-row"><span>Streetcars here slower than walking, ${esc(vars.day)}</span><b>${w.n} of ${w.of}</b></div>` : ""));
+        },
+        leave() { R.tour.layers = null; R.setRoutes([]); state.dim = 0; },
+      };
+      function labels(t, wk) {
+        const out = [], me = R.at(p, Math.min(Math.max(t, p.t0), p.t1));
+        const since = (x) => mmss(Math.max(0, x - w.tA));
+        if (me) out.push(label(`${w.route} · ${R.clockText(w.tA)}\n${t < w.tB ? since(t) : `${mmss(w.ride_s)}`}`, [me[0], me[1]], true, false));
+        out.push(label(`On foot\n${t < tW ? since(t) : `✓ ${mmss(w.walk_s)}`}`, [wk[0], wk[1]], t < tW, true));
+        return out;
       }
     }
 

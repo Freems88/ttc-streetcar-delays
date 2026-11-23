@@ -241,7 +241,39 @@ page asks again when it's back; a refused request waits for the next tap.
   count of short turns beside it (their warning signs stay off here: dozens at once is noise);
   the caption gives the total only once the counter lands.
   The close comes back to the finished columns.
-- **Spot beats** (the signal and slowest-stretch stories, using `at` from
+- **Slower than walking** (first after the opening): someone on foot against a real
+  streetcar, over a stretch where many cars that day were slower than walking. A viewer
+  suggested it: a walker winning says "delay" to anyone, where minutes lost need explaining.
+  It takes the slowest stretch's place in the tour (that story stays on the map's card); on a
+  day with no pick, or its trip not in the replay, the slowest-stretch beat comes back.
+  The pick is `walk.py`'s, written by `drafts.py` into `stories.json` as `walk`:
+  - A ride is time on board: from the moment a car leaves stop A to the moment it reaches
+    stop B on the same trip, not counting the wait for it (counting that, walking would win
+    far more often; leaving it out keeps the claim on the safe side). The walker covers the
+    track's length between the stops at a steady 4.5 km/h, a little under an ordinary pace,
+    which allows for the odd wait at a crossing. Red lights aren't guessed: a walker going the
+    same way mostly gets the car's greens and isn't stuck in its queue, and a walker who
+    never stops is what makes the car's stops show.
+  - Rides of 800 m to 1,500 m (long enough to be a real ride, short enough to frame in one
+    view), daytime (06:00-22:00), not within 300 m of either end of a trip (terminal layovers:
+    the 501 into Neville Park otherwise came up every day), not losing over 15 min against the
+    clean run, on routes the day's service-change flags leave alone. Stops count where the
+    path passes within 18 m going their way; stops within 60 m along a trip are one.
+  - The stretch shown is the one with the most rides slower than walking; the ride shown
+    there is the middle one by how much it lost to the walker, among those where the walker
+    got 100 m or more ahead (the clean-run ghost's lesson: a lead too small to see doesn't
+    work on screen). The caption's count is those rides against all rides that way.
+  - First checked on Nov 3 (a Tuesday) and Nov 22 (a Sunday): 200 to 300 trips a day had an
+    800 m+ stretch slower than walking, mostly the 505 on Dundas downtown. Nov 22's pick:
+    the 505 westbound, Church St to University Ave, 911 m, 15:07 on board against 12:09 on
+    foot, 25 of 88 rides slower. Expect it to land on Dundas often.
+  - On screen: the camera holds still, angled across the street, fitted so both stops are in
+    frame as seen tilted (on a phone, turned so the street runs up the screen; across it, a
+    kilometre only fits zoomed out to dots). The clock runs straight through, no real-time
+    hold. The walker is a sprite in the Flexity's flat style (mustard coat, red toque),
+    drawn far bigger than life, on the sidewalk to the right of travel, with a stride while
+    walking; labels show each one's time so far, the walker's freezing, ticked, at B.
+- **Spot beats** (the signal story, and the slowest stretch when there's no walking beat, using `at` from
   `story_of`): only the routes through the spot (the story link's `r`), every car but the
   two being shown dimmed. The camera holds still, framed between the spot and where the
   stuck car stands, from an angle: tilted 52 degrees and turned so the street runs
@@ -288,6 +320,7 @@ that range; the tour shows the 90th percentile, a bad but ordinary pass rather t
 breakdown. Passes losing over 15 min are left out (layovers, breakdowns). Spots are ordered by
 the chosen car's longest stand; a spot within 400 m of one already in is dropped (the slowest
 stretch often ends at the most-held signal); at most two, with the short turns between them.
+With a walking beat the order is walking, short turns, then one spot beat.
 
 The columns (`buildPeaks`): each slice's height ends on its delay-map total for the day
 (`stats-d1.json`: seconds lost per 100 m per pass x passes; summed over the network that's the
