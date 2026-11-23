@@ -259,8 +259,15 @@ for the same day as `replay.json`.
   and hours lost climbs and the delay map's columns rise within 450 m, on the chosen car's
   side of the street (the tally is one direction). The stop-wait story isn't in the tour:
   its number is riders' waiting time, and a car standing at a stop doesn't show that.
-- **Short turns:** the route alone, its busiest four hours sped through, the "!" markers
-  popping and a count climbing.
+- **Short turns:** the route alone, its busiest four hours sped through, and a count
+  climbing. The "!" markers pop up where each turn was detected (`state.pinShort`) instead of
+  riding along with the car, which at tour speed sent them flying up and down the line. A
+  column at every stop on the route grows with the longest gap between the route's
+  streetcars there so far (a car passing within 25 m, going the stop's way; 18 m a minute,
+  yellow at 10 min to red at 30). It only grows, so it doesn't flicker as cars pass at tour
+  speed, and it ends tallest past the turn spots, where cars stopped coming. On Nov 21's 510
+  (7 pm to 11 pm) that was about 27 min along Queens Quay and at Union, against 15 to 20 on
+  Spadina. The camera takes in the stops within 1.5 km of a turn.
 - **End:** the story card (the map page's first-visit card) with "Pick a car" and "Watch again".
 
 Which car: every daytime (06:00-22:00) pass through a 150 m circle round the spot (or along

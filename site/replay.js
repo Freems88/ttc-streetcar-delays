@@ -114,7 +114,7 @@
 
   // --- state + hash -------------------------------------------------------------------
   const state = {t: 3 * 3600, speed: 600, playing: true, color: "route", follow: null, routes: new Set(), race: null,
-    dim: 0, focus: null, extra: [], hideShort: false};  // the last four: the tour (tour.js)
+    dim: 0, focus: null, extra: [], hideShort: false, pinShort: false};  // the last five: the tour (tour.js)
   const routeOn = (r) => !state.routes.size || state.routes.has(r);
   const h = new URLSearchParams(location.hash.slice(1));
   if (h.has("t")) {
@@ -446,8 +446,10 @@
   function shortLayers(hs) {
     if (state.hideShort) return [];  // the tour counts them instead
     // Ride along with the car: the marker sits over it (or where it turned, if it's gone).
+    // The tour pins it where the turn was detected (state.pinShort): sped up, markers riding
+    // along fly up and down the line.
     const marks = activeShort().map((e) => {
-      const h = hs.find((d) => d.p.v === e.v);
+      const h = !state.pinShort && hs.find((d) => d.p.v === e.v);
       return {e, pos: h ? [h.lon, h.lat] : [e.lon, e.lat]};
     });
     return [

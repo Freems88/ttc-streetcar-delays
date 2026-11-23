@@ -50,16 +50,17 @@
     try { stories = await (await fetch("data/drafts/stories.json", {cache: "no-cache"})).json(); } catch { /* none */ }
     if (!stories || stories.day !== R.data.day || !stories.items?.length) return;
     // The delay map's figures for the day, for the peaks (optional: the tour runs without).
-    let peaks = null;
+    let peaks = null, net = null;
     try {
       const get = async (f) => (await fetch(`data/${f}`, {cache: "no-cache"})).json();
-      const [net, stats] = await Promise.all([get("network.json"), get("stats-d1.json")]);
+      const [n, stats] = await Promise.all([get("network.json"), get("stats-d1.json")]);
+      net = n;
       peaks = buildPeaks(R, net, stats);
     } catch (e) { console.warn("tour: no peaks", e); }
     const btn = document.getElementById("tour-btn");
     btn.hidden = false;
-    btn.addEventListener("click", () => play(R, stories, peaks));
-    if (R.tour.active) play(R, stories, peaks);
+    btn.addEventListener("click", () => play(R, stories, peaks, net));
+    if (R.tour.active) play(R, stories, peaks, net);
   }
 
   // --- peaks: the delay map, built up over the day --------------------------------------
@@ -156,6 +157,60 @@
     });
   }
 
+  // --- gaps at stops (the short-turn beat) ----------------------------------------------
+  // Every stop on the route's observed patterns, with the times the route's cars passed it
+  // (within GAP_M, going the stop's way). The beat draws the longest gap between streetcars so
+  // far at each: it only grows, so it doesn't flicker at tour speed, and it grows tallest past
+  // the spots where cars are sent back.
+  const GAP_M = 25;
+  function stopGaps(R, net, route) {
+    const {paths, pos, ts} = R, stops = new Map();
+    for (const pat of net.patterns) {
+      if (pat.route !== route) continue;
+      const on = new Set(pat.slices.map(([pi, b]) => `${pi}:${b}`));
+      net.pieces.forEach((p, pi) => {
+        for (const s of p.stops) {
+          const b = Math.min(p.bins.length - 1, Math.floor(s.along / net.bin_m));
+          if (!on.has(`${pi}:${b}`) || stops.has(s.id)) continue;
+          const lo = p.bins[Math.max(0, b - 1)], hi = p.bins[Math.min(p.bins.length - 1, b + 1)];
+          stops.set(s.id, {id: s.id, name: s.name, pos: s.lonlat, dir: [(hi[0] - lo[0]) * MX, (hi[1] - lo[1]) * MY], t: []});
+        }
+      });
+    }
+    const list = [...stops.values()];
+    const pad = GAP_M / MY * 1.5;
+    for (const p of paths) {
+      if (p.r !== route) continue;
+      for (let i = p.i0; i < p.i1 - 1; i++) {
+        const ax = pos[2 * i], ay = pos[2 * i + 1], bx = pos[2 * i + 2], by = pos[2 * i + 3];
+        const dx = (bx - ax) * MX, dy = (by - ay) * MY, L2 = dx * dx + dy * dy;
+        if (!L2) continue;
+        for (const s of list) {
+          const [sx, sy] = s.pos;
+          if (sx < Math.min(ax, bx) - pad * 1.4 || sx > Math.max(ax, bx) + pad * 1.4 ||
+              sy < Math.min(ay, by) - pad || sy > Math.max(ay, by) + pad) continue;
+          if (dx * s.dir[0] + dy * s.dir[1] <= 0) continue;
+          const f = Math.max(0, Math.min(1, ((sx - ax) * MX * dx + (sy - ay) * MY * dy) / L2));
+          if (Math.hypot((ax - sx) * MX + f * dx, (ay - sy) * MY + f * dy) > GAP_M) continue;
+          s.t.push(ts[i] + f * (ts[i + 1] - ts[i]));
+        }
+      }
+    }
+    for (const s of list) s.t.sort((a, b) => a - b);
+    return list;
+  }
+  // Longest gap at a stop between t0 and t (a gap still open at t counts up to t).
+  function longestGap(times, t0, t) {
+    let last = t0, best = 0;
+    for (const x of times) {
+      if (x <= t0) continue;
+      if (x > t) break;
+      best = Math.max(best, x - last);
+      last = x;
+    }
+    return Math.max(best, t - last);
+  }
+
   // --- finding the moment ---------------------------------------------------------------
   const DAY_FROM = 6 * 3600 - 4 * 3600, DAY_TO = 22 * 3600 - 4 * 3600;  // 06:00-22:00 (t counts from 04:00)
   const SPOT_M = 150, NEAR_M = 40, MAX_LOST = 900;
@@ -231,7 +286,7 @@
   }
 
   // --- the tour -------------------------------------------------------------------------
-  function play(R, stories, peaks) {
+  function play(R, stories, peaks, net) {
     const {state, map, ts, gclk, pos, findIn, lerpAt} = R;
     const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
     const $ = (id) => document.getElementById(id);
@@ -329,6 +384,7 @@
       state.dim = 0;
       state.extra = [];
       state.hideShort = false;
+      state.pinShort = false;
       document.removeEventListener("keydown", onKey, true);
       ui.hidden = true;
       document.body.classList.remove("touring");
@@ -337,7 +393,7 @@
       R.setPlaying(true);
       map.stop();
       move(home, 1200);
-      endCard(R, stories, () => play(R, stories, peaks));
+      endCard(R, stories, () => play(R, stories, peaks, net));
       R.writeHash();
     }
 
@@ -535,7 +591,9 @@
       }
     }
 
-    // The short-turn route at a distance, the day sped by, warnings popping and a running tally.
+    // The short-turn route at a distance, the day sped by: warnings pop up where each turn was
+    // detected, a column at every stop grows with the longest gap between streetcars so far
+    // (tallest past the turns), and a tally counts the turns.
     function shortBeat(s) {
       const ev = R.shortEv.filter((e) => e.r === s.at.route);
       // The busiest four hours of short turns, or the whole span if shorter.
@@ -548,18 +606,35 @@
         }
         t1 = t0 + 4 * 3600 + 300;
       }
-      const lons = ev.map((e) => e.lon), lats = ev.map((e) => e.lat);
+      const inWin = ev.filter((e) => e.t >= t0 && e.t <= t1);
+      const gaps = net ? stopGaps(R, net, s.at.route).filter((x) => x.t.length >= 2) : [];
+      // Frame the turns and the stops within 1.5 km of one, so the stretch past them is in view.
+      const near = gaps.filter((g) => inWin.some((e) => Math.hypot((g.pos[0] - e.lon) * MX, (g.pos[1] - e.lat) * MY) < 1500));
+      const lons = [...inWin.map((e) => e.lon), ...near.map((g) => g.pos[0])];
+      const lats = [...inWin.map((e) => e.lat), ...near.map((g) => g.pos[1])];
       const pad = R.wide ? 160 : 70;
       const v = {...vars, place: s.place, detail: s.detail, route: s.at.route};
       const [c0, c1] = capsFor("shortturn");
-      const dur = 7;
+      const dur = 7, GAP_TOP = 40 * 60, M_PER_MIN = 18;  // a 40-minute gap or more: 720 m
+      const gapLayer = (t) => new deck.ColumnLayer({
+        id: "tour-gaps", data: gaps, getPosition: (g) => g.pos, diskResolution: 8, radius: 22,
+        extruded: true, material: false,
+        getFillColor: (g) => {
+          const f = Math.min(1, Math.max(0, (g.gap - 600) / 1200));  // 10 min pale yellow .. 30 min red
+          return [255, Math.round(215 - 175 * f), Math.round(90 - 60 * f), 235];
+        },
+        getElevation: (g) => Math.min(g.gap, GAP_TOP) / 60 * M_PER_MIN,
+        updateTriggers: {getElevation: Math.round(t / 30), getFillColor: Math.round(t / 30)},
+      });
       return {
         dur,
         enter() {
           R.setFocus(null);
-          R.tour.layers = null;
           R.setRoutes([s.at.route]);
+          state.pinShort = true;
           state.t = t0;
+          for (const g of gaps) g.gap = 0;
+          R.tour.layers = gaps.length ? () => [gapLayer(state.t)] : null;
           map.stop();
           const cam = map.cameraForBounds([[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]],
             {padding: pad, bearing: -17, pitch: 40});
@@ -569,11 +644,17 @@
           state.t = lerp(t0, t1, ease(f));
           state.speed = (t1 - t0) / dur * 1.2;
           const n = ev.filter((e) => e.t >= t0 && e.t <= state.t).length;
+          let worst = null;
+          for (const g of gaps) {
+            g.gap = longestGap(g.t, t0, state.t);
+            if (!worst || g.gap > worst.gap) worst = g;
+          }
           caption(fill(c0, v), f > 0.6 ? fill(c1, v) : "");
           showHud(`<div class="th-row"><span>${esc(R.clockText(t0))} to ${esc(R.clockText(state.t))}</span></div>` +
-            `<div class="th-row"><span>⚠ Trips sent back early</span><b>${n}</b></div>`);
+            `<div class="th-row"><span>⚠ Trips sent back early</span><b>${n}</b></div>` +
+            (worst ? `<div class="th-row"><span>▮ Longest gap at a stop</span><b>${Math.round(worst.gap / 60)} min</b></div>` : ""));
         },
-        leave() { R.setRoutes([]); },
+        leave() { R.setRoutes([]); R.tour.layers = null; state.pinShort = false; },
       };
     }
 
