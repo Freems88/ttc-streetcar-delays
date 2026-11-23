@@ -195,6 +195,46 @@ def summary_post(when, net, recent, yest, have_normal, changed=()):
     return {"kind": "summary", "text": text}
 
 
+LIGHT_ALONE, LIGHT_SHARE = 0.6, 0.2  # a light "is" the stretch at 60% of its loss; counts in a span at 20%
+
+
+def light_name(sig, street):
+    """'Spadina Ave / Adelaide St W' on Spadina Ave -> 'Adelaide St W'."""
+    parts = sig["name"].split(" / ", 1)
+    first = street.split()[0].lower()
+    other = [x for x in parts if not x.lower().startswith(first)]
+    return (other or parts[1:] or parts)[0].strip()
+
+
+def stretch_place(net, stats, p, b0, b1, street, cross):
+    """How to name a stop-centred stretch from where its time was lost: ('approaching X',
+    signal line) when one light's approach holds most of it, ('between X and Y', line on the
+    worst light) when it's spread over several lights, else ('at <stop>', None). A segment runs
+    midway to the next stops either side, so it can cross two or three lights."""
+    d = stats["pieces"][p["id"]]["slots"]["all"]["d"]
+    by_sig, order, total = {}, [], 0.0
+    for b in range(b0, b1 + 1):
+        x = max(0.0, d[b] or 0.0) * BIN_M / 100
+        total += x
+        i = p["sig"][b]
+        if i >= 0:
+            if i not in by_sig:
+                order.append(i)
+            by_sig[i] = by_sig.get(i, 0.0) + x
+    if not by_sig or total <= 0:
+        return f"at {cross}", None
+    worst = max(by_sig, key=by_sig.get)
+    sig = net["signals"][worst]
+    tsp = "has transit priority" if sig["tsp"] else "has no transit priority"
+    if by_sig[worst] >= LIGHT_ALONE * total:
+        return f"approaching {light_name(sig, street)}", f"This signal {tsp}."
+    big = [i for i in order if by_sig[i] >= LIGHT_SHARE * total]
+    if len(big) >= 2:
+        a, z = light_name(net["signals"][big[0]], street), light_name(net["signals"][big[-1]], street)
+        return f"between {a} and {z}", f"The biggest share was at the {light_name(sig, street)} light, which {tsp}."
+    return f"at {cross}", None
+
+
 def segment_post(when, day_name, net, recent, yest, have_normal, partial=False):
     best = None
     for p, b0, b1, stop in segments(net):
@@ -210,22 +250,22 @@ def segment_post(when, day_name, net, recent, yest, have_normal, partial=False):
     p, b0, b1, stop, (lost, passes) = best
     street, cross = split_stop(stop["name"])
     direction = bound_word(compass(p["bins"][b0], p["bins"][b1]))
-    sig = next((net["signals"][p["sig"][b]] for b in range(b0, b1 + 1) if p["sig"][b] >= 0), None)
-    where = f"{direction} on {street}, {'approaching' if sig else 'at'} {cross}"
+    place, sig_line = stretch_place(net, yest, p, b0, b1, street, cross)
+    where = f"{direction} on {street}, {place}"
     hours = lost * passes / 3600
     normal = seg_loss(recent, p["id"], b0, b1) if have_normal else None
     lines = [f"{day_name}'s slowest spot{' so far' if partial else ''}: {where[0].upper() + where[1:]}.",
              f"The average streetcar lost {duration(lost)} here"
              + (f" (usually {duration(normal[0])})" if normal else "")
              + f". Across {passes} trips, that adds up to {hours:.1f} hours."]
-    if sig:
-        lines.append("This signal has transit priority." if sig["tsp"] else "This signal has no transit priority.")
+    if sig_line and post_len("\n".join(lines + [sig_line])) <= POST_LIMIT:  # long street names: drop it
+        lines.append(sig_line)
     shot = {"shot": "1", "win": "today" if partial else "yesterday", "piece": p["id"], "b0": b0, "b1": b1,
-            "title": f"{street} {direction}, {'approaching' if sig else 'at'} {cross}",
+            "title": f"{street} {direction}, {place}",
             "sub": f"{when}: {duration(lost)} lost per streetcar · {passes} trips"}
     alt = (f"3D map of {street} around {cross}, rotated to Toronto's street grid. Delay is drawn as a coloured "
-           f"ridge above the track, rising where streetcars lose time; the {direction} stretch at {cross} "
-           f"is highlighted, peaking at about {duration(lost)} lost per streetcar.")
+           f"ridge above the track, rising where streetcars lose time; the {direction} stretch "
+           f"{place} is highlighted, adding up to about {duration(lost)} lost per streetcar.")
     return {"kind": "segment", "text": "\n".join(lines), "alt": alt, "shot": shot}
 
 

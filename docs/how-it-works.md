@@ -209,6 +209,14 @@ After the nightly build writes yesterday's drafts, the bot posts them as one thr
 the day. It only posts while the switch file `~/ttc-streetcars/delays/bot-enabled` exists.
 Service-change notes are drafted but not posted.
 
+The slowest-spot post names its stretch from where the time went. A stop-centred segment runs
+halfway to the stops either side, so it can cross two or three lights. If one light's approach
+holds 60% of the loss, it says "approaching" that light, plus whether it has transit priority.
+If two or more lights hold 20% or more each, it says "between" the first and last of them, and
+which one had the biggest share. Otherwise it says "at" the stop. Before, it took the first
+light in the segment: on Nov 21 that put Spadina southbound "approaching Queen" (which has
+priority), though the biggest share was further on, at Adelaide (which has none).
+
 The same picks greet first-time visitors on the map page: `drafts.py` writes
 `drafts/stories.json` (the newest finished day), and a plain visit (no link to a particular
 view) shows them as a card until it's closed, coming back when there's a new day. Each story
