@@ -267,12 +267,22 @@ page asks again when it's back; a refused request waits for the next tap.
     800 m+ stretch slower than walking, mostly the 505 on Dundas downtown. Nov 22's pick:
     the 505 westbound, Church St to University Ave, 911 m, 15:07 on board against 12:09 on
     foot, 25 of 88 rides slower. Expect it to land on Dundas often.
-  - On screen: the camera holds still, angled across the street, fitted so both stops are in
-    frame as seen tilted (on a phone, turned so the street runs up the screen; across it, a
-    kilometre only fits zoomed out to dots). The clock runs straight through, no real-time
-    hold. The walker is a sprite in the Flexity's flat style (mustard coat, red toque),
-    drawn far bigger than life, on the sidewalk to the right of travel, with a stride while
-    walking; labels show each one's time so far, the walker's freezing, ticked, at B.
+  - On screen: the camera holds still with both stops in frame and never zooms out past
+    15.6, where the streetcar would fade to a dot (`ICON_ZOOM`, crossfading to 15.4). It
+    starts from the spot beats' view (angled 60 degrees across the street, tilted 52; a
+    phone starts turned to 25, the street running up its tall screen) and, while the stretch
+    doesn't fit, tilts further (to 70) and then turns the street to run more up the screen,
+    since tilt only shortens what runs up it. Each try is fitted as seen tilted, by setting
+    the camera, projecting both stops and adjusting (cameraForBounds frames it flat). On
+    Nov 22, a wide screen fits at the usual view (zoom 16.1); a 1.4 km test stretch on a
+    phone needed turning to 12 degrees and tilting to 64, the far end small but still drawn.
+    If nothing fits, the zoom holds anyway and the ends sit near the frame's edges.
+    The clock runs straight through, no real-time hold. The walker is a sprite in the
+    Flexity's flat style (mustard coat, red toque), drawn far bigger than life, on the
+    sidewalk to the right of travel, with a stride while walking; labels show each one's
+    time so far ("Walking · 4.5 km/h" on the walker, so the pace is on screen whatever the
+    caption), the walker's freezing, ticked, at B. Captions say walking, never "race",
+    which reads as running.
 - **Spot beats** (the signal story, and the slowest stretch when there's no walking beat, using `at` from
   `story_of`): only the routes through the spot (the story link's `r`), every car but the
   two being shown dimmed. The camera holds still, framed between the spot and where the

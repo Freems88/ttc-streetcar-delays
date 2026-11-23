@@ -153,7 +153,9 @@ def _cross(name):
     m = re.match(r"(.+?)\s+at\s+(.+)", name, flags=re.I)
     if m:
         street, cross = m.group(1), m.group(2)
-    tidy = lambda s: (s.title() if s.isupper() else s).split(" - ")[0].strip()
+    # Some stop names are in capitals: "DUNDAS ST WEST AT MCCAUL ST" -> "McCaul St".
+    tidy = lambda s: re.sub(r"\bMc([a-z])", lambda m: "Mc" + m.group(1).upper(),
+                            s.title() if s.isupper() else s).split(" - ")[0].strip()
     street = re.sub(r"\s+(East|West|North|South)$", "", tidy(street))
     return street, tidy(cross)
 

@@ -1,5 +1,5 @@
 // Tour: yesterday in about 30 seconds, played on the replay (replay.html#tour=1).
-// The whole day with the delay map rising, then someone on foot racing a streetcar
+// The whole day with the delay map rising, then someone walking beside a streetcar
 // (stories.json "walk", see walk.py), then a beat per story from the bot's picks
 // (data/drafts/stories.json, see drafts.py story_of): the camera flies to the spot and the
 // replay shows a car that went straight through beside one that got stuck there that day.
@@ -40,9 +40,11 @@
     close: [["Now pick a car and ride along."], ["Your turn: tap any streetcar."], ["Every car's day is here. Pick one."]],
     // The walking beat: {street} {a} {b} {route} {m} (metres) {kmh} {walk} {ride} (m:ss)
     // {n} of {of} (streetcars there slower than walking, of all that way that day).
+    // Say walking, never "race": it reads as running, and the point is an easy pace (the
+    // walker's label carries the pace whichever line the day gets).
     walk: [
-      ["{street}, {a} to {b}: walk, or ride the {route}?", "Walking won. {n} of {of} streetcars here were slower."],
-      ["Race a streetcar on foot: {a} to {b}.", "On foot: {walk}. By streetcar: {ride}."],
+      ["{street}, {a} to {b}: walk it, or ride the {route}?", "Walking won. {n} of {of} streetcars here were slower."],
+      ["Strolling {a} to {b}, beside a {route}.", "On foot: {walk}. By streetcar: {ride}."],
       ["{m} m along {street}, walked at an easy {kmh} km/h.", "Faster than {n} of {of} streetcars that way on {day}."],
     ],
   };
@@ -669,9 +671,6 @@
       const A = R.at(p, w.tA), B = R.at(p, w.tB);
       const dx = B[0] - A[0], dy = B[1] - A[1];
       const road = Math.atan2(dx * MX, dy * MY) * 180 / Math.PI;
-      // Angled across the street, as the spot beats; on a phone, turned so the street runs more
-      // up the tall screen than across it, else a kilometre only fits zoomed out to dots.
-      const bearing = ((road - (R.wide ? 60 : 25) + 540) % 360) - 180;
       const mmss = (s) => R.dur(s);
       const diff = Math.round((w.ride_s - w.walk_s) / 60);
       const v = {...vars, street: w.street, a: w.a, b: w.b, route: w.route, n: w.n, of: w.of,
@@ -684,25 +683,44 @@
       const runSpeed = (w.tB - w.tA + lead) / P[1];
       const label = (txt, at, hot, below) => ({txt, at, hot, below});
       let cam = null;
-      // Fits A and B in the frame as seen tilted (cameraForBounds frames it flat): try the
-      // camera, see where they land on screen, adjust zoom and centre, a few times, then put
-      // the camera back. Jumps within one task never reach the screen.
+      // The camera holds still with both stops in frame, never zoomed out past MIN_ZOOM: below
+      // it the streetcar fades to a dot (replay.js ICON_ZOOM, crossfading to 15.4). Starting
+      // from the spot beats' view (angled 60 degrees across the street, tilted 52), it tilts
+      // further first, then turns the street to run more up the screen (tilt only shortens
+      // what runs up the screen), until the stretch fits. A phone's tall screen starts turned.
+      // Each try fits A and B as seen tilted (cameraForBounds frames it flat): set the camera,
+      // see where they land, adjust zoom and centre, a few times. Jumps within one task never
+      // reach the screen, and the camera is put back after.
+      const MIN_ZOOM = 15.6;
       const camFor = () => {
         const el = map.getContainer(), W = el.clientWidth, H = el.clientHeight;
         const box = R.wide ? {l: 140, r: W - 140, t: H * 0.3, b: H * 0.72} : {l: 50, r: W - 50, t: H * 0.2, b: H * 0.76};
         const was = {center: map.getCenter(), zoom: map.getZoom(), pitch: map.getPitch(), bearing: map.getBearing()};
-        let cam = {center: [(A[0] + B[0]) / 2, (A[1] + B[1]) / 2], zoom: 15, pitch: 52, bearing};
-        for (let k = 0; k < 4; k++) {
-          map.jumpTo(cam);
-          const a = map.project([A[0], A[1]]), b = map.project([B[0], B[1]]);
-          const sw = Math.abs(a.x - b.x) || 1, sh = Math.abs(a.y - b.y) || 1;
-          const zoom = Math.min(16.2, cam.zoom + Math.log2(Math.min((box.r - box.l) / sw, (box.b - box.t) / sh)));
-          // Shift so the pair's middle sits mid-box.
-          const mid = map.unproject([(a.x + b.x) / 2 - (box.l + box.r) / 2 + W / 2, (a.y + b.y) / 2 - (box.t + box.b) / 2 + H / 2]);
-          cam = {...cam, center: [mid.lng, mid.lat], zoom};
+        const fit = (pitch, turn) => {
+          const bearing = ((road - turn + 540) % 360) - 180;
+          let cam = {center: [(A[0] + B[0]) / 2, (A[1] + B[1]) / 2], zoom: 15.5, pitch, bearing};
+          for (let k = 0; k < 4; k++) {
+            map.jumpTo(cam);
+            const a = map.project([A[0], A[1]]), b = map.project([B[0], B[1]]);
+            const sw = Math.abs(a.x - b.x) || 1, sh = Math.abs(a.y - b.y) || 1;
+            const zoom = cam.zoom + Math.log2(Math.min((box.r - box.l) / sw, (box.b - box.t) / sh));
+            // Shift so the pair's middle sits mid-box.
+            const mid = map.unproject([(a.x + b.x) / 2 - (box.l + box.r) / 2 + W / 2, (a.y + b.y) / 2 - (box.t + box.b) / 2 + H / 2]);
+            cam = {...cam, center: [mid.lng, mid.lat], zoom};
+          }
+          return cam;
+        };
+        let best = null;
+        search: for (const turn of R.wide ? [60, 45, 35, 25] : [25, 18, 12]) {
+          for (const pitch of [52, 58, 64, 70]) {
+            const c = fit(pitch, turn);
+            if (!best || c.zoom > best.zoom) best = c;
+            if (c.zoom >= MIN_ZOOM) { best = c; break search; }
+          }
         }
         map.jumpTo(was);
-        return cam;
+        // Too long to fit even so: hold the zoom anyway (the ends may sit at the frame's edge).
+        return {...best, zoom: Math.max(MIN_ZOOM, Math.min(16.2, best.zoom))};
       };
       return {
         dur: ends.at(-1),
@@ -748,8 +766,8 @@
           if (sec >= eFly && !map.isMoving()) {
             const c = map.getCenter(), cc = cam.center.lng !== undefined ? [cam.center.lng, cam.center.lat] : cam.center;
             map.jumpTo({center: [lerp(c.lng, cc[0], 0.08), lerp(c.lat, cc[1], 0.08)],
-              zoom: lerp(map.getZoom(), cam.zoom, 0.08), pitch: lerp(map.getPitch(), 52, 0.08),
-              bearing: map.getBearing() + (((bearing - map.getBearing() + 540) % 360) - 180) * 0.08});
+              zoom: lerp(map.getZoom(), cam.zoom, 0.08), pitch: lerp(map.getPitch(), cam.pitch, 0.08),
+              bearing: map.getBearing() + (((cam.bearing - map.getBearing() + 540) % 360) - 180) * 0.08});
           }
           caption(fill(c0, v), t >= w.tB ? fill(c1, v) : "");
           showHud((t >= tW ? `<div class="th-row done"><span>On foot, ${esc(v.m)} m at ${esc(v.kmh)} km/h</span><b>${esc(v.walk)}</b></div>` : "") +
@@ -762,7 +780,7 @@
         const out = [], me = R.at(p, Math.min(Math.max(t, p.t0), p.t1));
         const since = (x) => mmss(Math.max(0, x - w.tA));
         if (me) out.push(label(`${w.route} · ${R.clockText(w.tA)}\n${t < w.tB ? since(t) : `${mmss(w.ride_s)}`}`, [me[0], me[1]], true, false));
-        out.push(label(`On foot\n${t < tW ? since(t) : `✓ ${mmss(w.walk_s)}`}`, [wk[0], wk[1]], t < tW, true));
+        out.push(label(`Walking · ${w.kmh} km/h\n${t < tW ? since(t) : `✓ ${mmss(w.walk_s)}`}`, [wk[0], wk[1]], t < tW, true));
         return out;
       }
     }
