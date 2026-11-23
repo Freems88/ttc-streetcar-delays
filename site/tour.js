@@ -28,15 +28,18 @@
       ["The day's slowest stretch: {place}", "{detail}."],
       ["Same stretch, two trips {gap} apart.", "{detail}."],
     ],
+    // {gap}: the longest gap between the route's cars at a stop in the beat's hours; {typ}:
+    // the middle stop's. The columns aren't self-explanatory, so the payoff says what they are.
     shortturn: [
-      ["{place}: trips sent back early", "{detail}."],
-      ["Each ⚠ is a streetcar turned back before its last stop.", "{detail}."],
-      ["{place}. Not every trip reaches the end.", "{detail}."],
-      ["{place}, where the end of the line moves.", "{detail}."],
+      ["{place}: {detailLc}.", "Each column: the longest gap between streetcars at a stop. Up to {gap} min past the turns."],
+      ["Each ⚠ is a streetcar turned back before its last stop.", "Past the turns, gaps between cars stretch to {gap} min, against {typ} on most of the line."],
+      ["{place}. Not every trip reaches the end.", "The columns: the longest gap between cars at each stop. {gap} min past the turns, {typ} elsewhere."],
+      ["{place}, where the end of the line moves.", "Where cars turn back early, the next one is a long way off: gaps of up to {gap} min."],
     ],
     close: [["Now pick a car and ride along."], ["Your turn: tap any streetcar."], ["Every car's day is here. Pick one."]],
   };
   const KINDS = Object.keys(CAPTIONS);
+  const SHORT_NO_GAPS = ["{place}: trips sent back early", "{detail}."];  // no network file: no columns to explain
   let round = 0;  // times watched on this visit
   const pick = (kind, day) => {
     const list = CAPTIONS[kind], n = Math.floor(Date.parse(day) / 864e5) + round + KINDS.indexOf(kind);
@@ -608,14 +611,37 @@
       }
       const inWin = ev.filter((e) => e.t >= t0 && e.t <= t1);
       const gaps = net ? stopGaps(R, net, s.at.route).filter((x) => x.t.length >= 2) : [];
-      // Frame the turns and the stops within 1.5 km of one, so the stretch past them is in view.
-      const near = gaps.filter((g) => inWin.some((e) => Math.hypot((g.pos[0] - e.lon) * MX, (g.pos[1] - e.lat) * MY) < 1500));
-      const lons = [...inWin.map((e) => e.lon), ...near.map((g) => g.pos[0])];
-      const lats = [...inWin.map((e) => e.lat), ...near.map((g) => g.pos[1])];
       const pad = R.wide ? 160 : 70;
-      const v = {...vars, place: s.place, detail: s.detail, route: s.at.route};
-      const [c0, c1] = capsFor("shortturn");
-      const dur = 7, GAP_TOP = 40 * 60, M_PER_MIN = 18;  // a 40-minute gap or more: 720 m
+      // The camera keeps the columns the subject: it frames the stops with the longest gaps (by
+      // the beat's end), looking from them toward the turns, so the rest of the line and its
+      // warning signs sit behind. Without a clear hot stretch, it frames the turns.
+      const ends = gaps.map((g) => (g.end = longestGap(g.t, t0, t1)) / 60).sort((x, y) => x - y);
+      const top = ends.at(-1) || 0, typ = ends[Math.floor(ends.length / 2)] || 0;
+      const hot = top - typ >= 4 ? gaps.filter((g) => g.end / 60 >= typ + 0.6 * (top - typ)) : [];
+      // {gap} and {typ} follow the columns as they grow (set each tick), so the words match the tally.
+      const v = {...vars, place: s.place, detail: s.detail, detailLc: lc(s.detail), route: s.at.route, gap: 0, typ: 0};
+      const [c0, c1] = hot.length ? capsFor("shortturn") : SHORT_NO_GAPS;
+      const mid = (pts) => [pts.reduce((a, p) => a + p[0], 0) / pts.length, pts.reduce((a, p) => a + p[1], 0) / pts.length];
+      const camFor = () => {
+        if (hot.length) {
+          const hp = hot.map((g) => g.pos), [hx, hy] = mid(hp), [tx, ty] = mid(inWin.map((e) => [e.lon, e.lat]));
+          const far = Math.hypot((tx - hx) * MX, (ty - hy) * MY) > 300;
+          const bearing = far ? Math.atan2((tx - hx) * MX, (ty - hy) * MY) * 180 / Math.PI : -17;
+          const h = map.getContainer().clientHeight;
+          const cam = map.cameraForBounds([[Math.min(...hp.map((p) => p[0])), Math.min(...hp.map((p) => p[1]))],
+            [Math.max(...hp.map((p) => p[0])), Math.max(...hp.map((p) => p[1]))]],
+          {padding: {top: h * 0.42, bottom: h * 0.18, left: pad, right: pad}, bearing, pitch: 58});
+          if (cam) return {...cam, zoom: Math.min(15, cam.zoom), pitch: 58, bearing};
+        }
+        const lons = inWin.map((e) => e.lon), lats = inWin.map((e) => e.lat);
+        const cam = map.cameraForBounds([[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]],
+          {padding: pad, bearing: -17, pitch: 40});
+        return {...(cam || {center: [lons[0], lats[0]]}), zoom: Math.min(14.2, cam ? cam.zoom : 13), pitch: 40, bearing: -17};
+      };
+      // A 40-minute gap or more stands a fifth of the screen high at the beat's camera (closer
+      // in on a hot stretch, so metres per minute follow the zoom).
+      const dur = 7, GAP_TOP = 40 * 60;
+      let mPerMin = 18;
       const gapLayer = (t) => new deck.ColumnLayer({
         id: "tour-gaps", data: gaps, getPosition: (g) => g.pos, diskResolution: 8, radius: 22,
         extruded: true, material: false,
@@ -623,7 +649,7 @@
           const f = Math.min(1, Math.max(0, (g.gap - 600) / 1200));  // 10 min pale yellow .. 30 min red
           return [255, Math.round(215 - 175 * f), Math.round(90 - 60 * f), 235];
         },
-        getElevation: (g) => Math.min(g.gap, GAP_TOP) / 60 * M_PER_MIN,
+        getElevation: (g) => Math.min(g.gap, GAP_TOP) / 60 * mPerMin,
         updateTriggers: {getElevation: Math.round(t / 30), getFillColor: Math.round(t / 30)},
       });
       return {
@@ -636,9 +662,10 @@
           for (const g of gaps) g.gap = 0;
           R.tour.layers = gaps.length ? () => [gapLayer(state.t)] : null;
           map.stop();
-          const cam = map.cameraForBounds([[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]],
-            {padding: pad, bearing: -17, pitch: 40});
-          move({...(cam || {center: [lons[0], lats[0]]}), zoom: Math.min(14.2, cam ? cam.zoom : 13), pitch: 40, bearing: -17}, 1400);
+          const cam = camFor(), h = map.getContainer().clientHeight;
+          const mpp = 40075016 * Math.cos((cam.center.lat ?? cam.center[1]) * Math.PI / 180) / (512 * 2 ** cam.zoom);
+          mPerMin = h / 5 * mpp / (GAP_TOP / 60);
+          move(cam, 1400);
         },
         tick(f) {
           state.t = lerp(t0, t1, ease(f));
@@ -648,6 +675,11 @@
           for (const g of gaps) {
             g.gap = longestGap(g.t, t0, state.t);
             if (!worst || g.gap > worst.gap) worst = g;
+          }
+          if (gaps.length) {
+            const now = gaps.map((g) => g.gap).sort((x, y) => x - y);
+            v.gap = Math.round(now.at(-1) / 60);
+            v.typ = Math.round(now[Math.floor(now.length / 2)] / 60);
           }
           caption(fill(c0, v), f > 0.6 ? fill(c1, v) : "");
           showHud(`<div class="th-row"><span>${esc(R.clockText(t0))} to ${esc(R.clockText(state.t))}</span></div>` +
