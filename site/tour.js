@@ -47,6 +47,14 @@
       ["Strolling {a} to {b}, beside a {route}.", "On foot: {walk}. By streetcar: {ride}."],
       ["{m} m along {street}, walked at an easy {kmh} km/h.", "Faster than {n} of {of} streetcars that way on {day}."],
     ],
+    // The walking beat's last step, the network pulled back: {trips} (daytime trips with a
+    // stretch of 800 m or more slower than walking) of {all} (daytime trips measured), on
+    // {routes} routes.
+    walkNet: [
+      ["Not just {street}.", "{trips} trips on {day} had a stretch slower than walking."],
+      ["Across the network on {day}:", "{trips} of {all} daytime trips were slower than walking somewhere."],
+      ["Walking won on {routes} routes that day.", "{trips} trips had a stretch where walking was quicker."],
+    ],
   };
   const KINDS = Object.keys(CAPTIONS);
   const SHORT_NO_GAPS = ["{place}: trips sent back early", "{detail}."];  // no network file: no columns to explain
@@ -100,6 +108,14 @@
       net = n;
       peaks = buildPeaks(R, net, stats);
     } catch (e) { console.warn("tour: no peaks", e); }
+    // Where the day's trips were slower than walking (walk.py via drafts.py), for the walking
+    // beat's last step; without it the step still counts them.
+    if (stories.walk?.net) {
+      try {
+        const j = await (await fetch("data/drafts/walk-lines.json", {cache: "no-cache"})).json();
+        if (j.day === stories.day) stories.walk.lines = j.lines;
+      } catch { /* none */ }
+    }
     const btn = document.getElementById("tour-btn");
     btn.hidden = false;
     btn.addEventListener("click", () => play(R, stories, peaks, net));
@@ -678,11 +694,16 @@
         diff: diff <= 1 ? "a minute" : `${diff} min`};
       const [c0, c1] = capsFor("walk");
       const lead = 8;
-      const P = [1.4, 6.5, 0.5, 2.4];   // fly, the race, the car's last metres, pay off
+      // The last step pulls back to the whole network: every trip that day slower than walking
+      // somewhere, counted, and the streets where it happened lit in the walker's coat colour.
+      const nt = w.net && w.net.trips > 1 ? w.net : null;
+      const nv = nt && {...v, trips: nt.trips.toLocaleString("en-CA"), all: nt.of.toLocaleString("en-CA"), routes: nt.routes.length};
+      const [n0, n1] = capsFor("walkNet");
+      const P = [1.4, 6.5, 0.5, 2.4, nt ? 4.2 : 0];   // fly, the walk, the car's last metres, pay off, the network
       const ends = P.reduce((acc, d) => [...acc, (acc.at(-1) || 0) + d], []);
       const runSpeed = (w.tB - w.tA + lead) / P[1];
       const label = (txt, at, hot, below) => ({txt, at, hot, below});
-      let cam = null;
+      let cam = null, netOn = false, s0 = 0;
       // The camera holds still with both stops in frame, never zoomed out past MIN_ZOOM: below
       // it the streetcar fades to a dot (replay.js ICON_ZOOM, crossfading to 15.4). Starting
       // from the spot beats' view (angled 60 degrees across the street, tilted 52), it tilts
@@ -755,7 +776,8 @@
           };
         },
         tick(f, sec) {
-          const [eFly, eRun, eLast] = ends;
+          const [eFly, eRun, eLast, ePay] = ends;
+          if (nt && sec >= ePay) return netTick(sec - ePay);
           let t;
           if (sec < eFly) t = w.tA - lead;
           else if (sec < eRun) t = lerp(w.tA - lead, w.tB, (sec - eFly) / P[1]);
@@ -774,8 +796,60 @@
             (t >= w.tB ? `<div class="th-row"><span>Streetcar ${esc(w.route)}, car ${esc(w.v)}</span><b>${esc(v.ride)}</b></div>` +
               `<div class="th-row"><span>Streetcars here slower than walking, ${esc(vars.day)}</span><b>${w.n} of ${w.of}</b></div>` : ""));
         },
-        leave() { R.tour.layers = null; R.setRoutes([]); state.dim = 0; },
+        leave() { R.tour.layers = null; R.setRoutes([]); state.dim = 0; state.hideShort = false; netOn = false; },
       };
+      function netTick(s) {
+        if (!netOn) {
+          netOn = true;
+          R.setFocus(null);
+          R.setRoutes([]);
+          state.dim = 0.7;
+          state.speed = 0;
+          state.hideShort = true;  // the lit streets are the subject, not the day's short turns
+          map.stop();
+          move(netCam(), 1600);
+          R.tour.layers = w.lines?.length ? () => [netLayer()] : null;
+        }
+        s0 = s;
+        // The count climbs as the camera pulls back, and lands on the day's figure.
+        const k = Math.round(nt.trips * easeOut(Math.min(1, s / 1.6)));
+        caption(fill(n0, nv), s >= 0.8 ? fill(n1, nv) : "");
+        showHud(`<div class="th-big">${k.toLocaleString("en-CA")} of ${esc(nv.all)} trips</div>` +
+          `<div class="th-row"><span>slower than walking somewhere, ${esc(vars.day)}</span></div>` +
+          nt.routes.slice(0, 3).map(([r, n]) => `<div class="th-row"><span>Streetcar ${esc(r)}</span><b>${n}</b></div>`).join(""));
+      }
+      // Each stop-to-stop piece of street a slower-than-walking stretch covered, wider where
+      // more trips were slow over it.
+      function netLayer() {
+        const top = Math.max(...w.lines.map((l) => l[0]));
+        const a = Math.round(235 * Math.min(1, s0 / 1.2));
+        return new deck.PathLayer({id: "tour-walk-net", data: w.lines, getPath: (l) => l[1],
+          getWidth: (l) => 2 + 5 * Math.sqrt(l[0] / top), widthUnits: "pixels", capRounded: true, jointRounded: true,
+          getColor: [240, 180, 41, a], updateTriggers: {getColor: a}});
+      }
+      // Framed on the lit streets, from the home view's angle, between the tally and the
+      // caption: fitted as seen tilted, like the walk's own camera (set it, see where the
+      // streets land, adjust, a few times; put back after). The home view without them.
+      function netCam() {
+        const pts = (w.lines || []).flatMap((l) => l[1]);
+        if (!pts.length) return home;
+        const el = map.getContainer(), W = el.clientWidth, H = el.clientHeight;
+        const box = {l: R.wide ? 80 : 16, r: W - (R.wide ? 80 : 16), t: H * 0.32, b: H * 0.8};
+        const was = {center: map.getCenter(), zoom: map.getZoom(), pitch: map.getPitch(), bearing: map.getBearing()};
+        let cam = {center: [pts.reduce((a, q) => a + q[0], 0) / pts.length, pts.reduce((a, q) => a + q[1], 0) / pts.length],
+          zoom: 12, pitch: 35, bearing: home.bearing};
+        for (let k = 0; k < 4; k++) {
+          map.jumpTo(cam);
+          const xy = pts.map((q) => map.project(q));
+          const x0 = Math.min(...xy.map((q) => q.x)), x1 = Math.max(...xy.map((q) => q.x));
+          const y0 = Math.min(...xy.map((q) => q.y)), y1 = Math.max(...xy.map((q) => q.y));
+          const zoom = cam.zoom + Math.log2(Math.min((box.r - box.l) / (x1 - x0 || 1), (box.b - box.t) / (y1 - y0 || 1)));
+          const mid = map.unproject([(x0 + x1) / 2 - (box.l + box.r) / 2 + W / 2, (y0 + y1) / 2 - (box.t + box.b) / 2 + H / 2]);
+          cam = {...cam, center: [mid.lng, mid.lat], zoom: Math.max(10, Math.min(14, zoom))};
+        }
+        map.jumpTo(was);
+        return cam;
+      }
       function labels(t, wk) {
         const out = [], me = R.at(p, Math.min(Math.max(t, p.t0), p.t1));
         const since = (x) => mmss(Math.max(0, x - w.tA));

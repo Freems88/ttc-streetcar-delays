@@ -283,6 +283,18 @@ page asks again when it's back; a refused request waits for the next tap.
     time so far ("Walking · 4.5 km/h" on the walker, so the pace is on screen whatever the
     caption), the walker's freezing, ticked, at B. Captions say walking, never "race",
     which reads as running.
+  - Then a quick nod to the rest of the day (the user's idea: one stretch could look like a
+    one-off): the camera pulls back to the network, the streets where a trip was slower than
+    walking light up in the walker's coat colour, and a tally counts the trips, with the top
+    three routes. Same measure as the pick, counted by trip: a trip counts once if any of
+    its rides was slower than walking, against every daytime trip with a ride measured (Nov
+    22: 269 of 2,226, on 7 routes, the 505 most with 78). The lit streets are each
+    stop-to-stop piece a slower ride covered, wider where more trips were slow over it.
+    `walk.py` gives them as `net.lines`; `drafts.py` moves them to their own file,
+    `drafts/walk-lines.json` (about 20 KB), so the map page's `stories.json` stays small.
+    Without that file the step still counts. The camera fits the lit streets as seen tilted
+    (home view's bearing, pitch 35), between the tally and the caption; on a phone the
+    network runs across the narrow screen, so it sits small.
 - **Spot beats** (the signal story, and the slowest stretch when there's no walking beat, using `at` from
   `story_of`): only the routes through the spot (the story link's `r`), every car but the
   two being shown dimmed. The camera holds still, framed between the spot and where the

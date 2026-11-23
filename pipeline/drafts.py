@@ -640,7 +640,12 @@ def walk_story(data, net, day):
             changed = set(servicechanges.flags([day]).get(day, {}))
         except Exception:
             changed = set()
-        return walk.pick(replay, net, changed)
+        w = walk.pick(replay, net, changed)
+        # Where it happened across the network (about 20 KB): its own file, which only the
+        # tour fetches, so the map page's stories.json stays small.
+        lines = w["net"].pop("lines") if w else None
+        (DRAFTS / "walk-lines.json").write_text(json.dumps({"day": day, "lines": lines or []}, separators=(",", ":")))
+        return w
     except Exception as e:
         print(f"walk story failed: {type(e).__name__}: {e}", file=sys.stderr)
         return None

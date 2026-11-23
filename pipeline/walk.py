@@ -16,7 +16,11 @@ gap shows on screen.
 Output (stories.json "walk", for tour.js), times in seconds from 04:00 as in replay.json:
 {"route", "v" (vehicle), "street", "a", "b" (cross streets), "a_ll", "b_ll" ([lon, lat]),
  "tA" (leaves A), "tB" (reaches B), "m" (metres), "ride_s", "walk_s", "kmh" (walking pace),
- "n" (rides there slower than walking), "of" (all rides there)}
+ "n" (rides there slower than walking), "of" (all rides there),
+ "net": the same measure across the network, by trip: {"trips" (daytime trips with a stretch
+ slower than walking), "of" (daytime trips with any stretch measured), "routes" ([route, trips],
+ most first), "lines" ([trips, [[lon, lat], ...]] per stop-to-stop piece of street a slower
+ stretch covered; drafts.py moves these to their own file, walk-lines.json)}}
 
 Usage: walk.py REPLAY.json NETWORK.json   (prints the pick)
 """
@@ -167,6 +171,9 @@ def pick(replay, net, skip_routes=()):
     for k, (_, _, (x, y), _, _) in enumerate(stops):
         grid[(int(x // CELL), int(y // CELL))].append(k)
     rides = defaultdict(list)   # (route, stop A, stop B) -> [ride]
+    trips = defaultdict(set)    # route -> trips with a stretch measured
+    slow = defaultdict(int)     # route -> trips with a stretch slower than walking
+    edges = {}                  # (stop, next stop) -> [trips slower than walking over it, line]
     for car in replay["cars"]:
         try:
             if int(car["v"]) not in FLEXITY_IDS:
@@ -182,11 +189,12 @@ def pick(replay, net, skip_routes=()):
         for i in range(1, len(xs)):
             cum.append(cum[-1] + math.dist(xs[i - 1], xs[i]))
         on = [(a, k) for a, k in _along(xs, cum, stops, grid) if END_M <= a <= cum[-1] - END_M]
+        slow_to = {}   # stop index on `on` -> furthest stop index reached by a slower-than-walking ride from it
         for ia, (a, ka) in enumerate(on):
             tA = _leave(cum, ts, a + 3)
             if not DAY_FROM <= tA <= DAY_TO:
                 continue
-            for b, kb in on[ia + 1:]:
+            for ib, (b, kb) in enumerate(on[ia + 1:], ia + 1):
                 m = b - a
                 if m < MIN_M:
                     continue
@@ -199,15 +207,27 @@ def pick(replay, net, skip_routes=()):
                 if gh and ride - (_interp(cum, gh, b) - _interp(cum, gh, a)) > MAX_LOSS_S:
                     continue
                 r = {"v": car["v"], "tA": tA, "tB": tB, "m": m, "ride": ride, "walk": walk}
+                trips[car["r"]].add(id(car))
                 if ride > walk:
                     r["lead"] = _lead(cum, ts, a, tA, tB, pace)
+                    slow_to[ia] = max(slow_to.get(ia, ia), ib)
                 rides[(car["r"], ka, kb)].append(r)
+        if slow_to:
+            slow[car["r"]] += 1
+            covered = set()
+            for ia, ib in slow_to.items():
+                covered.update(range(ia, ib))
+            for j in covered:
+                key = (on[j][1], on[j + 1][1])
+                if key not in edges:
+                    edges[key] = [0, _line(xs, cum, on[j][0], on[j + 1][0])]
+                edges[key][0] += 1
     best = None
     for key, rs in rides.items():
-        slow = [r for r in rs if r["ride"] > r["walk"]]
-        shown = sorted((r for r in slow if r["lead"] >= LEAD_M), key=lambda r: r["ride"] - r["walk"])
-        if shown and (best is None or (len(slow), -len(rs)) > (best[1], -best[2])):
-            best = (key, len(slow), len(rs), shown[len(shown) // 2])
+        lost = [r for r in rs if r["ride"] > r["walk"]]
+        shown = sorted((r for r in lost if r["lead"] >= LEAD_M), key=lambda r: r["ride"] - r["walk"])
+        if shown and (best is None or (len(lost), -len(rs)) > (best[1], -best[2])):
+            best = (key, len(lost), len(rs), shown[len(shown) // 2])
     if not best:
         return None
     (route, ka, kb), n, of, r = best
@@ -216,7 +236,36 @@ def pick(replay, net, skip_routes=()):
     return {"route": route, "v": r["v"], "street": street, "a": a, "b": b,
             "a_ll": stops[ka][4], "b_ll": stops[kb][4],
             "tA": round(r["tA"]), "tB": round(r["tA"]) + round(r["ride"]), "m": round(r["m"]),
-            "ride_s": round(r["ride"]), "walk_s": round(r["walk"]), "kmh": WALK_KMH, "n": n, "of": of}
+            "ride_s": round(r["ride"]), "walk_s": round(r["walk"]), "kmh": WALK_KMH, "n": n, "of": of,
+            "net": {"trips": sum(slow.values()), "of": sum(len(t) for t in trips.values()),
+                    "routes": sorted(([k, v] for k, v in slow.items()), key=lambda x: (-x[1], x[0])),
+                    "lines": sorted(edges.values(), key=lambda e: e[0])}}
+
+
+def _line(xs, cum, a, b):
+    """The path from a to b metres along, as [lon, lat] (5 decimals), simplified to ~3 m."""
+    i, j = bisect_left(cum, a), bisect_right(cum, b)
+    pts = [(_interp(cum, [x for x, _ in xs], a), _interp(cum, [y for _, y in xs], a))]
+    pts += xs[i:j]
+    pts.append((_interp(cum, [x for x, _ in xs], b), _interp(cum, [y for _, y in xs], b)))
+    keep = _simplify(pts, 3.0)
+    return [[round(x / KX, 5), round(y / KY, 5)] for x, y in keep]
+
+
+def _simplify(pts, tol):
+    if len(pts) < 3:
+        return pts
+    (x1, y1), (x2, y2) = pts[0], pts[-1]
+    dx, dy = x2 - x1, y2 - y1
+    L = math.hypot(dx, dy) or 1
+    far, k = 0, 0
+    for i in range(1, len(pts) - 1):
+        d = abs((pts[i][0] - x1) * dy - (pts[i][1] - y1) * dx) / L
+        if d > far:
+            far, k = d, i
+    if far <= tol:
+        return [pts[0], pts[-1]]
+    return _simplify(pts[:k + 1], tol)[:-1] + _simplify(pts[k:], tol)
 
 
 if __name__ == "__main__":
