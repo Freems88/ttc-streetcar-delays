@@ -24,6 +24,7 @@ body {
   background: var(--bg); color: var(--muted); z-index: 10; font-size: 15px;
 }
 .loading[hidden] { display: none; }
+.load-failed { display: grid; gap: 12px; justify-items: center; padding: 0 24px; text-align: center; }
 
 .card, .follow, .bar, .tour-end {
   position: fixed; background: var(--card); border: 1px solid var(--line);

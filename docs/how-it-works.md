@@ -547,6 +547,13 @@ grows a lot (more systems), when the SSD becoming primary starts to make sense.
   to the delay numbers. A curve-fitting version caught a few more jogs on gentle bends but
   added wobbles of its own, so it's a straight-line fit. Some jogs are left on bends and near
   piece ends.
+- **The replay never waits on the street map** (25 Nov 2026): the page used to show nothing,
+  stuck on "Loading yesterday's streetcars", until the map from OpenFreeMap had fully loaded,
+  so one slow or stalled request there held up everything. Now the map opens on a bare dark
+  style of our own and the streets are swapped in when they arrive (three tries), alongside
+  the data download. The bare style matters: until some style has loaded, MapLibre won't
+  move the camera at all (no pan, ride-along or tour). The tour alone gives the streets up to
+  4 s before starting. A failed data download is tried twice, then offers "Try again".
 - **Replay cars** (17 Nov 2026): glowing dots when zoomed out (below zoom 15), where a 30 m car is
   a pixel or two and drawings would pile up; zoomed in, cartoon Flexitys in TTC livery. Each car
   is five upright sprites, one per section, placed along its own track, so it bends round

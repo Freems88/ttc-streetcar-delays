@@ -28,11 +28,82 @@
   const TRAIL_S = 420;  // seconds of trail behind each car (in replay time)
   const DAY_S = 86400;
 
+  // --- map ---------------------------------------------------------------------------
+  // The basemap comes from an outside service, so the streetcars never wait on it. The map
+  // opens on a bare dark style of our own (until some style has loaded, MapLibre won't move
+  // the camera at all) and swaps the streets in whenever they arrive.
+  const BASEMAP = "https://tiles.openfreemap.org/styles/dark";
+  const BARE = {version: 8, sources: {}, layers: [{id: "bare", type: "background", paint: {"background-color": "#0c0c0c"}}]};
+  const wide = innerWidth > 700;
+  const map = new maplibregl.Map({
+    container: "map",
+    style: BARE,
+    center: wide ? [-79.40, 43.660] : [-79.40, 43.655], zoom: wide ? 12.3 : 11.2,
+    pitch: 45, bearing: -17, maxPitch: 70,
+    attributionControl: {compact: true, customAttribution: "Data: TTC GTFS-Realtime via City of Toronto Open Data"},
+  });
+  map.addControl(new maplibregl.NavigationControl({visualizePitch: true}), "top-right");
+  // Phones have very dense screens; drawing the trails at full density is most of the work.
+  const overlay = new MapboxOverlay({interleaved: false, layers: [], pickingRadius: 14,
+    useDevicePixels: Math.min(devicePixelRatio || 1, wide ? 2 : 1.5)});
+  map.addControl(overlay);
+  // The dark style draws streets barely lighter than the ground (#181818 on #0c0c0c); lift
+  // them a few shades so the street grid reads under the trails without brightening the map.
+  const ROADS = {
+    highway_minor: "#2b2b2f", highway_motorway_subtle: "#2b2b2f", highway_major_inner: "#26262a",
+    highway_major_subtle: "#3a3a3e", highway_major_casing: "rgba(80,80,86,0.9)", highway_motorway_casing: "rgba(80,80,86,0.9)",
+  };
+  function quieten(style) {  // the cars are the show
+    for (const l of style.layers) {
+      if (l.type === "symbol" && /poi|housenum/.test(l.id)) l.layout = {...l.layout, visibility: "none"};
+      if (ROADS[l.id]) l.paint = {...l.paint, "line-color": ROADS[l.id]};
+      if (l.id === "highway_name_other") l.paint = {...l.paint, "text-color": "rgb(118,116,116)"};
+    }
+    return style;
+  }
+  // Resolves once the streets are drawn, which may be never.
+  const basemap = (async () => {
+    for (let tries = 1; ; tries++) {
+      try {
+        const res = await fetch(BASEMAP);
+        if (!res.ok) throw new Error(`basemap: ${res.status}`);
+        map.setStyle(quieten(await res.json()), {diff: false});
+        break;
+      } catch (e) {
+        console.warn(e);
+        if (tries >= 3) return new Promise(() => {});
+        await new Promise((r) => setTimeout(r, 3000 * tries));
+      }
+    }
+    await new Promise((r) => map.once("idle", r));
+  })();
+
   // --- data -----------------------------------------------------------------------
+  // null: no replay built. A download that fails is tried once more, then says so.
+  async function getReplay() {
+    for (let tries = 1; ; tries++) {
+      try {
+        const res = await fetch("data/replay.json", {cache: "no-cache"});
+        if (res.status === 404) return null;
+        if (!res.ok) throw new Error(`replay.json: ${res.status}`);
+        return await res.json();
+      } catch (e) {
+        if (tries >= 2) throw e;
+        await new Promise((r) => setTimeout(r, 1500));
+      }
+    }
+  }
   let data;
   try {
-    data = await (await fetch("data/replay.json", {cache: "no-cache"})).json();
+    data = await getReplay();
   } catch (e) {
+    console.warn(e);
+    $("loading").innerHTML = `<div class="load-failed">Couldn't load yesterday's streetcars.` +
+      `<button class="btn" id="retry">Try again</button></div>`;
+    $("retry").onclick = () => location.reload();
+    return;
+  }
+  if (!data) {
     $("loading").textContent = "No replay yet: it's built each night from the previous day.";
     return;
   }
@@ -140,34 +211,6 @@
     if (state.race) q.set("race", "1");
     history.replaceState(null, "", "#" + q.toString());
   }
-
-  // --- map ---------------------------------------------------------------------------
-  const wide = innerWidth > 700;
-  const map = new maplibregl.Map({
-    container: "map",
-    style: "https://tiles.openfreemap.org/styles/dark",
-    center: wide ? [-79.40, 43.660] : [-79.40, 43.655], zoom: wide ? 12.3 : 11.2,
-    pitch: 45, bearing: -17, maxPitch: 70,
-    attributionControl: {compact: true, customAttribution: "Data: TTC GTFS-Realtime via City of Toronto Open Data"},
-  });
-  map.addControl(new maplibregl.NavigationControl({visualizePitch: true}), "top-right");
-  // Phones have very dense screens; drawing the trails at full density is most of the work.
-  const overlay = new MapboxOverlay({interleaved: false, layers: [], pickingRadius: 14,
-    useDevicePixels: Math.min(devicePixelRatio || 1, wide ? 2 : 1.5)});
-  map.addControl(overlay);
-  await new Promise((res) => (map.loaded() ? res() : map.once("load", res)));
-  // Quieter basemap: the cars are the show.
-  for (const l of map.getStyle().layers) {
-    if (l.type === "symbol" && /poi|housenum/.test(l.id)) map.setLayoutProperty(l.id, "visibility", "none");
-  }
-  // The dark style draws streets barely lighter than the ground (#181818 on #0c0c0c); lift
-  // them a few shades so the street grid reads under the trails without brightening the map.
-  const ROADS = {
-    highway_minor: "#2b2b2f", highway_motorway_subtle: "#2b2b2f", highway_major_inner: "#26262a",
-    highway_major_subtle: "#3a3a3e", highway_major_casing: "rgba(80,80,86,0.9)", highway_motorway_casing: "rgba(80,80,86,0.9)",
-  };
-  for (const [id, color] of Object.entries(ROADS)) if (map.getLayer(id)) map.setPaintProperty(id, "line-color", color);
-  if (map.getLayer("highway_name_other")) map.setPaintProperty("highway_name_other", "text-color", "rgb(118,116,116)");
 
   // Pack vertex ranges [[i0, i1), ...] into TripsLayer binary data, in both colourings.
   function pack(ranges) {
@@ -895,6 +938,8 @@
     follow(state.follow);
     if (h.get("race") === "1") startRace(false);
   }
+  // The tour opens on the streets, so it gives the basemap a few seconds; the replay doesn't.
+  if (tour.active) await Promise.race([basemap, new Promise((r) => setTimeout(r, 4000))]);
   $("loading").hidden = true;
   map.on("zoom", () => { if (!state.playing) draw(); });  // dots <-> streetcars while paused
   // What the tour needs from the page (tour.js).
