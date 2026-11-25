@@ -53,8 +53,12 @@ BEARING_TOL = 60    # max heading difference from the track direction, degrees
 MAX_GAP_S = 90      # a longer silence between pings ends the pass
 MAX_SPEED = 25      # m/s; faster implied movement means a bad match
 STILL_M = 3         # moved less than this between pings = standing still
+BACK_M = 20         # track this far behind the last position still counts as carrying on
+STRETCH_GAP_M = 25  # track near a ping, further apart than this along a piece, is passed twice
 LAYOVER_S = 180     # standing this long in one place = layover, not delay
+END_M = 10          # a pass's first and last moves shorter than this are trimmed as standing
 JOIN_M = 30         # pieces of track whose ends come this close are joined
+OVERRUN_M = 70      # positions matched up to this far past a junction can belong to the branch
 ZONE_BUCKET_S = 10  # signal approach times are kept as a histogram in these steps
 ZONE_MAX_S = 600    # longer than this through one approach: a layover or a breakdown, not a signal
 # Carhouses and yards: cars signed on to a trip often sit or shunt here, off route track.
@@ -122,21 +126,37 @@ class Matcher:
         for (pa, sa), (pb, sb) in zip(passes, passes[1:]):
             if pa == pb:
                 continue
-            (t1, a1), (t2, b1) = sa[-1], sb[0]
-            dt = t2 - t1
             j = self.junction(pa, pb)
-            if j is None or not 0 < dt <= MAX_GAP_S:
+            if j is None:
                 continue
             ja, jb = j
+            # Where pb leaves pa, the car's first positions past the junction can still sit
+            # nearest to pa. They belong to pb, as far past the junction as they were on pa.
+            while len(sa) > 1 and ja < sa[-1][1] <= ja + OVERRUN_M:
+                t, a = sa[-1]
+                if jb + a - ja > sb[0][1] + STILL_M:
+                    break
+                sa.pop()
+                sb.insert(0, (t, min(jb + a - ja, sb[0][1])))
+            (t1, a1), (t2, b1) = sa[-1], sb[0]
+            dt = t2 - t1
+            if not 0 < dt <= MAX_GAP_S:
+                continue
             da, db = ja - a1, b1 - jb
             if da < -STILL_M or db < -STILL_M or not 0 < da + db <= MAX_SPEED * dt:
                 continue
             da, db = max(0.0, da), max(0.0, db)
             tj = t1 + dt * da / (da + db)
-            if da > 0.5:
+            # A position almost at the join is moved onto it: a second point that close
+            # would be trimmed off as standing still, and the end slice lost with it.
+            if da >= END_M:
                 sa.append((tj, ja))
-            if db > 0.5:
+            else:
+                sa[-1] = (t1, ja)
+            if db >= END_M:
                 sb.insert(0, (tj, jb))
+            else:
+                sb[0] = (t2, jb)
 
     def bridge(self, pa, seq_a, pb, seq_b):
         """Departures between a car's last position on piece pa and its first on pb."""
@@ -167,6 +187,21 @@ class Matcher:
         return out
 
 
+def nearest_ahead(cands, floor):
+    """Where a car carrying on along a piece is now: the nearest point of the first stretch
+    of track by the ping that reaches `floor` metres along, or None. A piece can come past
+    the same spot twice (loops), so stretches further apart along it than STRETCH_GAP_M
+    are told apart before taking the nearest. cands: [(along, distance)], one per segment."""
+    stretch = []
+    for a, d in sorted(cands) + [(math.inf, 0.0)]:  # the last entry closes the final stretch
+        if stretch and a - stretch[-1][0] > STRETCH_GAP_M:
+            if stretch[-1][0] >= floor:
+                return min(stretch, key=lambda v: v[1])[0]
+            stretch = []
+        stretch.append((a, d))
+    return None
+
+
 def split_passes(pings, opts_list):
     """Turn a run's pings into monotonic passes: [(piece, [(t, along), ...])]. Also returns off-track count."""
     passes, cur, seq, off = [], None, [], 0
@@ -183,10 +218,10 @@ def split_passes(pings, opts_list):
             continue
         a = None
         if seq and cur in opts:
-            fwd = [a for a, _ in opts[cur] if a >= seq[-1][1] - 20]
+            ahead = nearest_ahead(opts[cur], seq[-1][1] - BACK_M)
             dt = t - seq[-1][0]
-            if fwd and dt <= MAX_GAP_S and (min(fwd) - seq[-1][1]) / dt <= MAX_SPEED:
-                a = max(min(fwd), seq[-1][1])  # GPS jitter backwards: treat as standing still
+            if ahead is not None and dt <= MAX_GAP_S and (ahead - seq[-1][1]) / dt <= MAX_SPEED:
+                a = max(ahead, seq[-1][1])  # GPS jitter backwards: treat as standing still
         if a is None:
             close()
             cur, (a, _) = min(((pi, min(o, key=lambda v: v[1])) for pi, o in opts.items()),
@@ -214,10 +249,10 @@ def split_layovers(seq):
     for p in parts:
         # Drop standing time before the car first moves and after it last moves.
         i0 = 0
-        while i0 + 1 < len(p) and p[i0 + 1][1] - p[0][1] < 10:
+        while i0 + 1 < len(p) and p[i0 + 1][1] - p[0][1] < END_M:
             i0 += 1
         i1 = len(p) - 1
-        while i1 - 1 > i0 and p[-1][1] - p[i1 - 1][1] < 10:
+        while i1 - 1 > i0 and p[-1][1] - p[i1 - 1][1] < END_M:
             i1 -= 1
         if i1 > i0:
             out.append(p[i0:i1 + 1])

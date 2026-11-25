@@ -22,8 +22,8 @@ MAX_AGE_DAYS = 30
 
 SIGNAL_OFF_TRACK_M = 25        # signal point (intersection centre) to track
 # Metres along the track relative to the signal (intersection centre) / stop pole. Generous
-# upstream: a Flexity is 30 m long, its GPS isn't at the front, and a second car often queues
-# behind. On Spadina the waiting spikes sit 50-85 m before the signal.
+# upstream: a Flexity is 30 m long, the feed doesn't say where on it the position is, and a
+# second car often queues behind. At signals with no stop near, delay peaks 25-50 m before.
 SIGNAL_ZONE = (-100, 20)
 STOP_ZONE = (-50, 25)
 

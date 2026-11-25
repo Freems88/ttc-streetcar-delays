@@ -41,7 +41,11 @@ Step by step, for one streetcar position:
    buses running on streetcar routes are logged too. Their fleet number tells them apart:
    Flexity streetcars are 4400 to 4699, anything else is a bus.
 2. **Snapped to the track.** The position is matched to the nearest piece of track within
-   35 m that runs the same direction (the car's heading must be within 60° of the track's).
+   35 m that runs the same direction (the car's heading must be within 60° of the track's),
+   and placed at the closest point of it. A car carrying on along a piece takes the closest
+   point of the first stretch of that piece ahead of it, which keeps loops, where a piece
+   comes past the same spot twice, in order. Where a track branches, the first positions past
+   the junction, still close to the track being left, are moved onto the branch.
    No match means "off track" (see the track check below).
 3. **Joined into a pass.** Consecutive matched positions of the same car on the same trip
    become a *pass* along a piece of track. Standing still for over 3 minutes is a layover
@@ -247,9 +251,12 @@ page asks again when it's back; a refused request waits for the next tap.
   It takes the slowest stretch's place in the tour (that story stays on the map's card); on a
   day with no pick, or its trip not in the replay, the slowest-stretch beat comes back.
   The pick is `walk.py`'s, written by `drafts.py` into `stories.json` as `walk`:
-  - A ride is time on board: from the moment a car leaves stop A to the moment it reaches
-    stop B on the same trip, not counting the wait for it (counting that, walking would win
-    far more often; leaving it out keeps the claim on the safe side). The walker covers the
+  - A ride is time on board: from the moment a car leaves stop A to the moment it comes
+    within 30 m (a car length) of stop B on the same trip, not counting the wait for it
+    (counting that, walking would win far more often; leaving it out keeps the claim on the
+    safe side). The 30 m: cars often report standing a little short of the stop they're at,
+    and the feed doesn't say where on the car the position is, so a car that close has
+    arrived and its wait there isn't counted. The walker covers the
     track's length between the stops at a steady 4.5 km/h, a little under an ordinary pace,
     which allows for the odd wait at a crossing. Red lights aren't guessed: a walker going the
     same way mostly gets the car's greens and isn't stuck in its queue, and a walker who
@@ -260,13 +267,19 @@ page asks again when it's back; a refused request waits for the next tap.
     clean run, on routes the day's service-change flags leave alone. Stops count where the
     path passes within 18 m going their way; stops within 60 m along a trip are one.
   - The stretch shown is the one with the most rides slower than walking; the ride shown
-    there is the middle one by how much it lost to the walker, among those where the walker
-    got 100 m or more ahead (the clean-run ghost's lesson: a lead too small to see doesn't
-    work on screen). The caption's count is those rides against all rides that way.
-  - First checked on Nov 3 (a Tuesday) and Nov 22 (a Sunday): 200 to 300 trips a day had an
-    800 m+ stretch slower than walking, mostly the 505 on Dundas downtown. Nov 22's pick:
-    the 505 westbound, Church St to University Ave, 911 m, 15:07 on board against 12:09 on
-    foot, 25 of 88 rides slower. Expect it to land on Dundas often.
+    there is the middle one by how much it lost to the walker, among those still 100 m or
+    more short of B when the walker got there: the finish is what a viewer judges, and the
+    streetcars are drawn far bigger than life, so a smaller gap looks like a tie (until 25
+    Nov the 100 m could be anywhere on the way). The caption's count is all the slower rides
+    against all rides that way. On a day when few stretches qualify it can be a handful of
+    rides (Nov 8: 2 of 2).
+  - Rechecked 25 Nov, with cars placed correctly (see *Decisions*), on all 27 days from Oct
+    29: in 26 the shown car's own raw positions had it 100 m or more from B when the walker
+    arrived; the other was 45 m away in a straight line round a curve, and still arrived
+    150 s later. A day has roughly 50 to 150 trips with an 800 m+ stretch slower than
+    walking, mostly the 505 on Dundas downtown. Nov 24's pick: the 505, Church St to
+    University Ave, 911 m, 18:05 on board against 12:09 on foot, 20 of 131 rides slower.
+    Expect it to land on Dundas often.
   - On screen: the camera holds still with both stops in frame and never zooms out past
     15.6, where the streetcar would fade to a dot (`ICON_ZOOM`, crossfading to 15.4). It
     starts from the spot beats' view (angled 60 degrees across the street, tilted 52; a
@@ -281,14 +294,15 @@ page asks again when it's back; a refused request waits for the next tap.
     Flexity's flat style (mustard coat, red toque), drawn far bigger than life, on the
     sidewalk to the right of travel, with a stride while walking; labels show each one's
     time so far ("Walking · 4.5 km/h" on the walker, so the pace is on screen whatever the
-    caption), the walker's freezing, ticked, at B. Captions say walking, never "race",
-    which reads as running.
+    caption), the walker's freezing, ticked, at B. The walker and labels draw over the
+    streetcars, and the clock stops when the car comes within 30 m of B, so it doesn't drive
+    on past the walker. Captions say walking, never "race", which reads as running.
   - Then a quick nod to the rest of the day (the user's idea: one stretch could look like a
     one-off): the camera pulls back to the network, the streets where a trip was slower than
     walking light up in the walker's coat colour, and a tally counts the trips, with the top
     three routes. Same measure as the pick, counted by trip: a trip counts once if any of
     its rides was slower than walking, against every daytime trip with a ride measured (Nov
-    22: 269 of 2,226, on 7 routes, the 505 most with 78). The lit streets are each
+    24: 145 of 1,853). The lit streets are each
     stop-to-stop piece a slower ride covered, wider where more trips were slow over it.
     `walk.py` gives them as `net.lines`; `drafts.py` moves them to their own file,
     `drafts/walk-lines.json` (about 20 KB), so the map page's `stories.json` stays small.
@@ -450,7 +464,7 @@ cat /mnt/strada/ttc-backup/last-backup.txt   # should be within the hour
 | To… | Do this |
 |---|---|
 | Pause the bot | Delete `~/ttc-streetcars/delays/bot-enabled` on the Pi (create it again to resume) |
-| Apply a method change to past days | On the Pi: `cd ~/ttc-delays/pipeline && python3 nightly.py --rebuild --include-today` (~12 min) |
+| Apply a method change to past days | On the Pi: `cd ~/ttc-delays/pipeline && python3 nightly.py --rebuild --include-today` (~12 min). Or process on the laptop from copies of `data/`, `static/` and the work files (same code, same results), copy the new `agg/` files to the Pi, then run `nightly.py` there without `--rebuild`. Bump the replay cache name in `nightly.py` if the replay changes, and `MATCHING` in `build_site.py` if clean runs stop being comparable |
 | Fix a stalled GitHub Pages deploy | `gh api -X POST repos/Freems88/ttc-streetcar-delays/pages/builds` |
 | See what the bot would post | `python post.py morning --dry-run` on the Pi |
 | Add a yard to ignore in the track check | `YARDS` in `pipeline/process_day.py` |
@@ -515,6 +529,19 @@ grows a lot (more systems), when the SSD becoming primary starts to make sense.
 - **Bot posts yesterday, not today,** as one thread; no service-change posts.
 - **Turn-ban and transit-priority comparisons** are shown with care: placement isn't random, so
   they describe, they don't prove.
+- **Cars placed at the closest track** (25 Nov 2026). Until then a car carrying on along a
+  piece was placed at the furthest-back track within 35 m, a median 32 m behind its own
+  position, from the first day. A viewer's-eye check found it: the tour's walking beat showed
+  the streetcar arriving about when the walker did, because a car standing at the far stop was
+  drawn short of it and the wait there was counted as riding. Compared on the 27 days to
+  Nov 24: the median matched position went from 32 m off the fix to 0.2 m; journey times over
+  47 long stretches stayed within about 1% of timings taken straight from the raw log (as
+  before); but the delay total fell 7% (24,011 h to 22,230 h), because stop time had been
+  recorded about 32 m before the stop the clean run allows it at, showing as delay there while
+  the allowance went unused. Average minus clean run, before the clipping at zero, barely moved
+  (21,440 h to 21,374 h). Delay at signals now peaks 25-50 m before them, not 50-75 m.
+  Short turns, cars in service and the track check are unchanged, and waits all but. All past
+  days were reprocessed; the signal and stop zones kept their sizes.
 - **Stop jogs straightened for drawing only** (17 Nov 2026): fixing the pieces themselves
   would break "pieces never change"; each jog adds only ~2 m of length, which doesn't matter
   to the delay numbers. A curve-fitting version caught a few more jogs on gentle bends but

@@ -47,6 +47,7 @@ from common import (BIN_M, DATA_DIR, NIGHT_TWIN, SLOT_LABELS, SLOTS, WORK_DIR, P
 from process_day import NB, bucket_mid
 
 WINDOW_DAYS = 90
+MATCHING = "nearest"   # change when positions are matched to the track differently (pattern_sig)
 CLEAN_PCT = 0.10
 MIN_SAMPLES = 3        # slices with fewer passes than this are left out
 MIN_SIGNAL_PASSES = 20  # a signal counts once this many streetcar passes went through it (90 days)
@@ -693,8 +694,9 @@ def _text(ts):
 
 
 def pattern_sig(pat):
-    """Fingerprint of a route pattern's track, so a routing change can be told apart."""
-    return hashlib.sha1(json.dumps(pat["slices"]).encode()).hexdigest()[:10]
+    """Fingerprint of a route pattern's track, so a routing change can be told apart. MATCHING
+    is in it too: clean-run totals from before and after a change to it aren't comparable."""
+    return hashlib.sha1((MATCHING + json.dumps(pat["slices"])).encode()).hexdigest()[:10]
 
 
 def update_history(stats, last_day, network):

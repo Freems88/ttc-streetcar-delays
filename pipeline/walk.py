@@ -1,22 +1,25 @@
 """Slower than walking: the replay tour's stretch where streetcars lost to someone on foot.
 
-A ride here is time on board: from the moment a car leaves stop A to the moment it reaches
-stop B, on one trip. Against it, someone walking the same street (the track's length between
-the stops) at a steady WALK_KMH, a little under an ordinary pace, which allows for waiting
-at a crossing now and then. No attempt is made to guess the lights: a walker going the same
-way mostly gets the car's greens, and isn't stuck in the queue behind it.
+A ride here is time on board: from the moment a car leaves stop A to the moment it comes
+within REACH_M of stop B, on one trip. Cars often report standing a little short of the stop
+they're at (a car is 30 m long, and the feed doesn't say where on it the position is), so the
+wait there isn't counted: the safe side for a claim that walking won. Against it, someone
+walking the same street (the track's length between the stops) at a steady WALK_KMH, a
+little under an ordinary pace, which allows for waiting at a crossing now and then. No
+attempt is made to guess the lights: a walker going the same way mostly gets the car's
+greens, and isn't stuck in the queue behind it.
 
 Every daytime ride of MIN_M to MAX_M between two stops counts (not near either end of a
 trip, where layovers sit; not losing over MAX_LOSS_S against the clean run, which is a
 breakdown), on routes the day's service-change flags leave alone. The stretch shown is the
 one with the most rides slower than walking; the ride shown there is the middle one by how
-much it lost to the walker, among those where the walker got at least LEAD_M ahead, so the
-gap shows on screen.
+much it lost to the walker, among those still LEAD_M or more short of B when the walker got
+there, so the gap shows on screen at the finish.
 
 Output (stories.json "walk", for tour.js), times in seconds from 04:00 as in replay.json:
 {"route", "v" (vehicle), "street", "a", "b" (cross streets), "a_ll", "b_ll" ([lon, lat]),
- "tA" (leaves A), "tB" (reaches B), "m" (metres), "ride_s", "walk_s", "kmh" (walking pace),
- "n" (rides there slower than walking), "of" (all rides there),
+ "tA" (leaves A), "tB" (comes within REACH_M of B), "m" (metres), "ride_s", "walk_s",
+ "kmh" (walking pace), "n" (rides there slower than walking), "of" (all rides there),
  "net": the same measure across the network, by trip: {"trips" (daytime trips with a stretch
  slower than walking), "of" (daytime trips with any stretch measured), "routes" ([route, trips],
  most first), "lines" ([trips, [[lon, lat], ...]] per stop-to-stop piece of street a slower
@@ -35,7 +38,8 @@ from common import FLEXITY_IDS
 
 WALK_KMH = 4.5
 MIN_M, MAX_M = 800, 1500   # long enough to be a real ride, short enough to frame in one view
-LEAD_M = 100               # the walker gets at least this far ahead (about three car lengths)
+LEAD_M = 100               # the car is at least this far short of B when the walker arrives
+REACH_M = 30               # a car this close to stop B (a car length) has arrived
 END_M = 300                # rides starting or ending this close to a trip's ends are left out (layovers)
 MAX_LOSS_S = 15 * 60       # against the clean run over the ride: more is a breakdown
 DAY_FROM, DAY_TO = 2 * 3600, 18 * 3600   # 06:00-22:00, as seconds from 04:00
@@ -142,13 +146,9 @@ def _along(xs, cum, stops, grid):
     return out
 
 
-def _lead(cum, ts, a, tA, tB, pace):
-    """The walker's biggest lead over the car (metres), both leaving A at tA."""
-    best = 0.0
-    i0, i1 = bisect_left(ts, tA), bisect_right(ts, tB)
-    for i in range(i0, i1):
-        best = max(best, (ts[i] - tA) * pace - (cum[i] - a))
-    return best
+def _lead(cum, ts, b, tW):
+    """How far short of b metres along the car still is at tW, when the walker gets there."""
+    return b - _interp(ts, cum, tW)
 
 
 def _cross(name):
@@ -200,7 +200,7 @@ def pick(replay, net, skip_routes=()):
                     continue
                 if m > MAX_M:
                     break
-                tB = _reach(cum, ts, b - 3)
+                tB = _reach(cum, ts, b - REACH_M)
                 if tB is None or tB <= tA:
                     break
                 ride, walk = tB - tA, m / pace
@@ -209,7 +209,7 @@ def pick(replay, net, skip_routes=()):
                 r = {"v": car["v"], "tA": tA, "tB": tB, "m": m, "ride": ride, "walk": walk}
                 trips[car["r"]].add(id(car))
                 if ride > walk:
-                    r["lead"] = _lead(cum, ts, a, tA, tB, pace)
+                    r["lead"] = _lead(cum, ts, b, tA + walk)
                     slow_to[ia] = max(slow_to.get(ia, ia), ib)
                 rides[(car["r"], ka, kb)].append(r)
         if slow_to:

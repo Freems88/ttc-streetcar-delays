@@ -76,7 +76,7 @@ def main():
         today = service_day(time.time())
         done = sorted(p.name[:10] for p in (WORK_DIR / "agg").glob("*.json.gz") if p.name[:10] < today)
         if done:
-            cached = WORK_DIR / "replay" / f"{done[-1]}.v5.json"  # v5: track drawn without the jogs at stops
+            cached = WORK_DIR / "replay" / f"{done[-1]}.v6.json"  # v6: cars placed at the nearest track
             if not cached.exists() or "--rebuild" in args:
                 cached.parent.mkdir(exist_ok=True)
                 replay.write(done[-1], cached, net, SITE_OUT / "data" / "stats-recent.json")

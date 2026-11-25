@@ -661,15 +661,18 @@
     // Someone on foot against a real streetcar (stories.walk: the stretch where most cars were
     // slower than walking, and the middle such ride there). Both leave stop A together; the
     // walker keeps a steady pace on the sidewalk the whole way and the car does what it did
-    // that day. Each carries a label with its time so far; the walker's freezes, ticked, at B.
+    // that day, to within a car length of B (walk.py: the car has arrived there; the beat
+    // stops its clock then, so it doesn't drive on past the walker). Each carries a label with
+    // its time so far; the walker's freezes, ticked, at B.
     // The clock runs straight through (no real-time hold): the walker's even pace is the
     // yardstick, so the car's stops show against it.
     function walkBeat(w) {
       const p = (R.byCar.get(w.v) || []).find((x) => x.t0 <= w.tA && w.tB <= x.t1);
       if (!p) return null;
       const kmAt = (t) => { const a = R.at(p, t); return a ? lerp(R.cumKm[a[2]], R.cumKm[a[3]], a[4]) : null; };
-      const kmA = kmAt(w.tA), kmB = kmAt(w.tB);
-      if (kmA === null || kmB === null || kmB <= kmA) return null;
+      const kmA = kmAt(w.tA), kmEnd = kmAt(w.tB);
+      if (kmA === null || kmEnd === null || kmEnd <= kmA) return null;
+      const kmB = kmA + w.m / 1000;  // stop B, w.m metres on: the car's clock stops short of it
       const tW = w.tA + w.walk_s;   // the walker reaches B
       // The walker: along the car's own track (the street), offset to the right of travel onto
       // the sidewalk, at the steady pace that covers A to B in walk_s.
@@ -684,7 +687,7 @@
         const lon = lerpAt(pos, i, f, 2, 0), lat = lerpAt(pos, i, f, 2, 1);
         return [lon + SIDE * (dy / L) / MX, lat - SIDE * (dx / L) / MY, dx / MX, dy / MY];
       };
-      const A = R.at(p, w.tA), B = R.at(p, w.tB);
+      const A = w.a_ll, B = w.b_ll;
       const dx = B[0] - A[0], dy = B[1] - A[1];
       const road = Math.atan2(dx * MX, dy * MY) * 180 / Math.PI;
       const mmss = (s) => R.dur(s);
@@ -754,19 +757,22 @@
           map.stop();
           cam = camFor();
           move(cam, P[0] * 1000);
+          // The walker and the labels draw over the streetcars: bigger than life, the car
+          // pulling up to the stop would otherwise hide the walker waiting there.
+          const onTop = {depthCompare: "always"};
           R.tour.layers = () => {
             const t = state.t, wk = walkerAt(t), walking = t > w.tA && t < tW;
             // Which way the walker faces on screen.
             const s0 = map.project([wk[0], wk[1]]), s1 = map.project([wk[0] + wk[2] * 1e-3, wk[1] + wk[3] * 1e-3]);
             const icon = walkerIcon(walking ? Math.floor(performance.now() / 130) % 4 : 4, s1.x < s0.x);
             return [
-              new deck.ScatterplotLayer({id: "tour-walker-ground", data: [wk], getPosition: (d) => [d[0], d[1]],
+              new deck.ScatterplotLayer({id: "tour-walker-ground", parameters: onTop, data: [wk], getPosition: (d) => [d[0], d[1]],
                 getRadius: 3, radiusUnits: "pixels", radiusMinPixels: 4, getFillColor: [255, 255, 255, 90]}),
-              new deck.IconLayer({id: "tour-walker", data: [wk], getPosition: (d) => [d[0], d[1]], getIcon: () => icon,
+              new deck.IconLayer({id: "tour-walker", parameters: onTop, data: [wk], getPosition: (d) => [d[0], d[1]], getIcon: () => icon,
                 getSize: R.wide ? 46 : 38, sizeUnits: "pixels", billboard: true,
                 updateTriggers: {getIcon: icon.id}}),
               new deck.TextLayer({
-                id: "tour-walk-labels", data: labels(t, wk), getPosition: (l) => l.at, getText: (l) => l.txt,
+                id: "tour-walk-labels", parameters: onTop, data: labels(t, wk), getPosition: (l) => l.at, getText: (l) => l.txt,
                 getSize: 13, getColor: (l) => (l.hot ? [255, 255, 255, 255] : [200, 200, 205, 255]),
                 getPixelOffset: (l) => (l.below ? [0, 24] : [0, -44]), fontFamily: "Inter, system-ui, sans-serif", fontWeight: 600,
                 characterSet: "auto", lineHeight: 1.25, background: true,
@@ -781,7 +787,7 @@
           let t;
           if (sec < eFly) t = w.tA - lead;
           else if (sec < eRun) t = lerp(w.tA - lead, w.tB, (sec - eFly) / P[1]);
-          else t = lerp(w.tB, w.tB + 20, easeOut(Math.min(1, (sec - eRun) / P[2])));
+          else t = w.tB;
           state.speed = runSpeed;
           state.t = t;
           // The camera holds still; if a slow device cut the flight short, ease it the rest of the way.
