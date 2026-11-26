@@ -190,7 +190,17 @@ than 1.5 km off its trip's path before coming back was diverted (turn-back loops
 go up to about 1.2 km), and a spot where 30% or more of a direction's trips stopped short that
 day was where the line ended that day. That's how the 505's weekend diversion on 7 November
 2026, turning at Bathurst Station via College while buses ran Dundas, stays out of the
-counts (it's counted as "diverted"). The place shown is the last scheduled stop the car reached,
+counts (it's counted as "diverted"). A long diversion needs one more check, because it can
+slip under that 30%: from 23 November 2026, Harbourfront track work ended the 510B (scheduled
+to Queens Quay) at Charlotte Loop, its cars last reaching a stop at either Queen or King, and
+the 510A's southbound trips diluted both. The bot reported "1 in 6 trips sent back" for two
+days (23 and 24 November). So when under 10% of a branch's trips (one direction to one
+destination, at least 10 trips) reach its destination, the line ended early for that branch all
+day: trips stopping within 1 km of the point 30% of them got to, or beyond it, are "diverted",
+and only those stopping further back still count. Replayed over 1–25 November, this changed
+23–25 November only (all routes' short turns on those days: 4.9–6.9% of trips before, 2.0–4.2% after). A
+diversion that starts partway through a day, like this one on the night of the 22nd, still
+counts that evening's turns as short turns. The place shown is the last scheduled stop the car reached,
 not the exact turning spot, which can be a loop or a block further on. Trips the schedule itself ends early
 aren't short turns. A car that just disappears is counted separately as "ended early" (taken out
 of service, or lost from the feed); one heading for a yard isn't counted at all.
@@ -222,7 +232,8 @@ buses. Rather than model every detour, `servicechanges.py` reads the TTC alerts 
 and flags a route-day when a detour, no-service or route-change alert covered at least 3 of
 its service hours (6 am to midnight) and the change was temporary: planned for a week or less
 (a weekend diversion) or an incident. Month-long construction changes count as the route's
-normal for now; the observed route patterns already follow them. Subway delays and station
+normal for now; the observed route patterns already follow them (short turns are the exception,
+measured against the schedule; see *Short turns* for how they handle it). Subway delays and station
 elevator outages, which list connecting streetcar routes, are skipped. On flagged days the
 bot doesn't name that route for its superlatives (hardest hit, most short-turned, worst stop,
 furthest behind), and the trends page draws that day's point as a hollow ring, with the

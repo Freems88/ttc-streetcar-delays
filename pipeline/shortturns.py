@@ -18,7 +18,12 @@ more than SHORT_KM of the trip undone:
 A car that goes more than OFF_KM off its trip's path before coming back was diverted, not
 short-turned. A spot where DAY_END or more of a direction's trips stopped short that day was the end of
 the line that day (a planned diversion the static schedule doesn't show), so those aren't
-short turns; they're counted as "diverted".
+short turns; they're counted as "diverted". So are a branch's trips (one direction towards one
+destination) when under SERVED of them reached that destination: the line ended early for them
+all day, at the furthest point DAY_END of them got to, and stopping within SHORT_KM of that point
+is reaching the end (a diversion can split its turn between two stops, and a branch can be too
+small a part of its direction to reach DAY_END alone). Stopping further back than that is still a
+short turn.
 
 Runs where the car never got MIN_RUN_KM into the trip are skipped: cars are often signed
 on to a trip at a terminal and re-signed before leaving. Planned short trips (the schedule
@@ -28,7 +33,7 @@ import gzip
 import json
 import math
 import zipfile
-from collections import defaultdict
+from collections import Counter, defaultdict
 
 import headways
 from common import NIGHT_TWIN, STATIC_DIR, WORK_DIR, to_xy
@@ -42,6 +47,8 @@ FWD_KM = 0.5      # ...without first carrying on at least this far past the furt
 OFF_KM = 1.5      # a "turn" that goes further than this off the trip's path is a diversion
 DAY_END = 0.3     # a spot where this share of a direction's trips that day stopped short was
                   # where the line ended that day (a planned diversion), not short turns
+SERVED = 0.1      # under this share of a branch's trips reaching its destination: the line
+MIN_BRANCH = 10   # ended early for the branch that day (if it ran at least this many trips)
 LOOKAHEAD = 25    # stops checked ahead of the furthest one so far (pings are ~150 m apart)
 
 
@@ -98,7 +105,9 @@ def detect(runs, sched, near_yard):
         if pts:
             by_car[vid].append((pts[0][0], tid, pts))
     events, counts = [], defaultdict(lambda: {"runs": 0, "short": 0, "early": 0, "diverted": 0})
-    dir_runs, stopped, early_at = defaultdict(int), defaultdict(int), defaultdict(int)  # runs per (route, dir) / spot
+    dir_runs = defaultdict(int)     # trips per (route, direction)
+    lefts = defaultdict(list)       # (route, direction, destination) -> km each trip left undone
+    stopped = []                    # trips that stopped short: what each looked like
     for vid, rs in by_car.items():
         rs.sort()
         for k, (_, tid, pts) in enumerate(rs):
@@ -127,12 +136,15 @@ def detect(runs, sched, near_yard):
             d, to = _direction(headsign)
             dir_runs[(route, d)] += 1
             left = cum[-1] - cum[best]
+            lefts[(route, d, to)].append(left)
             if left <= SHORT_KM:
                 continue
             last = pts[-1]
             if near_yard(last[1], last[2]):
                 continue
-            stopped[(route, d, sched["stops"][sids[best]][2])] += 1
+            trip_end = {"route": route, "spot": (route, d, sched["stops"][sids[best]][2]),
+                        "branch": (route, d, to), "left": left, "early": False, "event": None}
+            stopped.append(trip_end)
             # Turned back: soon after, it passes a stop of this trip well behind the furthest
             # one. A new trip number alone isn't enough: the feed sometimes relabels a car
             # mid-route, and it just carries on.
@@ -142,8 +154,7 @@ def detect(runs, sched, near_yard):
                     break
                 later += [p for p in q if p[0] - last[0] <= NEXT_S]
             if not later:
-                c["early"] += 1
-                early_at[(route, d, sched["stops"][sids[best]][2])] += 1
+                trip_end["early"] = True
                 continue
             back = [xy[i] for i in range(best) if BACK_KM <= cum[best] - cum[i] <= BACK_KM + 3]
             ahead = [xy[i] for i in range(best + 1, len(xy)) if FWD_KM <= cum[i] - cum[best] <= FWD_KM + 3]
@@ -163,21 +174,31 @@ def detect(runs, sched, near_yard):
             off_m = max((min(math.hypot(x - sx, y - sy) for sx, sy in xy) for _, x, y in between), default=0)
             if off_m > OFF_KM * 1000:
                 continue  # well away from the line and back: a diversion (turning loops seen go up to ~1.2 km)
-            c["short"] += 1
             lon, lat, name = sched["stops"][sids[best]]
-            events.append({"r": route, "d": d, "to": to, "stop": sids[best], "name": name,
-                           "lon": round(lon, 5), "lat": round(lat, 5), "t": int(t_best), "v": vid,
-                           "left": round(left, 1), "off_m": round(off_m), "loop_min": round((t_back - t_best) / 60, 1)})
+            trip_end["event"] = {"r": route, "d": d, "to": to, "stop": sids[best], "name": name,
+                                 "lon": round(lon, 5), "lat": round(lat, 5), "t": int(t_best), "v": vid,
+                                 "left": round(left, 1), "off_m": round(off_m),
+                                 "loop_min": round((t_back - t_best) / 60, 1)}
     # Where a big share of a direction's trips stopped short at the same spot, that was the end
     # of the line that day: a planned diversion the static schedule doesn't know about (the 505
     # turning at Bathurst Station via College on 7 Nov 2026, buses running Dundas). Not short turns.
-    ends = {k for k, n in stopped.items() if n >= DAY_END * dir_runs[k[:2]]}
-    for e in events:
-        if (e["r"], e["d"], e["name"]) in ends:
-            counts[e["r"]]["short"] -= 1
-    for k in ends:
-        counts[k[0]]["diverted"] += stopped[k]
-        counts[k[0]]["early"] -= early_at[k]
-    events = [e for e in events if (e["r"], e["d"], e["name"]) not in ends]
+    at_spot = Counter(t["spot"] for t in stopped)
+    ends = {k for k, n in at_spot.items() if n >= DAY_END * dir_runs[k[:2]]}
+    # Hardly any of a branch reached its destination: how much of the trip was left undone at the
+    # point DAY_END of its trips got at least as far as (the 510B ending at Charlotte Loop from
+    # 23 Nov 2026, split between two stops, while its direction's other branch ran on).
+    closed = {}
+    for k, v in lefts.items():
+        if len(v) >= MIN_BRANCH and sum(x <= SHORT_KM for x in v) < SERVED * len(v):
+            closed[k] = sorted(v)[math.ceil(DAY_END * len(v)) - 1]
+    for t in stopped:
+        c = counts[t["route"]]
+        if t["spot"] in ends or (t["branch"] in closed and t["left"] <= closed[t["branch"]] + SHORT_KM):
+            c["diverted"] += 1
+        elif t["early"]:
+            c["early"] += 1
+        elif t["event"]:
+            c["short"] += 1
+            events.append(t["event"])
     events.sort(key=lambda e: e["t"])
     return {"events": events, "routes": dict(counts)}
