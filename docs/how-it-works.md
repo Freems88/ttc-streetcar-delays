@@ -125,6 +125,26 @@ next car on the same route is the *headway*. From those:
 - **Excess wait**: that average minus what it would be if cars came exactly as scheduled
   (Transport for London's standard measure). Split into *uneven spacing* and *missing cars*.
 - **Bunched**: a car under half the scheduled gap behind the one ahead. **Big gap**: over 1.5×.
+- **Chance of waiting over 10 min**: for someone arriving at a random moment, the time spent more
+  than 10 minutes before the next car, over all the time measured: the sum of max(gap − 10, 0)
+  over the sum of gaps, from the raw headways. The scheduled figure is the same sum over the
+  scheduled headways, not assumed to be zero (frequent service has gaps of up to 12 minutes).
+
+The stop card and the longest-wait post explain excess wait against what the wait should have
+been (25 Nov 2026: "10.4 min" read as normal service where cars were due every 10):
+- **"A car was due about every N min"** takes N as twice the scheduled average wait, so "half of
+  that" is the scheduled wait even where the schedule changes through the day. It can be up to
+  about 2 minutes longer than the plain average scheduled gap.
+- **Words for the ratio** only where it supports them: nearly double 1.75–1.9×, about double
+  1.9–2.15×, more than double 2.15–2.75×, about triple 2.75–3.25×, more than triple above.
+  Below that, just the minutes. It's about waiting time only: never say half the cars were missing.
+- **A cause** ("mostly uneven spacing" or "mostly missing cars") only when the excess is at least
+  1 min and that part is at least 1 min and twice the other.
+- A stop shared by several routes gets a short entry per route (no bars or spread chart); show
+  one route for the full card.
+- The rules are written twice, in `drafts.py` (post) and `app.js` (card): change both.
+- The 10-minute sums were added on 25 Nov 2026. A window holding a day processed before then
+  leaves the chance out (`long_waits` in `headways-<window>.json`) until a rebuild.
 
 Only frequent service counts (scheduled every 12 minutes or better). A stop where fewer than a
 third of the scheduled cars showed up that day is treated as diverted and left out, and so is
@@ -451,6 +471,12 @@ cat /mnt/strada/ttc-backup/last-backup.txt   # should be within the hour
   passenger counters may not be live). Not used.
 - **A few odd stops** with low "cars seen" (e.g. King St East at Sumach on the 504) aren't
   explained yet.
+- **Blockages and short detours count as long waits.** A stop is left out only when most of its
+  day is missing. On Nov 24 the 506 had no car at Dundas East at Parliament from 17:33 to 18:53,
+  around a blocked track and then a detour that passed the stop by: with that gap the average
+  wait was 10.4 min (2.1× scheduled, 34% over 10 min), without it 8.3 (1.7×, 30%), and it was
+  the day's longest-wait post. Riders did go without a car, though some may have been sent
+  elsewhere during the detour. Handling detours separately is parked.
 - **No off-site copy.** The archive is backed up to an SSD on the same Pi (see *Backups*),
   but a fire or theft would take both. An off-site copy is still to do.
 - **Early days.** Clean runs and "usual" comparisons settle after a few weeks of data. The

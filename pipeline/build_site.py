@@ -95,6 +95,7 @@ class Acc:
         self.hcnts = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
         self.heads = defaultdict(lambda: defaultdict(dict))
         self.heads_off = defaultdict(lambda: defaultdict(int))
+        self.heads_long = True  # every day added has the over-10-minute sums
         self.head_days = 0
         self.zones = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))  # "piece|px" -> hour -> bucket -> n
         self.zone_days = 0
@@ -143,7 +144,10 @@ class Acc:
                 for route, hours in routes.items():
                     acc = self.heads[stop][route]
                     for h, row in hours.items():
-                        row = list(row) + [0] * (len(headways.FIELDS) - len(row))  # days from before the spread was kept
+                        # A day processed before the over-10-minute sums were kept would count
+                        # as no long waits, so a window holding one doesn't show them.
+                        self.heads_long &= len(row) >= len(headways.FIELDS)
+                        row = list(row) + [0] * (len(headways.FIELDS) - len(row))  # days from before a sum was kept
                         acc[h] = [x + y for x, y in zip(acc[h], row)] if h in acc else row
             for stop, routes in d.get("heads_off", {}).items():
                 for route in routes:
@@ -395,7 +399,7 @@ def headway_stats(acc, on_route):
     on the route's own streetcar patterns (route_stops)."""
     keep = lambda per: {s: rs for s, rs in ((s, {r: v for r, v in routes.items() if s in on_route.get(r, ())})
                                             for s, routes in per.items()) if rs}
-    return {"days": acc.head_days, "stops": keep(acc.heads), "off": keep(acc.heads_off)}
+    return {"days": acc.head_days, "long_waits": acc.heads_long, "stops": keep(acc.heads), "off": keep(acc.heads_off)}
 
 
 def fleet_stats(days):

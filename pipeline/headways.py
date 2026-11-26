@@ -14,9 +14,12 @@ sums the page combines over any time selection:
                 (observed - scheduled)^2, for the TCQSM headway coefficient of variation
   h0..h7        observed headways by length: under 2, 4, 6, 8, 10, 15, 20 minutes, and longer
   ns, shs, shs2 scheduled headways: count, sum, sum of squares
+  o10, so10     seconds each headway ran past 10 minutes, summed: observed, scheduled
 
 From those: average wait for a rider turning up at random, sh2 / (2 sh), against the
-scheduled wait, shs2 / (2 shs); the difference is TfL's excess wait time. Only frequent
+scheduled wait, shs2 / (2 shs); the difference is TfL's excess wait time. The same
+rider's chance of waiting over 10 minutes is o10 / sh (only the first part of a long
+headway, all but its last 10 minutes, leaves that long to wait), against so10 / shs. Only frequent
 service counts (scheduled every 12 minutes or better at both ends of the headway), as
 TfL and the TCQSM do. Headways that span a gap in logging are left out on both sides.
 """
@@ -38,7 +41,10 @@ MIN_CAR_SHARE = 1 / 3  # under this share of a stop's departures by streetcar th
 BUNCHED, GAP = 0.5, 1.5
 DEPART_M = 15        # time a car passes this far beyond the stop: it's moving again by then
 HIST_EDGES = [120, 240, 360, 480, 600, 900, 1200]  # seconds; the spread of gaps shown on the page
-FIELDS = ["n", "sh", "sh2", "nb", "ng", "shm", "sd2", "ns", "shs", "shs2"] + [f"h{i}" for i in range(len(HIST_EDGES) + 1)]
+LONG_WAIT_S = 600    # "waiting over 10 minutes"
+FIELDS = (["n", "sh", "sh2", "nb", "ng", "shm", "sd2", "ns", "shs", "shs2"]
+          + [f"h{i}" for i in range(len(HIST_EDGES) + 1)] + ["o10", "so10"])  # add new ones at the end
+O10 = FIELDS.index("o10")
 
 
 def _reader(z, name):
@@ -225,6 +231,7 @@ def summarize(day, departures, fetch_times, hour_key, track_stops):
                 row[7] += 1
                 row[8] += h
                 row[9] += h * h
+                row[O10 + 1] += max(0, h - LONG_WAIT_S)
         n_sched = sum(r[7] for r in rows.values())
         if not n_sched:
             continue
@@ -244,6 +251,7 @@ def summarize(day, departures, fetch_times, hour_key, track_stops):
             row[5] += hs
             row[6] += (h - hs) ** 2
             row[10 + bisect.bisect_right(HIST_EDGES, h)] += 1
+            row[O10] += max(0, h - LONG_WAIT_S)
         if sum(r[0] for r in rows.values()) < n_sched / 3 or cars < MIN_CAR_SHARE * len(kept):
             off[stop].append(route)
             continue

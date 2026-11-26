@@ -35,6 +35,7 @@ from datetime import date
 from pathlib import Path
 
 import fleet
+import headways
 import servicechanges
 import walk
 from common import BIN_M, WORK_DIR
@@ -338,8 +339,69 @@ def stop_wait(hours):
     n, sh, sh2, nb, ng, _, _, ns, shs, shs2 = a[:10]
     if n < MIN_HEADWAYS or ns < MIN_HEADWAYS:
         return None
+    long_waits = len(a) >= len(headways.FIELDS)  # days processed before 10-minute waits were summed lack them
     return {"n": n, "ns": ns, "nb": nb, "ng": ng, "awt": sh2 / (2 * sh) / 60, "swt": shs2 / (2 * shs) / 60,
-            "ewt": (sh2 / (2 * sh) - shs2 / (2 * shs)) / 60}
+            "ewt": (sh2 / (2 * sh) - shs2 / (2 * shs)) / 60,
+            "even": sh / (2 * n) / 60,  # the average wait had the cars that ran been evenly spaced
+            "o10": a[headways.O10] / sh if long_waits else None,
+            "s10": a[headways.O10 + 1] / shs if long_waits else None}
+
+
+# The longest-wait post's wording. The stop card on the page (app.js) follows the same rules.
+def ratio_words(ratio):
+    """The average wait against the scheduled one in words, only where the ratio supports them."""
+    for low, words in ((3.25, "more than triple"), (2.75, "about triple"), (2.15, "more than double"),
+                       (1.9, "about double"), (1.75, "nearly double")):
+        if ratio >= low:
+            return words
+    return ""
+
+
+def wait_cause(w):
+    """'uneven' or 'missing' when one of them clearly drove the excess wait, else None."""
+    uneven, missing = w["awt"] - w["even"], w["even"] - w["swt"]
+    if w["ewt"] < 1:
+        return None
+    if uneven >= 1 and uneven >= 2 * max(missing, 0):
+        return "uneven"
+    if missing >= 1 and missing >= 2 * max(uneven, 0):
+        return "missing"
+    return None
+
+
+def chance_text(x):
+    """'under 1%', '1 in 3' when that's close, else '27%'."""
+    if x < 0.005:
+        return "under 1%"
+    for k in range(2, 11):
+        if abs(1 / k - x) < 0.015:
+            return f"1 in {k}"
+    return f"{x:.0%}"
+
+
+def wait_text(head, w):
+    """The longest-wait post: what the wait should have been (half the gap between cars), what it
+    was, and the chance of waiting over 10 minutes. Longer wordings are tried first."""
+    # The gap a rider turning up at random would find cars due at: twice the scheduled wait, so
+    # "half of it" is the scheduled wait even where the schedule changes through the day.
+    gap = round(2 * w["swt"])
+    words = ratio_words(w["awt"] / w["swt"])
+    base = f"A car was due about every {gap} min, so the average wait should have been about {gap / 2:g}. "
+    short = f"Cars were due about every {gap} min: a {gap / 2:g} min average wait. "
+    verdict = f"It was {w['awt']:.1f}: " + (f"{words}." if words else f"{w['ewt']:.1f} min extra.")
+    why = {"uneven": " Mostly uneven spacing.", "missing": " Mostly missing cars."}.get(wait_cause(w), "")
+    chance = brief = ""
+    if w["o10"] is not None:
+        a, b = chance_text(w["o10"]), chance_text(w["s10"])
+        chance = f"\n\nTurn up at random and the chance of waiting over 10 min was {a}. On schedule: {b}."
+        brief = f"\n\nChance of waiting over 10 min: {a}. On schedule: {b}."
+    # The cause goes first when space is short, then words, then the 10-minute chance.
+    for first, cause, last in ((base, why, chance), (base, "", chance), (base, why, brief),
+                               (base, "", brief), (short, "", brief), (short, "", "")):
+        text = f"{head}\n\n{first}{verdict}{cause}{last}"
+        if post_len(text) <= POST_LIMIT:
+            break
+    return text
 
 
 MIN_SHORT_RUNS = 50  # trips a route needs yesterday to be named for short turns
@@ -426,12 +488,8 @@ def stop_waits_post(when, net, agg, changed=()):
     sid, route, w = max(worst, key=lambda r: r[2]["ewt"])
     pat = pats[where[(sid, route)]]
     name = stops[sid]["name"]
-    missing = max(0, w["ns"] - w["n"])
     label = f"{route} {pat['name']} {pat['direction'].lower()}"
-    text = (f"Longest extra wait at a stop, {when}: {name} ({label}).\n\n"
-            f"Riders waited {w['awt']:.1f} min on average, against {w['swt']:.1f} if cars had come as scheduled: "
-            f"{w['ewt']:.1f} min extra. {share_text(w['nb'] / w['n'], 'cars')[0].upper() + share_text(w['nb'] / w['n'], 'cars')[1:]} came bunched"
-            + (f", and {missing} of {w['ns']} scheduled cars never came." if missing >= 2 else "."))
+    text = wait_text(f"Longest extra wait at a stop, {when}: {name} ({label}).", w)
     busy = [r for r in rows if r[2]["n"] >= MIN_BUSY_HEADWAYS]
     if busy:
         bs, br, bw = min(busy, key=lambda r: r[2]["ewt"])
@@ -443,8 +501,10 @@ def stop_waits_post(when, net, agg, changed=()):
     lon, lat = stops[sid]["lonlat"]
     d = "en" if pat["direction"].lower().startswith(("east", "north")) else "ws"
     alt = (f"Map of the streets around {name} in the waits view, a column at each stop. A tooltip for the stop reads "
-           f"{w['ewt']:.1f} minutes of excess wait, with how often cars came bunched or with gaps, and a chart of the "
-           f"spread of gaps between cars.")
+           f"a {w['awt']:.1f} minute average wait, {w['ewt']:.1f} more than on schedule, "
+           + (f"with a {w['o10']:.0%} chance of waiting over 10 minutes against {w['s10']:.0%} on schedule, "
+              if w["o10"] is not None else "")
+           + "and a chart of the spread of gaps between cars.")
     # Columns grow with the wait: past 8 min, step back a zoom level per doubling so the column fits.
     zoom = 15.2 - max(0.0, math.log2(max(w["ewt"], 0.1) / 8))
     return {"kind": "stopwait", "text": text, "alt": alt, "shot": {"clean": "1", "theme": "light", "tip": sid},

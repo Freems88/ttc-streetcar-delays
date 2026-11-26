@@ -269,7 +269,8 @@
   <p>Delay is about the car; riders also feel <i>spacing</i>. Two cars arriving together and then a long gap leave far more people waiting than evenly spaced cars, even if every car runs on time between stops. The <b>Waits</b> view measures that the way London and North American transit agencies do:</p>
   <ul>
     <li><b>Headway:</b> the time between one car and the next on the same route, leaving the same stop. Every vehicle on the route counts, buses included, since riders board those too.</li>
-    <li><b>Average wait:</b> for someone turning up at a random moment. Long gaps count for more: you're more likely to arrive during one, and you wait longer when you do.</li>
+    <li><b>Average wait:</b> for someone turning up at a random moment. Long gaps count for more: you're more likely to arrive during one, and you wait longer when you do. With evenly spaced cars it's half the gap, so a car every 10 minutes should mean about 5. (Where the schedule changes through the day, "due about every" is twice the scheduled average wait.)</li>
+    <li><b>Chance of waiting over 10 minutes:</b> the share of random moments when the next car was more than 10 minutes away, next to the same share had cars kept to the schedule.</li>
     <li><b>Excess wait</b> (Transport for London's headline measure for frequent routes): the average wait minus the wait if cars had come exactly as the TTC's schedule says. It splits into <b>uneven spacing</b> (the cars that ran were bunched) and <b>missing cars</b> (fewer ran than scheduled, for example short turns).</li>
     <li><b>Gaps between cars:</b> each stop's tooltip shows how the gaps were spread, in minutes, with the scheduled gap marked. Evenly run service is one tall bar at the schedule; bunching shows as a pile of very short gaps plus a tail of long ones.</li>
     <li><b>Bunched:</b> a car leaving less than half the scheduled gap behind the one ahead. <b>Big gap:</b> more than 1.5× the scheduled gap.</li>

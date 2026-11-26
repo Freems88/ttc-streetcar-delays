@@ -368,7 +368,8 @@
   // Per stop and route, sums over the selected hours (see pipeline/headways.py):
   // [n, sum h, sum h², bunched, gaps, sum scheduled h at each observed one,
   //  sum (h - scheduled)², scheduled n, scheduled sum h, scheduled sum h², then counts of
-  //  headways under 2, 4, 6, 8, 10, 15, 20 min and longer], seconds.
+  //  headways under 2, 4, 6, 8, 10, 15, 20 min and longer, seconds past 10 min summed over
+  //  observed headways, the same over scheduled ones], seconds.
   const ALL_KEYS = Array.from({length: 48}, (_, i) => String(i));
   const MIN_HEADWAYS = 20;
   function waitStats(a) {
@@ -377,8 +378,9 @@
     if (n < MIN_HEADWAYS || ns < MIN_HEADWAYS) return null;
     const awt = sh2 / (2 * sh) / 60, swt = shs2 / (2 * shs) / 60, even = sh / (2 * n) / 60;
     return {n, ns, awt, swt, ewt: awt - swt, uneven: awt - even, missing: even - swt, bunched: nb / n, gaps: ng / n,
-      seen: n / ns, schedH: shs / ns / 60, obsH: sh / n / 60,
-      spread: a.length >= 18 ? a.slice(10, 18) : null};
+      seen: n / ns, schedH: shs / ns / 60, even,
+      spread: a.length >= 18 ? a.slice(10, 18) : null,
+      long: a.length >= 20 ? {actual: a[18] / sh, sched: a[19] / shs} : null};  // chance of waiting over 10 min
   }
   function sumHours(hours, keys) {
     if (!hours) return null;
@@ -391,8 +393,12 @@
     }
     return acc;
   }
-  const stopWaits = (stopId, route, keys = hourKeys()) =>
-    waitStats(sumHours(state.heads[state.window]?.stops[stopId]?.[route], keys));
+  const stopWaits = (stopId, route, keys = hourKeys()) => {
+    const w = waitStats(sumHours(state.heads[state.window]?.stops[stopId]?.[route], keys));
+    // A window holding a day from before 10-minute waits were summed would undercount them.
+    if (w && !state.heads[state.window].long_waits) w.long = null;
+    return w;
+  };
   // Each route direction's stops, in order along its pattern.
   const patternStops = {};
   for (const pat of net.patterns) {
@@ -1274,18 +1280,51 @@
       `${w.spread.map((c, i) => `${c} ${i < 7 ? `under ${SPREAD_EDGES[i + 1]}` : "over 20"} min`).join(", ")}">${bars}` +
       `<line x1="${sx.toFixed(1)}" x2="${sx.toFixed(1)}" y1="0" y2="${H - B}"/>${labels}</svg>`;
   }
-  function waitLines(w) {
+  // The stop card's wording; the bot's longest-wait post follows the same rules (drafts.py).
+  // The average wait against the scheduled one in words, only where the ratio supports them.
+  const ratioWords = (r) => (r >= 3.25 ? "more than triple" : r >= 2.75 ? "about triple"
+    : r >= 2.15 ? "more than double" : r >= 1.9 ? "about double" : r >= 1.75 ? "nearly double" : "");
+  const ewtTxt = (v) => (v < -0.05 ? `${minTxt(-v)} shorter than scheduled` : `+${minTxt(v)} excess wait`);
+  const waitHead = (w, join) => `${minTxt(w.awt)} average wait` +
+    (ratioWords(w.awt / w.swt) ? `${join}${ratioWords(w.awt / w.swt)}` : "");
+  // Which of uneven spacing and missing cars drove the excess wait, said only when one clearly did.
+  function waitCause(w) {
+    if (w.ewt >= 1 && w.uneven >= 1 && w.uneven >= 2 * Math.max(w.missing, 0)) {
+      return `Mostly <b>uneven spacing</b> (+${minTxt(w.uneven)})` +
+        (w.missing >= 0.1 ? `, more than missing cars (+${minTxt(w.missing)})` : "") +
+        `. Spaced evenly, the cars that ran would have meant a ${minTxt(w.even)} wait.`;
+    }
+    if (w.ewt >= 1 && w.missing >= 1 && w.missing >= 2 * Math.max(w.uneven, 0)) {
+      return `Mostly <b>missing cars</b> (+${minTxt(w.missing)}), more than uneven spacing` +
+        (w.uneven >= 0.1 ? ` (+${minTxt(w.uneven)}).` : ".");
+    }
     const parts = [];
     if (w.uneven >= 0.1) parts.push(`uneven spacing adds ${minTxt(w.uneven)}`);
     if (w.missing >= 0.1) parts.push(`missing cars add ${minTxt(w.missing)}`);
-    return `<div>Cars came every <b>${minTxt(w.obsH)}</b> on average; scheduled every ${minTxt(w.schedH)}</div>` +
+    const text = parts.join(", ");
+    return text && text[0].toUpperCase() + text.slice(1);
+  }
+  const pctTxt = (x) => (x < 0.005 ? "under 1%" : `${Math.round(x * 100)}%`);
+  const chanceRow = (label, x) => `<span>${label}</span><span class="t-bar"><i style="width:${(x * 100).toFixed(1)}%"></i></span>` +
+    `<b>${pctTxt(x)}</b>`;
+  // brief: for a stop shared by several routes, where a full card for each would run off the screen.
+  function waitLines(w, brief = false) {
+    // The gap a rider turning up at random would find cars due at: twice the scheduled wait, so
+    // half of it is the scheduled wait even where the schedule changes through the day.
+    const gap = Math.round(2 * w.swt), cause = waitCause(w);
+    const due = `<div>A car was due about every ${gap} min, so the wait ${w.ewt < -0.05 ? "on schedule was" : "should have averaged"} ` +
+      `about <b>${gap / 2} min</b>. <span class="t-dim">${ewtTxt(w.ewt)}.</span></div>`;
+    if (brief) {
+      return due + (w.long ? `<div>Chance of waiting over 10 min: <b>${pctTxt(w.long.actual)}</b> ` +
+        `(on schedule ${pctTxt(w.long.sched)})</div>` : "");
+    }
+    return due +
+      (w.long ? `<div class="t-chance"><div>Chance of waiting over 10 min, turning up at random</div>` +
+        `${chanceRow("Actual", w.long.actual)}${chanceRow("On schedule", w.long.sched)}</div>` : "") +
       (w.spread ? `<div class="t-dim">Gaps between cars, share of all gaps <span class="t-key">(dashed: scheduled gap)</span></div>${spreadSvg(w)}` : "") +
-      `<div>Riders turning up at random waited <b>${minTxt(w.awt)}</b> on average, ` +
-      `vs ${minTxt(w.swt)} if cars had come as scheduled` +
-      (parts.length ? `: ${parts.join(", ")}` : "") + `</div>` +
-      `<div class="t-dim">${Math.round(w.bunched * 100)}% of cars came bunched (under half the scheduled gap behind the one ahead) · ` +
-      `${Math.round(w.gaps * 100)}% after a big gap (over 1.5×) · ${Math.round(Math.min(w.seen, 9.99) * 100)}% of scheduled cars seen · ` +
-      `${fmt(w.n)} headways</div>`;
+      (cause ? `<div>${cause}</div>` : "") +
+      `<div class="t-dim">${Math.round(w.bunched * 100)}% of cars bunched · ${Math.round(w.gaps * 100)}% after a big gap · ` +
+      `${Math.round(Math.min(w.seen, 9.99) * 100)}% of scheduled cars seen · ${fmt(w.n)} headways</div>`;
   }
   // --- signals view ---------------------------------------------------------------
   // Each signal approach (one direction of track into one signal) as a dot coloured by how
@@ -1506,13 +1545,13 @@
     const off = state.heads[state.window]?.off[c.id] || {};
     const offTxt = Object.entries(off).filter(([r]) => routeOn(r))
       .map(([r, d]) => `${r}: not served on ${d} day${d === 1 ? "" : "s"} (diverted or off the track), left out`);
-    const ewtTxt = (v) => (v < -0.05 ? `${minTxt(-v)} shorter than scheduled` : `+${minTxt(v)} excess wait`);
     tip.innerHTML =
       `<div class="t-title">${c.name}</div>` +
       `<div class="t-dim">${c.dir} · ${c.per.map(([r]) => r).join(", ")} · ${whenLabel()}</div>` +
-      (c.per.length === 1 ? `<div class="t-big">${ewtTxt(c.per[0][1].ewt)}</div>${waitLines(c.per[0][1])}`
+      (c.per.length === 1 ? `<div class="t-big">${waitHead(c.per[0][1], ": ")}</div>${waitLines(c.per[0][1])}`
         : `<div class="t-big">${ewtTxt(c.ewt)} (routes averaged)</div>` + c.per.map(([r, w]) =>
-          `<div class="t-routes"><div class="t-head">${r} ${routeNames[r] || ""}: ${ewtTxt(w.ewt)}</div>${waitLines(w)}</div>`).join("")) +
+          `<div class="t-routes"><div class="t-head">${r} ${routeNames[r] || ""}: ${waitHead(w, ", ")}</div>${waitLines(w, true)}</div>`).join("") +
+          `<div class="t-routes t-dim">Show one route for its spread of gaps.</div>`) +
       (offTxt.length ? `<div class="t-routes t-dim">${offTxt.join("<br>")}</div>` : "") +
       `<div class="t-routes t-dim">Frequent service only (every 12 min or better). Buses on the route count.</div>`;
     placeTip(info);

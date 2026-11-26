@@ -329,6 +329,13 @@ input[type=range] { accent-color: var(--accent); }
 .tooltip .t-spread text { fill: #c7c9cc; font-size: 9px; }
 .tooltip .t-spread text.v { fill: #f1f1ef; font-size: 8.5px; }
 .tooltip .t-key { font-size: 11px; }
+/* Chance of a long wait: two bars on a 0-100% scale. */
+.tooltip .t-chance { display: grid; grid-template-columns: max-content 1fr max-content; gap: 3px 8px; align-items: center; margin: 7px 0; }
+.tooltip .t-routes .t-chance > div { margin: 0; }
+.tooltip .t-chance > div { grid-column: 1 / -1; }
+.tooltip .t-chance b { text-align: right; }
+.tooltip .t-bar { height: 9px; min-width: 80px; border-radius: 2px; background: rgba(255, 255, 255, 0.14); overflow: hidden; }
+.tooltip .t-bar i { display: block; height: 100%; background: #f3d36b; }
 .tooltip .t-stale { color: #f3d36b; margin: 2px 0; }
 .tooltip .t-kind { margin: 2px 0 0; color: #f3d36b; font-size: 12px; }
 .tooltip .t-head { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #c7c9cc; }
