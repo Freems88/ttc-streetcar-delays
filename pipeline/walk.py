@@ -12,9 +12,9 @@ greens, and isn't stuck in the queue behind it.
 Every daytime ride of MIN_M to MAX_M between two stops counts (not near either end of a
 trip, where layovers sit; not losing over MAX_LOSS_S against the clean run, which is a
 breakdown), on routes the day's service-change flags leave alone. The stretch shown is the
-one with the most rides slower than walking; the ride shown there is the middle one by how
-much it lost to the walker, among those still LEAD_M or more short of B when the walker got
-there, so the gap shows on screen at the finish.
+one with the most rides slower than walking (at least MIN_N, or there is no pick); the ride
+shown there is the middle one by how much it lost to the walker, among those still LEAD_M or
+more short of B when the walker got there, so the gap shows on screen at the finish.
 
 Output (stories.json "walk", for tour.js), times in seconds from 04:00 as in replay.json:
 {"route", "v" (vehicle), "street", "a", "b" (cross streets), "a_ll", "b_ll" ([lon, lat]),
@@ -37,7 +37,8 @@ from collections import defaultdict
 from common import FLEXITY_IDS
 
 WALK_KMH = 4.5
-MIN_M, MAX_M = 800, 1500   # long enough to be a real ride, short enough to frame in one view
+MIN_M, MAX_M = 1000, 1500  # far enough that you'd think of riding, short enough to frame in one view
+MIN_N = 5                  # a stretch needs this many rides slower than walking to be shown
 LEAD_M = 100               # the car is at least this far short of B when the walker arrives
 REACH_M = 30               # a car this close to stop B (a car length) has arrived
 END_M = 300                # rides starting or ending this close to a trip's ends are left out (layovers)
@@ -226,7 +227,7 @@ def pick(replay, net, skip_routes=()):
     for key, rs in rides.items():
         lost = [r for r in rs if r["ride"] > r["walk"]]
         shown = sorted((r for r in lost if r["lead"] >= LEAD_M), key=lambda r: r["ride"] - r["walk"])
-        if shown and (best is None or (len(lost), -len(rs)) > (best[1], -best[2])):
+        if shown and len(lost) >= MIN_N and (best is None or (len(lost), -len(rs)) > (best[1], -best[2])):
             best = (key, len(lost), len(rs), shown[len(shown) // 2])
     if not best:
         return None

@@ -48,7 +48,7 @@
       ["{m} m along {street}, walked at an easy {kmh} km/h.", "Faster than {n} of {of} streetcars that way on {day}."],
     ],
     // The walking beat's last step, the network pulled back: {trips} (daytime trips with a
-    // stretch of 800 m or more slower than walking) of {all} (daytime trips measured), on
+    // stretch of 1 km or more slower than walking) of {all} (daytime trips measured), on
     // {routes} routes.
     walkNet: [
       ["Not just {street}.", "{trips} trips on {day} had a stretch slower than walking."],

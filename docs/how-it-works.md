@@ -292,8 +292,8 @@ page asks again when it's back; a refused request waits for the next tap.
     which allows for the odd wait at a crossing. Red lights aren't guessed: a walker going the
     same way mostly gets the car's greens and isn't stuck in its queue, and a walker who
     never stops is what makes the car's stops show.
-  - Rides of 800 m to 1,500 m (long enough to be a real ride, short enough to frame in one
-    view), daytime (06:00-22:00), not within 300 m of either end of a trip (terminal layovers:
+  - Rides of 1,000 m to 1,500 m (far enough that you'd think of riding, short enough to frame
+    in one view), daytime (06:00-22:00), not within 300 m of either end of a trip (terminal layovers:
     the 501 into Neville Park otherwise came up every day), not losing over 15 min against the
     clean run, on routes the day's service-change flags leave alone. Stops count where the
     path passes within 18 m going their way; stops within 60 m along a trip are one.
@@ -302,25 +302,28 @@ page asks again when it's back; a refused request waits for the next tap.
     more short of B when the walker got there: the finish is what a viewer judges, and the
     streetcars are drawn far bigger than life, so a smaller gap looks like a tie (until 25
     Nov the 100 m could be anywhere on the way). The caption's count is all the slower rides
-    against all rides that way. On a day when few stretches qualify it can be a handful of
-    rides (Nov 8: 2 of 2).
-  - Rechecked 25 Nov, with cars placed correctly (see *Decisions*), on all 27 days from Oct
-    29: in 26 the shown car's own raw positions had it 100 m or more from B when the walker
-    arrived; the other was 45 m away in a straight line round a curve, and still arrived
-    150 s later. A day has roughly 50 to 150 trips with an 800 m+ stretch slower than
-    walking, mostly the 505 on Dundas downtown. Nov 24's pick: the 505, Church St to
-    University Ave, 911 m, 18:05 on board against 12:09 on foot, 20 of 131 rides slower.
-    Expect it to land on Dundas often.
+    against all rides that way.
+  - The stretch needs at least 5 slower rides, or the day has no pick: one ride out of one
+    says nothing about a street. The minimum length went from 800 m to 1,000 m on 26 Nov
+    (the user's call: at some distances you'd just walk without thinking of the streetcar).
+    The pick tends to sit near the floor, since a short stretch is easier to lose (a typical
+    one was 872 m before, 1.18 km after).
+  - Checked 26 Nov on the 27 days from Oct 29: 22 had a pick (none on Oct 29, Nov 6, 8, 15
+    and 17), and in all 22 the shown car's own raw positions had it more than 100 m from B in
+    a straight line when the walker arrived (112 to 415 m). On the days with a pick, 22 to 109
+    trips had a 1 km+ stretch slower than walking. Nov 24's pick: the 505, McCaul St to
+    Church St, 1,196 m, 18:32 on board against 15:57 on foot, 16 of 147 rides slower.
+    Expect it to land on the 505 on Dundas often.
   - On screen: the camera holds still with both stops in frame and never zooms out past
     15.6, where the streetcar would fade to a dot (`ICON_ZOOM`, crossfading to 15.4). It
     starts from the spot beats' view (angled 60 degrees across the street, tilted 52; a
     phone starts turned to 25, the street running up its tall screen) and, while the stretch
     doesn't fit, tilts further (to 70) and then turns the street to run more up the screen,
     since tilt only shortens what runs up it. Each try is fitted as seen tilted, by setting
-    the camera, projecting both stops and adjusting (cameraForBounds frames it flat). On
-    Nov 22, a wide screen fits at the usual view (zoom 16.1); a 1.4 km test stretch on a
-    phone needed turning to 12 degrees and tilting to 64, the far end small but still drawn.
-    If nothing fits, the zoom holds anyway and the ends sit near the frame's edges.
+    the camera, projecting both stops and adjusting (cameraForBounds frames it flat). All 22
+    picks above fit at 800x600, 1024x768, 1440x900 and 375x812 (a phone). A 1.4 km test
+    stretch on a phone needed turning to 12 degrees and tilting to 64, the far end small but
+    still drawn. If nothing fits, the zoom holds anyway and the ends sit near the frame's edges.
     The clock runs straight through, no real-time hold. The walker is a sprite in the
     Flexity's flat style (mustard coat, red toque), drawn far bigger than life, on the
     sidewalk to the right of travel, with a stride while walking; labels show each one's
@@ -333,7 +336,7 @@ page asks again when it's back; a refused request waits for the next tap.
     walking light up in the walker's coat colour, and a tally counts the trips, with the top
     three routes. Same measure as the pick, counted by trip: a trip counts once if any of
     its rides was slower than walking, against every daytime trip with a ride measured (Nov
-    24: 145 of 1,853). The lit streets are each
+    24: 89 of 1,843). The lit streets are each
     stop-to-stop piece a slower ride covered, wider where more trips were slow over it.
     `walk.py` gives them as `net.lines`; `drafts.py` moves them to their own file,
     `drafts/walk-lines.json` (about 20 KB), so the map page's `stories.json` stays small.
