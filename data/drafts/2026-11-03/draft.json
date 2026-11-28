@@ -1,0 +1,64 @@
+{
+ "day": "2026-11-03",
+ "partial": false,
+ "generated": 1793784559,
+ "normal_days": 6,
+ "have_normal": false,
+ "positions": 311326,
+ "posts": [
+  {
+   "kind": "summary",
+   "text": "Tuesday, Nov 3: Toronto's streetcars lost 976 hours to delays, across all routes.\n\nHardest hit: 501 Queen westbound, where the typical trip lost 37 min.\nSmoothest: 507 Long Branch eastbound, 12 min.\n\nhttps://freems88.github.io/ttc-streetcar-delays/",
+   "chars": 198
+  },
+  {
+   "kind": "segment",
+   "text": "Tuesday's slowest spot: Westbound on Fleet St, approaching Fort York Blvd.\nThe average streetcar lost 2 min 1 s here. Across 303 trips, that adds up to 10.2 hours.\nThis signal has transit priority.",
+   "alt": "3D map of Fleet St around Fort York Blvd, rotated to Toronto's street grid. Delay is drawn as a coloured ridge above the track, rising where streetcars lose time; the westbound stretch at Fort York Blvd is highlighted, peaking at about 2 min 1 s lost per streetcar.",
+   "shot": {
+    "shot": "1",
+    "win": "yesterday",
+    "piece": "p7",
+    "b0": 162,
+    "b1": 172,
+    "title": "Fleet St westbound, approaching Fort York Blvd",
+    "sub": "Tuesday, Nov 3: 2 min 1 s lost per streetcar \u00b7 303 trips"
+   },
+   "chars": 197,
+   "image": "segment.png"
+  },
+  {
+   "kind": "waits",
+   "text": "Tuesday, Nov 3: bunching and missing cars added 1.4 min to the average wait at a stop on frequent routes.\n\nWorst: 512 St Clair eastbound, 1.7 min extra; 1 in 4 cars bunched.\nSteadiest: 511 Bathurst northbound, 0.4 min extra.\n\nhttps://freems88.github.io/ttc-streetcar-delays/#v=wait",
+   "chars": 224
+  },
+  {
+   "kind": "signal",
+   "text": "Most held at a signal, Tuesday, Nov 3: eastbound at Fort York Blvd & Fleet St.\n\n1 in 3 streetcars waited 90 s or more beyond a clean approach, about a full signal cycle, despite transit priority.\nAbout 303 streetcars came through.",
+   "alt": "Map of the streets around Fort York Blvd & Fleet St, with arrows for each direction of streetcar travel into each signal, coloured by how often streetcars were held 90 seconds or more. A tooltip for the eastbound approach reads 35% held 90 s+, with a histogram of extra time through the approach.",
+   "shot": {
+    "clean": "1",
+    "theme": "light",
+    "tipa": "p6|1918"
+   },
+   "hash": "w=d1&v=signals&c=-79.40684,43.63639,16.2,-17,40",
+   "size": [
+    960,
+    720
+   ],
+   "scale": 1.25,
+   "chars": 230,
+   "image": "signal.png"
+  },
+  {
+   "kind": "fleet",
+   "text": "Tuesday, Nov 3: at the busiest moment (6:00 pm), 151 streetcars were in service, against 151 scheduled.\nOverall, 100% of scheduled streetcar service ran, and buses ran 1,017 hours on streetcar routes.",
+   "chars": 200
+  },
+  {
+   "kind": "service",
+   "text": "Service changes, Tuesday, Nov 3:\n\u2022 501 Queen, partly by bus: Route change\n\u2022 504 King, partly by bus: Temporary service change due to City of Toronto work\n\u2022 506 Carlton, partly by bus: No service between High Park Loop and College\u2026",
+   "chars": 230
+  }
+ ]
+}

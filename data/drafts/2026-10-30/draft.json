@@ -1,0 +1,35 @@
+{
+ "day": "2026-10-30",
+ "generated": 1793434928,
+ "normal_days": 2,
+ "have_normal": false,
+ "positions": 274720,
+ "posts": [
+  {
+   "kind": "summary",
+   "text": "Yesterday (Fri Oct 30), Toronto streetcars spent 757 hours held up beyond a clean run.\n\nWorst: 501 Queen westbound, a typical trip lost 37 min.\nSmoothest: 512 St Clair westbound, 13 min lost.\n\nhttps://freems88.github.io/ttc-streetcar-delays/",
+   "chars": 241
+  },
+  {
+   "kind": "segment",
+   "text": "Slowest segment yesterday: St Clair Station eastbound approaching Bay 1.\nEach streetcar lost 124 s here on average, over 109 passes: 3.7 hours in all.\nThe signal here has transit priority.",
+   "alt": "3D map of St Clair Station around Bay 1, rotated to Toronto's street grid. Delay is drawn as a coloured ridge above the track, rising where streetcars lose time; the eastbound segment at Bay 1 is highlighted, peaking at about 124 seconds lost per streetcar.",
+   "shot": {
+    "shot": "1",
+    "win": "yesterday",
+    "piece": "p2",
+    "b0": 267,
+    "b1": 277,
+    "title": "St Clair Station eastbound, approaching Bay 1",
+    "sub": "Fri Oct 30: 124 s lost per streetcar \u00b7 109 passes"
+   },
+   "chars": 188,
+   "image": "segment.png"
+  },
+  {
+   "kind": "service",
+   "text": "Service notes, Fri Oct 30:\n\u2022 504 King was often off its usual track: Delays near King St West at Bathurst St East Side\u2026\n\u2022 506 Carlton ran partly with buses: Detour eastbound via Dundas St W, Bathurst St\u2026\n\u2022 507 Long Branch ran mostly with buses\n+1 more on the map",
+   "chars": 262
+  }
+ ]
+}

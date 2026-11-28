@@ -1,0 +1,136 @@
+{
+ "day": "2026-11-27",
+ "when": "Friday, Nov 27",
+ "headline": "Toronto's streetcars lost 908 hours to delays, across all routes.",
+ "items": [
+  {
+   "kind": "segment",
+   "label": "Slowest stretch",
+   "place": "Queens Quay West eastbound, between Lake Shore Blvd W and Lower Spadina Ave",
+   "detail": "2 min 3 s lost per streetcar \u00b7 133 trips",
+   "q": {
+    "story": "segment",
+    "piece": "p9",
+    "b0": "133",
+    "b1": "148"
+   },
+   "hash": "w=d1&v=delay&r=509,510&d=ws",
+   "at": {
+    "from": [
+     -79.39243,
+     43.63906
+    ],
+    "to": [
+     -79.38917,
+     43.63823
+    ],
+    "cars": 133,
+    "total_h": 4.5
+   }
+  },
+  {
+   "kind": "shortturn",
+   "label": "Most trips cut short",
+   "place": "501 Queen",
+   "detail": "1 in 11 trips sent back before the end of the line",
+   "q": {
+    "story": "shortturn"
+   },
+   "hash": "w=d1&v=wait&r=501&d=en",
+   "at": {
+    "route": "501"
+   }
+  },
+  {
+   "kind": "signal",
+   "label": "Longest holds at a signal",
+   "place": "Westbound at Strachan Ave & Fleet St",
+   "detail": "1 in 2 streetcars waited 90 s or more",
+   "q": {
+    "story": "signal",
+    "tipa": "p7|0571"
+   },
+   "hash": "w=d1&v=signals&c=-79.40963,43.63625,16.0,28,45&r=509,511",
+   "at": {
+    "spot": [
+     -79.409631,
+     43.636255
+    ],
+    "cars": 289,
+    "total_h": 5.82,
+    "dir": [
+     -0.00124,
+     -8e-05
+    ]
+   }
+  },
+  {
+   "kind": "fleet",
+   "label": "Streetcars in service",
+   "place": "All streetcar routes",
+   "detail": "99% of scheduled service ran",
+   "q": {
+    "story": "fleet"
+   },
+   "hash": "w=d1"
+  }
+ ],
+ "lost_h": 908,
+ "walk": {
+  "route": "505",
+  "v": "4462",
+  "street": "Dundas St",
+  "a": "Beverley St",
+  "b": "Yonge St",
+  "a_ll": [
+   -79.393961,
+   43.65371
+  ],
+  "b_ll": [
+   -79.38119,
+   43.65619
+  ],
+  "tA": 47720,
+  "tB": 48762,
+  "m": 1076,
+  "ride_s": 1042,
+  "walk_s": 861,
+  "kmh": 4.5,
+  "n": 31,
+  "of": 168,
+  "net": {
+   "trips": 108,
+   "of": 2389,
+   "routes": [
+    [
+     "505",
+     68
+    ],
+    [
+     "506",
+     17
+    ],
+    [
+     "501",
+     12
+    ],
+    [
+     "504",
+     8
+    ],
+    [
+     "507",
+     1
+    ],
+    [
+     "511",
+     1
+    ],
+    [
+     "512",
+     1
+    ]
+   ]
+  }
+ }
+}

@@ -1,0 +1,17 @@
+{
+ "done": [
+  "summary",
+  "segment",
+  "waits",
+  "signal",
+  "fleet"
+ ],
+ "root": {
+  "uri": "at://did:plc:h7k3jadwyj4n57maqoocuv4w/app.bsky.feed.post/3mzkvjmv4tb2g",
+  "cid": "bafyreibsoog4r6acugpzkegjn2wear4txkzrecqbslkcssfxdo3dfpzsp4"
+ },
+ "last": {
+  "uri": "at://did:plc:h7k3jadwyj4n57maqoocuv4w/app.bsky.feed.post/3mzlvesz2ft25",
+  "cid": "bafyreige3qnlrya3e2rik4jsz5aicnev6s34lffohuxlvdkyb5gjcy3oqm"
+ }
+}

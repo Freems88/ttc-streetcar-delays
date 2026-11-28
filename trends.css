@@ -1,0 +1,52 @@
+/* Trends page: shares the main map's tokens and controls (style.css), as a scrolling page. */
+body.trends { overflow: auto; }
+.tr-page { max-width: 980px; margin: 0 auto; padding: 22px 20px 40px; }
+.tr-head .back { color: var(--muted); text-decoration: none; font-size: 13px; }
+.tr-head .back:hover { color: var(--accent); }
+.tr-head h1 { font-size: 24px; margin: 4px 0 6px; }
+.tr-head .lede { max-width: 720px; color: var(--muted); margin: 0 0 16px; }
+.tr-controls { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px 6px; margin-bottom: 18px; }
+.tr-row { display: flex; flex-wrap: wrap; gap: 6px 22px; align-items: flex-end; }
+.tr-row .field { min-width: 0; }
+.tr-row .seg button, .tr-opts .seg button { white-space: nowrap; padding-left: 10px; padding-right: 10px; }
+.tr-row .check { margin-bottom: 14px; }
+.tr-charts { display: grid; gap: 14px; }
+
+.tr-chart { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px 8px; }
+.tr-chart h2 { font-size: 15px; margin: 0; }
+.tr-chart .sub { color: var(--muted); font-size: 12.5px; margin: 2px 0 6px; }
+.tr-chart .tr-opts { float: right; margin-left: 10px; }
+.tr-chart .seg button { font-size: 12px; padding: 4px 8px; }
+.tr-chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.tr-chart svg text { font: 10.5px Inter, system-ui, sans-serif; fill: var(--muted); }
+.tr-chart .grid line { stroke: var(--line); }
+.tr-chart .sched line { stroke: var(--muted); stroke-dasharray: 3 3; }
+.tr-chart .sched text { fill: var(--muted); }
+.tr-chart .wx-shade { fill: var(--series-1); opacity: 0.09; }
+.tr-chart .cross { stroke: var(--ink); stroke-opacity: 0.35; }
+.tr-chart .empty { fill: var(--muted); font-size: 12.5px; }
+.tr-legend { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 12px; color: var(--muted); margin-top: 4px; }
+.tr-legend i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 5px; }
+.tr-legend .dash i { background: none !important; border-top: 2px dashed currentColor; height: 0; }
+
+.wx svg text { font-size: 10px; }
+.wx .rain { fill: #3b82c4; }
+.wx .snow { fill: #9ec9ef; stroke: #3b82c4; stroke-width: 0.8; }
+.wx .mixed { fill: #3b82c4; fill-opacity: 0.45; stroke: #3b82c4; stroke-width: 1; stroke-dasharray: 2 1.5; }
+.wx .cold { fill: #6c4fc1; }
+
+.tr-tip {
+  position: fixed; z-index: 5; pointer-events: none; max-width: 300px;
+  background: var(--tip-bg); color: #fff; border-radius: 8px; padding: 8px 10px; font-size: 12.5px; line-height: 1.4;
+  box-shadow: var(--shadow);
+}
+.tr-tip b { font-weight: 600; }
+.tr-tip .tr-change { margin-top: 5px; max-width: 280px; }
+.tr-tip .row { display: flex; justify-content: space-between; gap: 14px; font-variant-numeric: tabular-nums; }
+.tr-tip .sw { display: inline-block; width: 10px; height: 3px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+.tr-tip .dim { opacity: 0.75; }
+
+@media (max-width: 700px) {
+  .tr-page { padding: 14px 12px 30px; }
+  .tr-chart .tr-opts { float: none; margin: 6px 0 4px; }
+}

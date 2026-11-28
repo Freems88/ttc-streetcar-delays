@@ -1,0 +1,110 @@
+{
+ "day": "2026-11-24",
+ "partial": false,
+ "generated": 1795610846,
+ "normal_days": 27,
+ "have_normal": true,
+ "positions": 315758,
+ "posts": [
+  {
+   "kind": "summary",
+   "text": "Tuesday, Nov 24: Toronto's streetcars lost 865 hours to delays, across all routes.\n\nSlowest for its length: 509 Harbourfront westbound. A typical 2.6 km trip lost 8 min (usually 7).\nSmoothest: 507 Long Branch westbound, 12 min over 8.0 km (usually 12).\n\n#TTC #TransitSky #DataViz\n\nhttps://stuckin.to/",
+   "chars": 279
+  },
+  {
+   "kind": "segment",
+   "text": "Tuesday's slowest spot: Southbound on York St, at Adelaide St West.\nThe average streetcar lost 2 min 4 s here (usually 78 s). Across 152 trips, that adds up to 5.2 hours.",
+   "alt": "3D map of York St around Adelaide St West, rotated to Toronto's street grid. Delay is drawn as a coloured ridge above the track, rising where streetcars lose time; the southbound stretch at Adelaide St West is highlighted, adding up to about 2 min 4 s lost per streetcar.",
+   "shot": {
+    "shot": "1",
+    "win": "yesterday",
+    "piece": "p23",
+    "b0": 39,
+    "b1": 55,
+    "title": "York St southbound, at Adelaide St West",
+    "sub": "Tuesday, Nov 24: 2 min 4 s lost per streetcar \u00b7 152 trips"
+   },
+   "chars": 170,
+   "image": "segment.png"
+  },
+  {
+   "kind": "shortturn",
+   "text": "Most short-turned, Tuesday, Nov 24: 510 Spadina. 1 in 6 trips (82) were sent back before the end of the line, most after Spadina Ave at Queen St West South Side (southbound, 52), instead of going on to Queens Quay.\n\nAcross all routes, 6% of trips were short-turned.",
+   "alt": "Map of the 510 Spadina route in the waits view: a column at each stop, taller and darker where riders waited longer than scheduled, and yellow warning signs where cars were short-turned. A tooltip on the busiest spot, after Spadina Ave at Queen St West South Side, gives how many southbound cars were sent back there instead of going on to Queens Quay.",
+   "shot": {
+    "clean": "1",
+    "theme": "light",
+    "fit": "1",
+    "tips": "1"
+   },
+   "hash": "w=d1&v=wait&r=510&d=ws",
+   "size": [
+    960,
+    720
+   ],
+   "scale": 1.25,
+   "chars": 265,
+   "image": "shortturn.png"
+  },
+  {
+   "kind": "signal",
+   "text": "Most held at a signal, Tuesday, Nov 24: westbound at Strachan Ave & Fleet St.\n\n40% of streetcars waited 90 s or more beyond a clean approach, about a full signal cycle, despite transit priority.\nAbout 292 streetcars came through.",
+   "alt": "Map of the streets around Strachan Ave & Fleet St, with arrows for each direction of streetcar travel into each signal, coloured by how often streetcars were held 90 seconds or more. A tooltip for the westbound approach reads 40% held 90 s+, with a histogram of extra time through the approach.",
+   "shot": {
+    "clean": "1",
+    "theme": "light",
+    "tipa": "p7|0571"
+   },
+   "hash": "w=d1&v=signals&c=-79.40963,43.63625,16.0,28,45",
+   "size": [
+    960,
+    720
+   ],
+   "scale": 1.25,
+   "chars": 229,
+   "image": "signal.png"
+  },
+  {
+   "kind": "fleet",
+   "text": "Tuesday, Nov 24: at the busiest moment (5:10 pm), 151 streetcars were in service, against 151 scheduled.\nOverall, 98% of scheduled streetcar service ran, and buses ran 1,239 hours on streetcar routes.\nFurthest behind: 505 Dundas, at 90% of its scheduled service.",
+   "alt": "Line chart of streetcars in service through Tuesday, Nov 24, every 10 minutes from 4 am, against the TTC's schedule (dashed). The busiest moment was 151 streetcars at 5:10 pm, against 151 scheduled; over the day 98% of scheduled streetcar hours ran.",
+   "shot": {
+    "clean": "1",
+    "theme": "light",
+    "fleet": "1",
+    "title": "Streetcars in service, Tuesday, Nov 24"
+   },
+   "hash": "w=d1",
+   "size": [
+    960,
+    500
+   ],
+   "scale": 1.25,
+   "chars": 262,
+   "image": "fleet.png"
+  },
+  {
+   "kind": "stopwait",
+   "text": "Longest extra wait at a stop, Tuesday, Nov 24: Dundas St East at Parliament St (506 Carlton eastbound).\n\nRiders waited 10.4 min on average, against 4.9 if cars had come as scheduled: 5.4 min extra. 1 in 4 cars came bunched, and 23 of 131 scheduled cars never came.",
+   "alt": "Map of the streets around Dundas St East at Parliament St in the waits view, a column at each stop. A tooltip for the stop reads 5.4 minutes of excess wait, with how often cars came bunched or with gaps, and a chart of the spread of gaps between cars.",
+   "shot": {
+    "clean": "1",
+    "theme": "light",
+    "tip": "9399"
+   },
+   "hash": "w=d1&v=wait&r=506&d=en&c=-79.36629,43.65928,15.20,28,50",
+   "size": [
+    960,
+    720
+   ],
+   "scale": 1.25,
+   "chars": 264,
+   "image": "stopwait.png"
+  },
+  {
+   "kind": "service",
+   "text": "Service changes, Tuesday, Nov 24:\n\u2022 501 Queen, partly by bus: No service near Lake Shore Blvd West at Kipling\u2026\n\u2022 504 King, partly by bus: Detour eastbound via Parliament St and Queen St E\u2026\n\u2022 506 Carlton, partly by bus: Detour eastbound via Spadina Ave, King St E\u2026\n+1 more on the map",
+   "chars": 282
+  }
+ ]
+}
